@@ -1,4 +1,4 @@
-* ================================================================
+/* ================================================================
    data.js  —  THE ONLY FILE YOU EDIT WHEN YOU PUBLISH A WRITEUP
    ----------------------------------------------------------------
    WRITEUPS  drives the home page (latest + random) and writeups.html
