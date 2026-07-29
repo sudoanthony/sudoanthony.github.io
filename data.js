@@ -1,67 +1,83 @@
 /* ================================================================
    data.js  —  THE ONLY FILE YOU EDIT WHEN YOU PUBLISH A WRITEUP
    ----------------------------------------------------------------
-   Two lists live here:
-     WRITEUPS  drives the home page (latest + random) and writeups.html
-     VULNS     drives vulns.html (the big index) automatically
-
-   NOTE: the VULNS entries below are GENERIC EXAMPLES so you can see how
-   the index renders. They are NOT Hammer's solution. Delete them and add
-   your own real techniques after you solve and write up each box.
+   WRITEUPS  drives the home page (latest + random) and writeups.html
+   VULNS     drives vulns.html (the big index) automatically
 
    To publish a new writeup:
-     1. Write writeup-<name>.html from the template.
+     1. Write writeup-<name>.html from writeup-biohazard.html (your template).
      2. Add ONE object to the TOP of WRITEUPS (newest first).
      3. For each technique the box used, add the writeup to that vuln's
         `uses` array in VULNS — or add a new vuln object if it's new.
      4. Make each tag chip in the writeup link to vulns.html#<that-id>.
 
    Severity: "crit" | "high" | "med" | "low"
-   Category: "web" | "auth" | "priv-esc" | "ad" | "network" | "crypto"
+   Category: "web" | "auth" | "priv-esc" | "crypto" | "forensics" | "network"
    ================================================================ */
 
 const WRITEUPS = [
   {
-    title:      "Hammer",
-    url:        "writeup-hammer.html",
-    platform:   "TryHackMe",
-    difficulty: "Medium",
-    date:       "2026-07-29",              // YYYY-MM-DD — controls "latest"
-    summary:    "Writeup in progress — solving it myself, notes to follow.",
-    tags:       []                          // add technique ids here after you finish
+    title:      "Biohazard",
+    url:        "writeup-biohazard.html",
+    platform:   "TryHackMe",                // "TryHackMe" (pink) | "HackTheBox" (green)
+    team:       "red",                      // "red" | "blue"
+    difficulty: "Medium",                   // Easy | Medium | Hard | Insane
+    date:       "2026-07-29",               // YYYY-MM-DD — controls "latest"
+    summary:    "A Resident Evil themed box: a layered Base32/64/58 + Vigenère chain leaks FTP creds, three images hide key fragments (empty-passphrase steghide, appended data, an embedded file) that rebuild the GPG passphrase and helmet key, and medals + a final Vigenère lead through SSH to root.",
+    tags:       ["data-obfuscation", "steganography", "exposed-credentials", "priv-esc"]
   }
   // ,{  next writeup goes here, at the TOP for newest-first
-  //   title:"", url:"", platform:"", difficulty:"", date:"", summary:"", tags:[]
+  //   title:"", url:"", platform:"TryHackMe", team:"red", difficulty:"", date:"", summary:"", tags:[]
   // }
 ];
 
-/* ---- EXAMPLE VULNS (delete these once you have real ones) ----
-   They exist only to show you the layout: severity ordering, the filter
-   chips, the "deep dive" link state, and the per-writeup `uses` list. */
 const VULNS = [
   {
-    id:    "example-sqli",
-    name:  "SQL injection",
-    cat:   "web",
-    sev:   "crit",
-    ext:   "CWE-89",                        // optional grey reference id
-    blurb: "EXAMPLE ENTRY — user input concatenated into a SQL query, letting an attacker read or alter the database.",
-    deepdive: "",                           // "" = heading is plain text (no article yet)
-                                            // later: "vuln-example-sqli.html" makes it a link
+    id:    "exposed-credentials",
+    name:  "Exposed credentials",
+    cat:   "auth",
+    sev:   "high",
+    ext:   "CWE-522",
+    blurb: "Credentials recoverable by an unauthenticated user — here, buried in web content and reachable over FTP.",
+    deepdive: "",                          // "" = plain heading. Set "vuln-exposed-credentials.html" later to link it.
     uses: [
-      { writeup: "Example Box", url: "#", ctx: "EXAMPLE — replace with a real writeup + how it was used" }
+      { writeup: "Biohazard", url: "writeup-biohazard.html", ctx: "creds hidden behind an encoding chain, then key files sitting on FTP" }
     ]
   },
   {
-    id:    "example-privesc",
-    name:  "Privilege escalation via misconfigured sudo",
+    id:    "priv-esc",
+    name:  "Privilege escalation to root",
     cat:   "priv-esc",
-    sev:   "high",
+    sev:   "crit",
     ext:   "",
-    blurb: "EXAMPLE ENTRY — a sudo rule that allows running a binary in a way that spawns a root shell.",
+    blurb: "Turning a foothold user into root through a local misconfiguration.",
     deepdive: "",
     uses: [
-      { writeup: "Example Box", url: "#", ctx: "EXAMPLE — replace me" }
+      { writeup: "Biohazard", url: "writeup-biohazard.html", ctx: "fill in the exact vector once your section 05 is written" }
+    ]
+  },
+  {
+    id:    "steganography",
+    name:  "Steganography — data hidden in files",
+    cat:   "forensics",
+    sev:   "med",
+    ext:   "",
+    blurb: "Secrets concealed inside otherwise-normal files: embedded in image data, or archives appended to a JPEG.",
+    deepdive: "",
+    uses: [
+      { writeup: "Biohazard", url: "writeup-biohazard.html", ctx: "empty-passphrase steghide, an appended ZIP, and a TAR across three key images" }
+    ]
+  },
+  {
+    id:    "data-obfuscation",
+    name:  "Obfuscation mistaken for encryption",
+    cat:   "crypto",
+    sev:   "med",
+    ext:   "",
+    blurb: "Encodings (Base32/64/58) and classical ciphers (Vigenère) used to 'protect' data — all reversible with no secret, identified by their alphabets.",
+    deepdive: "",                          // strong candidate for your first deep-dive article later
+    uses: [
+      { writeup: "Biohazard", url: "writeup-biohazard.html", ctx: "layered Base32 -> Vigenère -> Base64/Base32 -> Base58 chain guarding FTP creds" }
     ]
   }
 ];

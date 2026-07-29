@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Anthony Sudo — CTF Write-ups</title>
+<title>Anthony — security writeups</title>
 <meta name="description" content="Penetration testing and CTF writeups — web exploitation, authentication flaws, and privilege escalation.">
 <link rel="stylesheet" href="style.css">
 </head>
@@ -28,7 +28,7 @@
          Edit the plain text; leave the <span class="k"> accents. -->
     <p class="pos">
       I break web apps and Windows environments for practice, then write up
-      <span class="k">why</span> each bug exists. The root cause, detection, and the fix are all included,
+      <span class="k">why</span> each bug exists — root cause, detection, and the fix —
       not just the commands. Working toward a <span class="k">junior penetration testing</span> role.
     </p>
 
@@ -86,16 +86,22 @@
   const sorted = [...WRITEUPS].sort((a,b) => (a.date < b.date ? 1 : -1));
   const latest = sorted[0];
 
-  const pill = s => ({crit:'crit',high:'high',med:'med',low:'low'}[s] || 'med');
+  const platClass = p => p.toLowerCase().includes('hack') ? 'htb' : 'thm';
+  const diffClass = d => ({easy:'easy',medium:'medium',hard:'hard',insane:'insane'}[d.toLowerCase()] || 'medium');
+  const teamClass = t => (t||'').toLowerCase()==='blue' ? 'blue-team' : 'red-team';
+  const teamLabel = t => (t||'').toLowerCase()==='blue' ? 'blue team' : 'red team';
 
   if (latest) {
     document.getElementById('latest').innerHTML =
-      '<a class="card" href="' + latest.url + '">' +
-        '<div class="eyebrow">' + latest.platform + ' · ' + latest.difficulty + '</div>' +
+      '<a class="card ' + platClass(latest.platform) + '" href="' + latest.url + '">' +
         '<div class="title">' + latest.title + '</div>' +
         '<div class="desc">' + latest.summary + '</div>' +
-        '<div class="row"><span>' + latest.date + '</span><span>·</span><span>' +
-          latest.tags.slice(0,3).join('  ') + '</span></div>' +
+        '<div class="row">' +
+          '<span class="badge ' + platClass(latest.platform) + '">' + latest.platform + '</span>' +
+          '<span class="badge ' + diffClass(latest.difficulty) + '">' + latest.difficulty + '</span>' +
+          '<span class="badge ' + teamClass(latest.team) + '">' + teamLabel(latest.team) + '</span>' +
+          '<span style="font-family:var(--mono);font-size:11.5px;color:var(--text-4);margin-left:auto">' + latest.date + '</span>' +
+        '</div>' +
       '</a>';
   } else {
     document.getElementById('latest').innerHTML =

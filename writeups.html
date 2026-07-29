@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Writeups — Anthony</title>
+<title>Writeups — sudoanthony</title>
 <link rel="stylesheet" href="style.css">
 </head>
 <body>
@@ -19,8 +19,13 @@
 
 <main class="wrap" style="padding-top:44px">
   <h1>Writeups</h1>
-  <p style="color:var(--text-3)">Every box, newest first. Techniques link into the <a href="vulns.html">vulnerability index</a>.</p>
-  <ul class="wlist" id="list"></ul>
+  <p style="color:var(--text-3)">Grouped by platform, newest first. Techniques link into the
+  <a href="vulns.html">vulnerability index</a>.</p>
+
+  <!-- platform filter -->
+  <div class="filters" id="filters"></div>
+
+  <div id="groups"></div>
 </main>
 
 <footer class="foot"><div class="wrap" style="display:flex;gap:18px;flex-wrap:wrap">
@@ -31,14 +36,66 @@
 
 <script src="data.js"></script>
 <script>
+  // map platform/difficulty/team text -> css badge classes
+  const platClass = p => p.toLowerCase().includes("hack") ? "htb" : "thm";
+  const diffClass = d => ({easy:"easy",medium:"medium",hard:"hard",insane:"insane"}[d.toLowerCase()] || "medium");
+  const teamClass = t => (t||"").toLowerCase()==="blue" ? "blue-team" : "red-team";
+  const teamLabel = t => (t||"").toLowerCase()==="blue" ? "blue team" : "red team";
+
   const sorted = [...WRITEUPS].sort((a,b) => (a.date < b.date ? 1 : -1));
-  document.getElementById('list').innerHTML = sorted.length ? sorted.map(w =>
-    '<li>' +
-      '<a class="wt" href="' + w.url + '">' + w.title + '</a>' +
-      '<span class="wm">' + w.platform + ' · ' + w.difficulty + ' · ' + w.date + '</span>' +
-      '<span class="wd">' + w.summary + '</span>' +
-    '</li>').join('')
-    : '<li><span class="wd">No writeups yet.</span></li>';
+
+  // platforms present, in a stable order
+  const order = ["TryHackMe", "HackTheBox"];
+  const present = order.filter(p => sorted.some(w => w.platform === p))
+    .concat([...new Set(sorted.map(w=>w.platform))].filter(p => !order.includes(p)));
+
+  let active = "all";
+
+  function card(w) {
+    return '<a class="card ' + platClass(w.platform) + '" href="' + w.url + '">' +
+      '<div class="title">' + w.title + '</div>' +
+      '<div class="desc">' + w.summary + '</div>' +
+      '<div class="row">' +
+        '<span class="badge ' + platClass(w.platform) + '">' + w.platform + '</span>' +
+        '<span class="badge ' + diffClass(w.difficulty) + '">' + w.difficulty + '</span>' +
+        '<span class="badge ' + teamClass(w.team) + '">' + teamLabel(w.team) + '</span>' +
+        '<span style="font-family:var(--mono);font-size:11.5px;color:var(--text-4);margin-left:auto">' + w.date + '</span>' +
+      '</div>' +
+    '</a>';
+  }
+
+  function render() {
+    const groups = present
+      .filter(p => active === "all" || p === active)
+      .map(p => {
+        const items = sorted.filter(w => w.platform === p);
+        if (!items.length) return "";
+        return '<div class="platform-head">' +
+            '<span class="dot ' + platClass(p) + '"></span>' +
+            '<span class="name">' + p + '</span>' +
+            '<span class="count">' + items.length + (items.length===1?' writeup':' writeups') + '</span>' +
+          '</div>' +
+          '<div class="wlist">' + items.map(card).join("") + '</div>';
+      }).join("");
+    document.getElementById("groups").innerHTML = groups ||
+      '<p class="empty">No writeups yet.</p>';
+  }
+
+  // filter chips
+  const chips = ["all", ...present];
+  document.getElementById("filters").innerHTML = chips.map(c =>
+    '<button class="filter' + (c==="all"?" active":"") + '" data-p="' + c + '">' +
+      (c==="all" ? "all · " + sorted.length : c + " · " + sorted.filter(w=>w.platform===c).length) +
+    '</button>').join("");
+
+  document.getElementById("filters").addEventListener("click", e => {
+    const b = e.target.closest(".filter"); if (!b) return;
+    active = b.dataset.p;
+    document.querySelectorAll(".filter").forEach(f => f.classList.toggle("active", f===b));
+    render();
+  });
+
+  render();
 </script>
 </body>
 </html>
