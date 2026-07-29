@@ -19,13 +19,19 @@
 
 <main class="wrap" style="padding-top:44px">
   <h1>Writeups</h1>
-  <p style="color:var(--text-3)">Grouped by platform, newest first. Techniques link into the
-  <a href="vulns.html">vulnerability index</a>.</p>
-
-  <!-- platform filter -->
-  <div class="filters" id="filters"></div>
+  <p style="color:var(--text-3)">Grouped by platform. Hover a box for its summary and vulnerabilities;
+  click to open the writeup. Techniques cross-link into the <a href="vulns.html">vulnerability index</a>.</p>
 
   <div id="groups"></div>
+
+  <!-- ================================================================
+       TO ADD A BOX: you don't edit this file. Add the writeup to
+       data.js (see the template at the top of that file). Its icon,
+       platform, difficulty, summary, and tags all come from there, and
+       it slots into the right platform grid automatically.
+       Icons: drop a square PNG at images/icons/<name>.png. If it's
+       missing, the card shows the box's first letter instead.
+       ================================================================ -->
 </main>
 
 <footer class="foot"><div class="wrap" style="display:flex;gap:18px;flex-wrap:wrap">
@@ -36,64 +42,69 @@
 
 <script src="data.js"></script>
 <script>
-  // map platform/difficulty/team text -> css badge classes
   const platClass = p => p.toLowerCase().includes("hack") ? "htb" : "thm";
-  const diffClass = d => ({easy:"easy",medium:"medium",hard:"hard",insane:"insane"}[d.toLowerCase()] || "medium");
-  const teamClass = t => (t||"").toLowerCase()==="blue" ? "blue-team" : "red-team";
-  const teamLabel = t => (t||"").toLowerCase()==="blue" ? "blue team" : "red team";
+  const diffClass = d => ({"very easy":"very-easy",easy:"easy",medium:"medium",hard:"hard",insane:"insane"}[(d||"").toLowerCase()] || "medium");
+  const esc = s => (s||"").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");
+
+  // small inline OS glyphs (no external font needed)
+  function osIcon(os) {
+    const o = (os||"").toLowerCase();
+    const s = 'style="width:12px;height:12px;vertical-align:-1px;margin-right:4px" viewBox="0 0 24 24"';
+    if (o.includes("win"))
+      return '<svg ' + s + ' fill="currentColor"><path d="M3 5.4 10.6 4.3v7.1H3zM10.6 12.4v7.1L3 18.6v-6.2zM11.6 4.1 21 2.8v8.6h-9.4zM21 12.4V21l-9.4-1.3v-7.3z"/></svg>';
+    if (o.includes("lin") || o.includes("nix"))
+      return '<svg ' + s + '><path fill="currentColor" d="M12 2c-1.9 0-3 1.5-3 3.5 0 .8.1 1.4.2 1.9-1 1-2.3 3-2.9 5.3-.5 1.9-1.3 2.9-1.9 3.7-.5.6-.1 1.4.6 1.4.7 0 1.4-.3 1.9-.6.2.9.4 1.8.5 2.4.1.6.8.9 2.4.9s2.3-.3 2.4-.9c.1-.6.3-1.5.5-2.4.5.3 1.2.6 1.9.6.7 0 1.1-.8.6-1.4-.6-.8-1.4-1.8-1.9-3.7-.6-2.3-1.9-4.3-2.9-5.3.1-.5.2-1.1.2-1.9 0-2-1.1-3.5-3-3.5z"/><ellipse cx="12" cy="15" rx="2.1" ry="3" fill="#0d0f11"/><circle cx="10.7" cy="6.1" r=".7" fill="#0d0f11"/><circle cx="13.3" cy="6.1" r=".7" fill="#0d0f11"/><path d="M11.3 7.3h1.4l-.7.9z" fill="#f0b35a"/></svg>';
+    return "";
+  }
 
   const sorted = [...WRITEUPS].sort((a,b) => (a.date < b.date ? 1 : -1));
-
-  // platforms present, in a stable order
   const order = ["TryHackMe", "HackTheBox"];
   const present = order.filter(p => sorted.some(w => w.platform === p))
-    .concat([...new Set(sorted.map(w=>w.platform))].filter(p => !order.includes(p)));
+    .concat([...new Set(sorted.map(w => w.platform))].filter(p => !order.includes(p)));
 
-  let active = "all";
+  function iconHtml(w) {
+    const mono = '<div class="mono">' + esc((w.title||"?")[0]) + '</div>';
+    // show the image; if it 404s, reveal the letter fallback underneath
+    return w.icon
+      ? '<div class="icon">' + mono +
+          '<img src="' + w.icon + '" alt="" style="position:absolute;inset:0;margin:auto" ' +
+          'onerror="this.style.display=\'none\'"></div>'
+      : '<div class="icon">' + mono + '</div>';
+  }
 
-  function card(w) {
-    return '<a class="card ' + platClass(w.platform) + '" href="' + w.url + '">' +
-      '<div class="title">' + w.title + '</div>' +
-      '<div class="desc">' + w.summary + '</div>' +
-      '<div class="row">' +
-        '<span class="badge ' + platClass(w.platform) + '">' + w.platform + '</span>' +
-        '<span class="badge ' + diffClass(w.difficulty) + '">' + w.difficulty + '</span>' +
-        '<span class="badge ' + teamClass(w.team) + '">' + teamLabel(w.team) + '</span>' +
-        '<span style="font-family:var(--mono);font-size:11.5px;color:var(--text-4);margin-left:auto">' + w.date + '</span>' +
+  function boxCard(w) {
+    const dc = diffClass(w.difficulty);
+    const osPart = w.os ? osIcon(w.os) + esc(w.os) : "";
+    const sub = '<span class="d-' + dc + '">' + esc(w.difficulty) + '</span> &middot; ' +
+                osPart + (w.category ? ' &middot; ' + esc(w.category) : '');
+    const chips = (w.tags || []).slice(0,3).map(t => '<span class="chip">' + esc(t) + '</span>').join("");
+    return '<a class="bx ' + platClass(w.platform) + '" href="' + w.url + '">' +
+      '<div class="face">' + iconHtml(w) +
+        '<div class="nm">' + esc(w.title) + '</div>' +
+        '<div class="sub">' + sub + '</div>' +
+      '</div>' +
+      '<div class="rev">' +
+        '<div class="rt">' + esc(w.title) + '</div>' +
+        '<div class="rs">' + esc(w.summary) + '</div>' +
+        '<div class="chips">' + chips + '</div>' +
       '</div>' +
     '</a>';
   }
 
   function render() {
-    const groups = present
-      .filter(p => active === "all" || p === active)
-      .map(p => {
-        const items = sorted.filter(w => w.platform === p);
-        if (!items.length) return "";
-        return '<div class="platform-head">' +
-            '<span class="dot ' + platClass(p) + '"></span>' +
-            '<span class="name">' + p + '</span>' +
-            '<span class="count">' + items.length + (items.length===1?' writeup':' writeups') + '</span>' +
-          '</div>' +
-          '<div class="wlist">' + items.map(card).join("") + '</div>';
-      }).join("");
-    document.getElementById("groups").innerHTML = groups ||
-      '<p class="empty">No writeups yet.</p>';
+    document.getElementById("groups").innerHTML = present.map(p => {
+      const items = sorted.filter(w => w.platform === p);
+      if (!items.length) return "";
+      return '<div class="platform-head">' +
+          '<img class="plogo" src="images/' + platClass(p) + '-logo.png" alt="' + esc(p) + '" ' +
+            'onerror="this.style.display=\'none\';this.nextElementSibling.style.display=\'inline-flex\'">' +
+          '<span class="plfallback" style="display:none;align-items:center;gap:10px">' +
+            '<span class="dot ' + platClass(p) + '"></span><span class="name">' + esc(p) + '</span></span>' +
+          '<span class="count">' + items.length + (items.length===1?' writeup':' writeups') + '</span>' +
+        '</div>' +
+        '<div class="grid">' + items.map(boxCard).join("") + '</div>';
+    }).join("") || '<p class="empty">No writeups yet.</p>';
   }
-
-  // filter chips
-  const chips = ["all", ...present];
-  document.getElementById("filters").innerHTML = chips.map(c =>
-    '<button class="filter' + (c==="all"?" active":"") + '" data-p="' + c + '">' +
-      (c==="all" ? "all · " + sorted.length : c + " · " + sorted.filter(w=>w.platform===c).length) +
-    '</button>').join("");
-
-  document.getElementById("filters").addEventListener("click", e => {
-    const b = e.target.closest(".filter"); if (!b) return;
-    active = b.dataset.p;
-    document.querySelectorAll(".filter").forEach(f => f.classList.toggle("active", f===b));
-    render();
-  });
 
   render();
 </script>

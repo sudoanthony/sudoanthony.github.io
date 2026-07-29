@@ -87,7 +87,7 @@
   const latest = sorted[0];
 
   const platClass = p => p.toLowerCase().includes('hack') ? 'htb' : 'thm';
-  const diffClass = d => ({easy:'easy',medium:'medium',hard:'hard',insane:'insane'}[d.toLowerCase()] || 'medium');
+  const diffClass = d => ({"very easy":"very-easy",easy:'easy',medium:'medium',hard:'hard',insane:'insane'}[(d||'').toLowerCase()] || 'medium');
   const teamClass = t => (t||'').toLowerCase()==='blue' ? 'blue-team' : 'red-team';
   const teamLabel = t => (t||'').toLowerCase()==='blue' ? 'blue team' : 'red team';
 
