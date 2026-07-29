@@ -42,7 +42,7 @@
 
 <script src="data.js"></script>
 <script>
-  const platClass = p => p.toLowerCase().includes("hack") ? "htb" : "thm";
+  const platClass = p => /hack.?the.?box|htb/i.test(p || "") ? "htb" : "thm";
   const diffClass = d => ({"very easy":"very-easy",easy:"easy",medium:"medium",hard:"hard",insane:"insane"}[(d||"").toLowerCase()] || "medium");
   const esc = s => (s||"").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");
 

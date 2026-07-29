@@ -32,7 +32,7 @@ const WRITEUPS = [
     category:   "SMB",
     icon:       "images/icons/abducted.png",
     date:       "2026-07-30",
-    summary:    "Samba print-subsystem command injection (CVE-2026-4480) for a foothold, rclone credential reuse to the next user, Samba wide-link abuse for lateral movement, then a systemd drop-in + polkit rule to root.",
+    summary:    "Unauthenticated Samba print command injection (CVE-2026-4480) to a foothold, then credential reuse and wide-link abuse to pivot users, and a systemd/polkit misconfig to root.",
     tags:       ["command-injection", "exposed-credentials", "priv-esc"]
   },
   {
