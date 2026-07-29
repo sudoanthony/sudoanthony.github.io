@@ -83,11 +83,11 @@
         '<div class="nm">' + esc(w.title) + '</div>' +
         '<div class="sub">' + sub + '</div>' +
       '</div>' +
-      '<div class="rev">' +
+      '<div class="revwrap"><div class="rev">' +
         '<div class="rt">' + esc(w.title) + '</div>' +
         '<div class="rs">' + esc(w.summary) + '</div>' +
         '<div class="chips">' + chips + '</div>' +
-      '</div>' +
+      '</div></div>' +
     '</a>';
   }
 
@@ -96,7 +96,7 @@
       const items = sorted.filter(w => w.platform === p);
       if (!items.length) return "";
       return '<div class="platform-head">' +
-          '<img class="plogo" src="images/' + platClass(p) + '-logo.png" alt="' + esc(p) + '" ' +
+          '<img class="plogo plogo-' + platClass(p) + '" src="images/' + platClass(p) + '-logo.png" alt="' + esc(p) + '" ' +
             'onerror="this.style.display=\'none\';this.nextElementSibling.style.display=\'inline-flex\'">' +
           '<span class="plfallback" style="display:none;align-items:center;gap:10px">' +
             '<span class="dot ' + platClass(p) + '"></span><span class="name">' + esc(p) + '</span></span>' +
