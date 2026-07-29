@@ -1,20 +1,20 @@
-/* ================================================================
+* ================================================================
    data.js  —  THE ONLY FILE YOU EDIT WHEN YOU PUBLISH A WRITEUP
    ----------------------------------------------------------------
    WRITEUPS  drives the home page (latest + random) and writeups.html
    VULNS     drives vulns.html (the big index) automatically
-
+ 
    To publish a new writeup:
      1. Write writeup-<name>.html from writeup-biohazard.html (your template).
      2. Add ONE object to the TOP of WRITEUPS (newest first).
      3. For each technique the box used, add the writeup to that vuln's
         `uses` array in VULNS — or add a new vuln object if it's new.
      4. Make each tag chip in the writeup link to vulns.html#<that-id>.
-
+ 
    Severity: "crit" | "high" | "med" | "low"
    Category: "web" | "auth" | "priv-esc" | "crypto" | "forensics" | "network"
    ================================================================ */
-
+ 
 const WRITEUPS = [
   {
     title:      "Biohazard",
@@ -30,7 +30,7 @@ const WRITEUPS = [
   //   title:"", url:"", platform:"TryHackMe", team:"red", difficulty:"", date:"", summary:"", tags:[]
   // }
 ];
-
+ 
 const VULNS = [
   {
     id:    "exposed-credentials",
