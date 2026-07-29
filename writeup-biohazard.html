@@ -14,6 +14,7 @@
   <div class="links">
     <a href="writeups.html">writeups</a>
     <a href="vulns.html">vulns</a>
+    <a href="concepts.html">concepts</a>
     <a href="https://github.com/sudoanthony">github</a>
   </div>
 </div></nav>
@@ -55,10 +56,9 @@
   </div>
 
   <p style="margin-top:26px; color:var(--text-2);">
-    As a big fan of the Resident Evil series, I had to try this room. Something that surprised me was
-    that most of this box's puzzles rely on encoding/cipher recognition. I also think because of this, 
-    that while this box is labeled as Medium, I think this is an excellent room for beginners as a way 
-    to recognize ciphers/encoding methods by eye.
+    As a big fan of the Resident Evil series, I had to try this room. It leans almost entirely on
+    encoding/cipher recognition rather than memory-corruption exploits — which makes it a great drill
+    for one specific skill: looking at a blob and knowing <em>what it is</em> before you try to open it.
   </p>
 
   <hr>
@@ -66,38 +66,20 @@
   <!-- ==================== 01 ==================== -->
   <h2><span class="num">01</span>Enumeration</h2>
 
-  <p>First thing with almost any box is a full port scan.</p>
+  <p>A full port scan turned up three services — FTP, SSH, and a web server.</p>
 
   <pre><code><span class="p">$</span> nmap -p- --min-rate 1000 -T4 <span class="o">10.x.x.x</span>
 <span class="p">$</span> nmap -p 21,22,80 -sVC <span class="o">10.x.x.x</span>
 
 <span class="o">21/tcp  open  ftp     (no anonymous login)</span>
-<span class="o">22/tcp  open  ssh     (no anonymous login)</span>
+<span class="o">22/tcp  open  ssh</span>
 <span class="o">80/tcp  open  http    Apache/2.4.29   title: "Beginning of the end"</span></code></pre>
 
-  <p>FTP and SSH both refused anonymous access, so the way in had to start on port 80. We type in the IP
-  into our browser and find ourselves at the Mansion's entrance.</p>
-<figure>
-  <img src="images/biohazard1.png" alt="Spooky">
-  <figcaption></figcaption>
-</figure>
-  
-    <!-- ==================== 02 ==================== -->
-  <h2><span class="num">02</span>Enter The Mansion</h2>
-  <p></p> A single link drops us in at <code>/mansionMain/</code> where there is nothing to click or do. 
-  First thing we should do is <strong>read the source code</strong>.</p> In here, we see a comment
-  showing us a new room we can navigate to called /diningRoom/.
- <figure>
-  <img src="images/biohazard1a.png" alt="HintFor/diningRoom/">
-  <figcaption></figcaption>
-</figure>
-  
-  <p>In the /diningRoom/, we see that there is an area we can input an "emblem". There is nothing else
-  on the page so let's view the source code again.</p>
-  <figure>
-  <img src="images/biohazard3.png" alt="DiningRoom">
-  <figcaption></figcaption>
-</figure>
+  <p>FTP and SSH both refused anonymous access, so the way in had to start on port 80. The site drops
+  you at <code>/mansionMain/</code> — no links, no buttons, nothing to click. First instinct on a dead
+  page: <strong>read the source</strong>.</p>
+
+  <div class="shot-todo">SCREENSHOT — view-source of /mansionMain/ revealing the /diningRoom/ hint</div>
 
   <p>The source pointed to <code>/diningRoom/</code>, and that's the pattern the whole box repeats:
   each room hides a breadcrumb — in a comment, in an encoded string, or behind a cipher — that names
@@ -105,7 +87,8 @@
 
   <hr>
 
-
+  <!-- ==================== 02 ==================== -->
+  <h2><span class="num">02</span>The mansion — emblems &amp; ciphers</h2>
 
   <p><code>/diningRoom/</code> gave up an <code>emblem{[redacted]}</code>. Placing it did nothing
   yet — but the emblem string itself looked oddly familiar, and refreshing the page then re-reading
