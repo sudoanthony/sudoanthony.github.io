@@ -1,0 +1,123 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Anthony — security writeups</title>
+<meta name="description" content="Penetration testing and CTF writeups — web exploitation, authentication flaws, and privilege escalation.">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<nav class="nav"><div class="wrap">
+  <a class="brand" href="index.html">~/sudoanthony</a>
+  <div class="links">
+    <a href="writeups.html">writeups</a>
+    <a href="vulns.html">vulns</a>
+    <a href="https://github.com/sudoanthony">github</a>
+  </div>
+</div></nav>
+
+<main class="wrap">
+
+  <section class="hero">
+    <h1>Anthony</h1>
+
+    <!-- POSITIONING LINE — the first thing an employer reads.
+         Keep it concrete. Say what you do + what you're after.
+         Edit the plain text; leave the <span class="k"> accents. -->
+    <p class="pos">
+      I break web apps and Windows environments for practice, then write up
+      <span class="k">why</span> each bug exists — root cause, detection, and the fix —
+      not just the commands. Working toward a <span class="k">junior penetration testing</span> role.
+    </p>
+
+    <!-- CONTACT ROW — fill these in. Delete any line you don't want public. -->
+    <div class="contact">
+      <a href="mailto:anhmi@duck.com">email</a>
+      <a href="https://github.com/sudoanthony">github</a>
+      <a href="#">linkedin</a>
+      <a href="#">tryhackme</a>
+      <a href="#">resume (pdf)</a>
+    </div>
+  </section>
+
+  <!-- LATEST WRITEUP — rendered automatically from the newest entry in data.js -->
+  <p class="section-label">latest writeup</p>
+  <div id="latest"></div>
+
+  <div class="btn-row">
+    <a class="btn primary" href="writeups.html">all writeups →</a>
+    <button class="btn" id="randomBtn">surprise me</button>
+  </div>
+
+  <!-- ABOUT — WRITE THIS YOURSELF. 3-4 sentences, career-changer angle.
+       Guidance (delete when done):
+         • Sentence 1: where you're coming from (previous field) + why security.
+         • Sentence 2: what you're focused on right now (web? AD? a cert in progress?).
+         • Sentence 3: what this site is — proof you do the work, not just talk about it.
+         • Sentence 4: what role you want.
+       Avoid "passionate about cybersecurity" — it reads as filler. Be specific. -->
+  <h2>About</h2>
+  <p style="color:var(--text-3)">
+    <em>[ Your 3–4 sentence blurb goes here. See the comment in the page source for a
+    sentence-by-sentence guide. ]</em>
+  </p>
+
+  <!-- OPTIONAL STAT COUNTERS — switch on once the numbers flatter you (~8+ writeups).
+       Uncomment the <div id="stats"> line and the stats code near the bottom of this file.
+  <p class="section-label" style="margin-top:44px">by the numbers</p>
+  <div id="stats"></div>
+  -->
+
+</main>
+
+<footer class="foot"><div class="wrap" style="display:flex;gap:18px;flex-wrap:wrap">
+  <span>© <span id="yr"></span> Anthony Sciuto</span>
+  <a href="https://github.com/sudoanthony">github.com/sudoanthony</a>
+  <span>built as static HTML — no trackers</span>
+</div></footer>
+
+<script src="data.js"></script>
+<script>
+  document.getElementById('yr').textContent = new Date().getFullYear();
+
+  // newest-first by date
+  const sorted = [...WRITEUPS].sort((a,b) => (a.date < b.date ? 1 : -1));
+  const latest = sorted[0];
+
+  const pill = s => ({crit:'crit',high:'high',med:'med',low:'low'}[s] || 'med');
+
+  if (latest) {
+    document.getElementById('latest').innerHTML =
+      '<a class="card" href="' + latest.url + '">' +
+        '<div class="eyebrow">' + latest.platform + ' · ' + latest.difficulty + '</div>' +
+        '<div class="title">' + latest.title + '</div>' +
+        '<div class="desc">' + latest.summary + '</div>' +
+        '<div class="row"><span>' + latest.date + '</span><span>·</span><span>' +
+          latest.tags.slice(0,3).join('  ') + '</span></div>' +
+      '</a>';
+  } else {
+    document.getElementById('latest').innerHTML =
+      '<div class="card"><div class="desc">No writeups published yet.</div></div>';
+  }
+
+  // "surprise me" — jump to a random writeup
+  document.getElementById('randomBtn').addEventListener('click', function () {
+    if (!WRITEUPS.length) return;
+    const pick = WRITEUPS[Math.floor(Math.random() * WRITEUPS.length)];
+    window.location.href = pick.url;
+  });
+
+  /* --- OPTIONAL STATS (see comment above to enable) ---
+  const nWrite = WRITEUPS.length;
+  const nVuln  = VULNS.length;
+  document.getElementById('stats').innerHTML =
+    '<div class="contact" style="font-size:15px">' +
+      '<span style="color:var(--accent)">' + nWrite + '</span> writeups &nbsp; ' +
+      '<span style="color:var(--accent)">' + nVuln + '</span> techniques catalogued' +
+    '</div>';
+  */
+</script>
+</body>
+</html>

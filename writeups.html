@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Writeups — Anthony</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<nav class="nav"><div class="wrap">
+  <a class="brand" href="index.html">~/sudoanthony</a>
+  <div class="links">
+    <a href="writeups.html">writeups</a>
+    <a href="vulns.html">vulns</a>
+    <a href="https://github.com/sudoanthony">github</a>
+  </div>
+</div></nav>
+
+<main class="wrap" style="padding-top:44px">
+  <h1>Writeups</h1>
+  <p style="color:var(--text-3)">Every box, newest first. Techniques link into the <a href="vulns.html">vulnerability index</a>.</p>
+  <ul class="wlist" id="list"></ul>
+</main>
+
+<footer class="foot"><div class="wrap" style="display:flex;gap:18px;flex-wrap:wrap">
+  <a href="index.html">home</a>
+  <a href="vulns.html">vulns</a>
+  <a href="https://github.com/sudoanthony">github</a>
+</div></footer>
+
+<script src="data.js"></script>
+<script>
+  const sorted = [...WRITEUPS].sort((a,b) => (a.date < b.date ? 1 : -1));
+  document.getElementById('list').innerHTML = sorted.length ? sorted.map(w =>
+    '<li>' +
+      '<a class="wt" href="' + w.url + '">' + w.title + '</a>' +
+      '<span class="wm">' + w.platform + ' · ' + w.difficulty + ' · ' + w.date + '</span>' +
+      '<span class="wd">' + w.summary + '</span>' +
+    '</li>').join('')
+    : '<li><span class="wd">No writeups yet.</span></li>';
+</script>
+</body>
+</html>

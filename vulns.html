@@ -1,0 +1,118 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Vulnerability index — Anthony</title>
+<meta name="description" content="Every technique used across all writeups, grouped and cross-linked.">
+<link rel="stylesheet" href="style.css">
+<style>
+  /* brief highlight when you arrive via a tag link (vulns.html#jwt-forgery) */
+  .vuln.flash { animation: fl 1.6s ease-out; }
+  @keyframes fl { 0% { background: rgba(45,212,167,0.12); } 100% { background: transparent; } }
+</style>
+</head>
+<body>
+
+<nav class="nav"><div class="wrap">
+  <a class="brand" href="index.html">~/sudoanthony</a>
+  <div class="links">
+    <a href="writeups.html">writeups</a>
+    <a href="vulns.html">vulns</a>
+    <a href="https://github.com/sudoanthony">github</a>
+  </div>
+</div></nav>
+
+<main class="wrap" style="padding-top:44px">
+  <h1>Vulnerability index</h1>
+  <p style="color:var(--text-3); max-width:560px">
+    Every technique used across all writeups. Click a heading with a
+    <span style="color:var(--accent-2)">deep dive</span> to read the full explainer,
+    or jump straight to the box where it appears.
+  </p>
+
+  <div class="filters" id="filters"></div>
+  <div id="list"></div>
+
+  <p class="empty" id="empty" style="display:none">Nothing tagged here yet.</p>
+</main>
+
+<footer class="foot"><div class="wrap" style="display:flex;gap:18px;flex-wrap:wrap">
+  <a href="index.html">home</a>
+  <a href="writeups.html">writeups</a>
+  <a href="https://github.com/sudoanthony">github</a>
+</div></footer>
+
+<script src="data.js"></script>
+<script>
+  const sevRank = { crit: 0, high: 1, med: 2, low: 3 };
+  const catLabel = {
+    all:'all', web:'web', auth:'authentication', 'priv-esc':'priv-esc',
+    ad:'active directory', network:'network', crypto:'crypto'
+  };
+
+  // sort: severity first, then name
+  const vulns = [...VULNS].sort((a,b) =>
+    (sevRank[a.sev] - sevRank[b.sev]) || a.name.localeCompare(b.name));
+
+  // build filter chips from the categories that actually exist
+  const cats = ['all', ...new Set(vulns.map(v => v.cat))];
+  let active = 'all';
+
+  const filtersEl = document.getElementById('filters');
+  filtersEl.innerHTML = cats.map(c =>
+    '<button class="filter' + (c==='all'?' active':'') + '" data-cat="' + c + '">' +
+      (catLabel[c] || c) +
+      (c!=='all' ? ' · ' + vulns.filter(v=>v.cat===c).length : ' · ' + vulns.length) +
+    '</button>').join('');
+
+  function render() {
+    const shown = vulns.filter(v => active==='all' || v.cat===active);
+    document.getElementById('empty').style.display = shown.length ? 'none' : 'block';
+
+    document.getElementById('list').innerHTML = shown.map(v => {
+      const nameHtml = v.deepdive
+        ? '<a class="name" href="' + v.deepdive + '">' + v.name + '</a>'
+        : '<span class="name">' + v.name + '</span>';
+      const ext = v.ext ? '<span class="id">' + v.ext + '</span>' : '';
+      const count = v.uses.length + (v.uses.length===1 ? ' writeup' : ' writeups');
+      const dive = v.deepdive
+        ? '<span class="dive yes">read the deep dive →</span>'
+        : '<span class="dive none">no deep dive yet</span>';
+      const uses = v.uses.map(u =>
+        '<div class="use"><span class="arrow">→</span> ' +
+          '<a href="' + u.url + '">' + u.writeup + '</a> ' +
+          '<span class="ctx">— ' + u.ctx + '</span></div>').join('');
+      return '<div class="vuln" id="' + v.id + '">' +
+        '<div class="head">' + nameHtml + ext +
+          '<span class="id">· ' + count + '</span>' + dive + '</div>' +
+        '<div class="blurb">' + v.blurb + '</div>' +
+        '<div class="uses">' + uses + '</div>' +
+      '</div>';
+    }).join('');
+
+    flashFromHash();
+  }
+
+  function flashFromHash() {
+    const id = location.hash.slice(1);
+    if (!id) return;
+    const el = document.getElementById(id);
+    if (el) {
+      el.classList.remove('flash'); void el.offsetWidth; el.classList.add('flash');
+      el.scrollIntoView({ behavior:'smooth', block:'center' });
+    }
+  }
+
+  filtersEl.addEventListener('click', e => {
+    const b = e.target.closest('.filter'); if (!b) return;
+    active = b.dataset.cat;
+    document.querySelectorAll('.filter').forEach(f => f.classList.toggle('active', f===b));
+    render();
+  });
+
+  window.addEventListener('hashchange', flashFromHash);
+  render();
+</script>
+</body>
+</html>
