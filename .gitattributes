@@ -1,0 +1,15 @@
+# Normalize line endings so it never matters which tool wrote the file.
+# Text is stored LF in the repo; Windows tools can still write CRLF on disk.
+* text=auto eol=lf
+
+# .bat must stay CRLF — cmd.exe is picky about it.
+*.bat text eol=crlf
+
+# Never touch binaries.
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.webp binary
+*.ico binary
+*.pdf binary
