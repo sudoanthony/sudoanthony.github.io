@@ -48,8 +48,12 @@
 
   <div class="tldr">
     <span class="lbl">tl;dr</span>
-    <p>[ One short paragraph: what Allsafe is, the lab (Pixel 5 AVD, API 33), and the
-    headline findings across the chapters below. ]</p>
+    <p>Allsafe is an intentionally-vulnerable Android app I used as a stand-in for a real
+    engagement, worked statically on a Pixel 5 AVD (API 33) with jadx, apktool, and MobSF. Recon
+    and static analysis alone surfaced a hardcoded secret reached through <code>R.string.key</code>,
+    an exported <code>DeepLinkTask</code> activity reachable from the open web, insecure logging of
+    the full deep-link URI, and a debug/backup misconfiguration in the manifest — all before ever
+    running the app.</p>
   </div>
 
   <hr>
@@ -58,19 +62,189 @@
   <h2><span class="num">01</span>Recon &amp; Static Analysis</h2>
   <p class="secmeta">MASVS: CODE, PRIVACY &nbsp;&middot;&nbsp; Mobile Top 10: M2, M8 &nbsp;&middot;&nbsp; Handbook ch.2</p>
 
-  <p>[ Intro: APK pull, jadx / apktool, manifest &amp; resource review, what you searched for. ]</p>
+  <p>AllSafe is a stand-in for the real apps we would test in the field. In a real engagement we
+  usually get:</p>
 
-  <div class="shot-todo">SCREENSHOT — jadx / apktool view (swap for a &lt;figure&gt;)</div>
+  <ul>
+    <li><strong>The binary</strong> — the client emails us the APK/IPA or gives us a
+    TestFlight/Firebase build. "Binary" just means the compiled app file: the <code>.apk</code> on
+    Android or the <code>.ipa</code> (containing a Mach-O) on iOS. Not the phone.</li>
+    <li><strong>Test accounts</strong> — credentials for staging environments.</li>
+    <li><strong>Scope &amp; rules of engagement</strong> — which backends we can and can't touch.</li>
+    <li><strong>An authorization letter</strong> — the paperwork that makes the testing legal.</li>
+  </ul>
+
+  <p>For the lab, we stood up a Pixel 5 emulator, set Burp as a proxy and pointed the device at it,
+  exported our CA and pushed it to the Pixel 5, and confirmed we can see decrypted HTTPS traffic. We
+  installed AllSafe on the device and pulled the APK back. Our two static workhorses are
+  <code>jadx</code> and <code>apktool</code>.</p>
+
+  <p class="secmeta">Tools used: Android Studio (Pixel 5 AVD) &middot; jadx &middot; apktool &middot; Windows PowerShell &middot; Burp Suite Community &middot; MobSF</p>
+
+  <h3>1 · Peek at the structure</h3>
+  <p>We could jump straight to decompiling, but it pays to know exactly what we're holding first.</p>
+  <ul>
+    <li>How big/complex is it — one <code>classes.dex</code> or six?</li>
+    <li>Are there native libraries? If so, that's where <a href="#reverse-engineering-anti-tamper">Reverse Engineering</a> comes into play.</li>
+    <li>Are there assets or raw resources? (Our peek finds them immediately.)</li>
+    <li>Is it packed/obfuscated? Spotting weird filenames, an encrypted dex, or a loader stub early saves a lot of wasted time.</li>
+  </ul>
+  <div class="note">
+    <span class="lbl">what's a loader stub</span>
+    A <strong>loader stub</strong> is what you find instead of real code when an app is <em>packed</em>
+    (protected/obfuscated by a commercial packer). The real code is encrypted into an
+    <code>assets/</code> blob or a <code>.so</code> instead of a normal <code>classes.dex</code>, with
+    a tiny loader whose only job is to decrypt the real dex and load it into memory at runtime. Static
+    analysis can only go so far when the visible dexes are empty, there's an encrypted blob in
+    <code>assets</code>, or a suspicious native lib — dynamic analysis (later) lets us dump the real
+    dex from memory.
+  </div>
+  <figure><img src="images/AllSafe/allsafepeek.png" alt="tar -tf listing of the AllSafe APK contents"><figcaption>Peeking at the APK's contents with <code>tar -tf</code> before decompiling.</figcaption></figure>
+
+  <h3>2 · Decompile with jadx</h3>
+  <figure><img src="images/AllSafe/allsafe0.png" alt="AllSafe opened in jadx"><figcaption>AllSafe opened up in jadx.</figcaption></figure>
+  <p>This is the APK opened in jadx. The package tree on the left lets us browse every class by hand,
+  or jump straight to what we want with global search.</p>
+
+  <h3>3 · Review the manifest</h3>
+  <p>Navigate to <strong>Resources &rarr; AndroidManifest.xml</strong> — the app's blueprint. It
+  declares every component, permission, and exported entry point, so it's the first thing to read on
+  every test.</p>
+  <figure><img src="images/AllSafe/allsafe1.png" alt="AndroidManifest.xml in jadx"><figcaption>The decoded AndroidManifest.xml.</figcaption></figure>
+  <p>We're hunting for specific flags that point at interesting behaviour.</p>
+  <p><strong>Risky manifest flags</strong></p>
+  <figure><img src="images/AllSafe/allsafe1b.png" alt="debuggable and allowBackup flags set to true"><figcaption><code>android:debuggable</code> and <code>android:allowBackup</code> both set to <code>true</code>.</figcaption></figure>
+  <ul>
+    <li><code>android:debuggable="true"</code> — a debug build shipped to production. Anyone can attach a debugger, run code as the app, and read its memory. Should never be set in a release.</li>
+    <li><code>android:allowBackup="true"</code> — app data can be extracted over ADB with <code>adb backup</code>, no root needed. Leaks whatever the app stores locally.</li>
+    <li><code>android:networkSecurityConfig</code> — points to an XML file defining trusted CAs, cleartext exceptions, and pinning. Its <em>absence</em> (plus cleartext on) is itself a weak posture.</li>
+  </ul>
+  <figure><img src="images/AllSafe/allsafe2.png" alt="exported ProfileInstallReceiver in the manifest"><figcaption>An exported component — but this one is benign.</figcaption></figure>
+  <p><code>android:exported="true"</code> on activities / services / receivers / providers means other
+  apps can invoke the component. Keep in mind some are exported by design and benign — like the
+  <code>ProfileInstallReceiver</code> above (an androidx library component). We focus on the app's
+  <strong>own</strong> components.</p>
+  <figure><img src="images/AllSafe/allsafe4.png" alt="DeepLinkTask exported activity with a BROWSABLE deep link"><figcaption>The real lead: an exported activity with a VIEW + BROWSABLE deep link.</figcaption></figure>
+  <p>The real lead is an exported <code>&lt;activity&gt;</code> whose intent-filter contains
+  <code>VIEW</code> + <code>BROWSABLE</code> + a custom <code>&lt;data android:scheme="allsafe"&gt;</code>.
+  That combination = reachable from any web page. The line
+  <code>&lt;activity android:name="...challenges.DeepLinkTask"&gt;</code> names the class — it tells us
+  <em>where to read</em>.</p>
+
+  <p>So we jump to <code>infosecadventures.allsafe.challenges.DeepLinkTask</code> in jadx.</p>
+  <figure><img src="images/AllSafe/deeplinktask.png" alt="DeepLinkTask onCreate method in jadx"><figcaption><code>DeepLinkTask.onCreate</code> — where the deep link is received and read.</figcaption></figure>
+  <p>We start at <code>onCreate()</code> — the method Android calls the moment the activity launches,
+  and where the incoming <code>Intent</code> and its URI get received and read:</p>
+  <ul>
+    <li><code>getIntent()</code></li>
+    <li><code>intent.getData()</code></li>
+    <li><code>data.getQueryParameter("key")</code></li>
+  </ul>
+  <p>That gives us the data flow. The <code>BROWSABLE</code> filter we saw earlier means
+  <strong>an attacker controls the URI that starts the activity</strong>. When it starts,
+  <code>onCreate</code> runs — so this is the first place attacker-controlled input is consumed.</p>
+  <p>From here we see a <code>getString(R.string.key)</code>. To explain it: <code>R.string.key</code>
+  isn't the secret — it's a <em>label</em> that says "go look up the string named <code>key</code>."
+  The actual value lives in a separate resource file, <code>strings.xml</code>. So the code is saying
+  "compare the user's input to whatever's stored under <code>key</code>," and Android fetches the real
+  value at runtime.</p>
+  <div class="note insight">
+    <span class="lbl">the analogy</span>
+    Think of <code>R.string.key</code> as a locker number and <code>strings.xml</code> as the locker.
+    The code only shows you the number; you have to open the locker to see what's inside. The secret
+    was in the locker the whole time — the developer just didn't write it directly on the door.
+  </div>
+  <p>And <code>strings.xml</code> ships inside the APK exactly like the code does, so anyone with the
+  app can read it — the developer only added one hop of indirection. That hop is also why a keyword
+  grep (and our MobSF pass in step 5) miss it: both scan the <em>code</em>, and the value is a random
+  UUID with no telltale word like "password." The only way to catch it is to notice the
+  <code>R.string.key</code> reference and follow it into <code>strings.xml</code>.</p>
+  <p>Under <strong>Resources &rarr; resources.arsc &rarr; res &rarr; values &rarr; strings.xml</strong>
+  we find the value it references:</p>
+  <figure><img src="images/AllSafe/strings.png" alt="the hardcoded key value in strings.xml"><figcaption>The hardcoded value behind <code>R.string.key</code>, sitting in <code>strings.xml</code> (redacted).</figcaption></figure>
+
+  <h3>4 · Hunt for secrets</h3>
+  <p>Now we cast a wide net across the decompiled source with a keyword grep:</p>
+  <pre><code>Get-ChildItem -Recurse -File C:\Users\Anthonby\Desktop\allsafe-src\sources\infosecadventures\allsafe |
+  Select-String -Pattern "password|secret|api[_-]?key|token|http://|s3\.amazonaws|firebaseio\.com|BEGIN (RSA|EC|PRIVATE)"</code></pre>
+  <figure><img src="images/AllSafe/allsafestringsearch.png" alt="first broad grep results"><figcaption>The broad search — a lot of results, much of it noise.</figcaption></figure>
+  <p>Nearly half of what comes back is <code>R.java</code> — auto-generated resource IDs
+  (<code>passwordToggle...</code>, <code>google_api_key = 0x7f13004f</code>), not the values we want. So
+  we tighten the search:</p>
+  <pre><code>Get-ChildItem -Recurse -File C:\Users\Anthonby\Desktop\allsafe-src\sources\infosecadventures\allsafe |
+  Where-Object { $_.Name -ne 'R.java' } |
+  Select-String -Pattern "password|secret|api[_-]?key|token|http://|s3\.amazonaws|firebaseio\.com|BEGIN (RSA|EC|PRIVATE)"</code></pre>
+  <figure><img src="images/AllSafe/allsafebettersearch.png" alt="narrowed grep results"><figcaption>Scoped to the app package and minus <code>R.java</code> — a readable set of leads.</figcaption></figure>
+
+  <h3>5 · MobSF — the automated first pass</h3>
+  <p>MobSF runs all of the above automatically and produces a scored report. I used
+  <a href="https://mobsf.live">mobsf.live</a> to upload the APK and run the analysis.</p>
+  <figure><img src="images/AllSafe/mobsf.png" alt="MobSF static analysis report for AllSafe"><figcaption>The MobSF static-analysis report.</figcaption></figure>
+  <p>The report gives us, in one place:</p>
+  <ul>
+    <li>A manifest analysis (every flag from above, tagged with severity)</li>
+    <li>A secrets / hardcoded-strings list</li>
+    <li>Detected trackers and third-party SDKs (the M2 supply-chain view)</li>
+    <li>A permission breakdown</li>
+    <li>…and an overall security score. (It does the same for iOS <code>.ipa</code> files.)</li>
+  </ul>
+  <div class="note warn">
+    <span class="lbl">MobSF is a first pass, not the test</span>
+    Automated tools find the obvious and miss the interesting. MobSF catches <code>debuggable</code>
+    and a literal <code>password = "..."</code>, but it won't understand that an exported activity
+    bypasses a login, or that a "random" token is derived from the device ID. Use it to triage fast,
+    then read the code yourself — a report that's only a MobSF export is not a pentest. It's exactly
+    why our hardcoded UUID from earlier slipped past it: no keyword, and it lives in resources, not
+    source.
+  </div>
+
+  <h3>A few findings from Recon &amp; Static Analysis</h3>
+  <p>These are a representative few — static analysis surfaced more across the app (hardcoded SOAP
+  credentials, a base64 auth token, a hardcoded AES key, a Firebase API key), but they show the method
+  end to end. Severity is tied to what each issue actually authorizes in this app.</p>
 
   <table class="finding">
-    <tr><th>Title</th><td>[ finding name ]</td></tr>
-    <tr><th>Severity</th><td>[ Low / Medium / High / Critical — tied to what it authorizes ]</td></tr>
-    <tr><th>Description</th><td>[ what the bug is ]</td></tr>
-    <tr><th>Impact</th><td>[ what an attacker gains ]</td></tr>
-    <tr><th>Evidence</th><td>[ file:line, command, or code snippet ]</td></tr>
-    <tr><th>MASTG</th><td>[ test ID(s) ]</td></tr>
-    <tr><th>Mobile Top 10</th><td>[ M# ]</td></tr>
-    <tr><th>Remediation</th><td>[ the fix a developer ships ]</td></tr>
+    <tr><th>Title</th><td><strong>Hardcoded secret in app resources</strong></td></tr>
+    <tr><th>Severity</th><td><strong>Low</strong> — the key only gates a local "congrats" screen; the same pattern guarding a real API key would be Critical.</td></tr>
+    <tr><th>Description</th><td>A deep-link query parameter is compared against a secret fetched with <code>getString(R.string.key)</code>. The value is a hardcoded UUID stored in <code>res/values/strings.xml</code> (compiled into <code>resources.arsc</code>) — a resource, not source code.</td></tr>
+    <tr><th>Impact</th><td>The secret ships inside the APK, so anyone with the file recovers it offline — no device, no root — by following the <code>R.string.key</code> reference into <code>strings.xml</code>. A keyword grep and MobSF both miss it.</td></tr>
+    <tr><th>Evidence</th><td><code>infosecadventures.allsafe.challenges.DeepLinkTask.onCreate()</code> &rarr; <code>getString(R.string.key)</code>; value at <code>res/values/strings.xml</code> &rarr; <code>&lt;string name="key"&gt;[redacted]&lt;/string&gt;</code>.</td></tr>
+    <tr><th>MASVS / CWE</th><td>MASVS-CRYPTO / MASVS-STORAGE &middot; CWE-798</td></tr>
+    <tr><th>Mobile Top 10</th><td>M2 &middot; M8</td></tr>
+    <tr><th>Remediation</th><td>Keep secrets out of the client; move the check server-side. Rotate any real key on exposure.</td></tr>
+  </table>
+
+  <table class="finding">
+    <tr><th>Title</th><td><strong>Exported activity reachable via BROWSABLE deep link</strong></td></tr>
+    <tr><th>Severity</th><td><strong>Medium</strong> — unauthenticated, web-reachable entry point; exposed to any app or web page.</td></tr>
+    <tr><th>Description</th><td><code>DeepLinkTask</code> is exported with a <code>VIEW</code> + <code>BROWSABLE</code> intent-filter on the <code>allsafe://</code> scheme, so any app — or a link on any web page — can invoke it with attacker-chosen URI data.</td></tr>
+    <tr><th>Impact</th><td>Exported components are the app's undocumented public API. A crafted <code>allsafe://</code> link drives the activity with attacker-controlled input, with no authentication in front of it.</td></tr>
+    <tr><th>Evidence</th><td><code>AndroidManifest.xml</code> &rarr; <code>&lt;activity android:name="...challenges.DeepLinkTask" android:exported="true"&gt;</code> with a <code>VIEW</code>/<code>BROWSABLE</code> <code>&lt;intent-filter&gt;</code> and <code>&lt;data android:scheme="allsafe"&gt;</code>. Repro: <code>adb shell am start -W -a android.intent.action.VIEW -d "allsafe://infosecadventures/congrats?key=[redacted]"</code>.</td></tr>
+    <tr><th>MASVS / CWE</th><td>MASVS-PLATFORM &middot; CWE-926</td></tr>
+    <tr><th>Mobile Top 10</th><td>M8 &middot; M4</td></tr>
+    <tr><th>Remediation</th><td>Set <code>exported="false"</code> unless deliberately public; validate/authorize deep-link input; no sensitive actions from an unauthenticated deep link.</td></tr>
+  </table>
+
+  <table class="finding">
+    <tr><th>Title</th><td><strong>Sensitive data written to the system log</strong></td></tr>
+    <tr><th>Severity</th><td><strong>Low</strong> — the logged value is already in the package, so the pattern is the risk.</td></tr>
+    <tr><th>Description</th><td><code>DeepLinkTask.onCreate</code> logs the full incoming URI (query string included) with <code>Log.d("ALLSAFE", "... Data: " + data)</code>.</td></tr>
+    <tr><th>Impact</th><td>logcat is readable over USB/<code>adb logcat</code> and, on older Android, by apps with <code>READ_LOGS</code>. Any token or PII routed through the deep link would leak.</td></tr>
+    <tr><th>Evidence</th><td><code>infosecadventures.allsafe.challenges.DeepLinkTask.onCreate()</code> &rarr; <code>Log.d("ALLSAFE", "... Data: " + data)</code>; observe with <code>adb logcat -s ALLSAFE</code>.</td></tr>
+    <tr><th>MASVS / CWE</th><td>MASVS-STORAGE &middot; CWE-532</td></tr>
+    <tr><th>Mobile Top 10</th><td>M9 &middot; M8</td></tr>
+    <tr><th>Remediation</th><td>Never log request URIs or user data; strip debug logging from release builds.</td></tr>
+  </table>
+
+  <table class="finding">
+    <tr><th>Title</th><td><strong>Insecure build &amp; backup configuration</strong></td></tr>
+    <tr><th>Severity</th><td><strong>High</strong> for <code>debuggable</code> in a production release <em>(calibration note: AllSafe ships as an <code>app_debug</code> training build, so it's expected here; rated as it would apply to a real app)</em>. <code>allowBackup</code>: Low–Medium.</td></tr>
+    <tr><th>Description</th><td>The <code>&lt;application&gt;</code> tag sets <code>android:debuggable="true"</code> and <code>android:allowBackup="true"</code>.</td></tr>
+    <tr><th>Impact</th><td><code>debuggable=true</code> lets anyone attach a debugger, run code as the app, and read its memory on a non-rooted device. <code>allowBackup=true</code> allows extracting private data via <code>adb backup</code> (largely neutered on Android 12+, still a weak default).</td></tr>
+    <tr><th>Evidence</th><td><code>AndroidManifest.xml</code> &rarr; <code>&lt;application ... android:debuggable="true" android:allowBackup="true"&gt;</code>.</td></tr>
+    <tr><th>MASVS / CWE</th><td>MASVS-CODE &middot; CWE-489, CWE-530</td></tr>
+    <tr><th>Mobile Top 10</th><td>M8</td></tr>
+    <tr><th>Remediation</th><td>Ship release builds with <code>debuggable=false</code>; set <code>allowBackup=false</code> or exclude sensitive data via backup rules.</td></tr>
   </table>
 
   <hr>

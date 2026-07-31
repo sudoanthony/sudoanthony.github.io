@@ -3,8 +3,8 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Mobile — Concepts — Anthony</title>
-<meta name="description" content="Android app internals for pentesting — intent-filters and exported components: how a single manifest line becomes an attack path.">
+<title>Android — Concepts — Anthony</title>
+<meta name="description" content="Android app internals for pentesting — .dex bytecode, intent-filters and exported components: how a single manifest line becomes an attack path.">
 <link rel="stylesheet" href="style.css">
 </head>
 <body>
@@ -24,7 +24,7 @@
 
   <!-- ==================== SIDEBAR (scrollspy) ==================== -->
   <aside class="concept-toc">
-    <p class="toc-label">Mobile</p>
+    <p class="toc-label">Android</p>
     <nav id="tocNav">
       <a href="#dex" data-toc>.dex files</a>
       <a href="#intent-filter" data-toc>Intent-Filter</a>
@@ -35,11 +35,12 @@
   <div class="concept-content">
 
     <p style="margin-bottom:4px"><a href="concepts.html" style="color:var(--text-3);font-size:13.5px">&larr; concepts</a></p>
-    <h1>Mobile</h1>
+    <h1>Android</h1>
     <p class="concept-intro">
-      The Android building blocks behind the mobile writeups — the mechanisms that turn a single
-      line in a manifest into a real attack path. First up: the one that made <code>DeepLinkTask</code>
-      in AllSafe reachable from the open web.
+      The Android building blocks behind the mobile writeups — <code>.dex</code> bytecode, the
+      manifest, and the IPC mechanisms that turn a single line into a real attack path. These are
+      Android-specific; the iOS equivalents (IPA/Mach-O, URL schemes, ATS) get their own page once a
+      Mac is in the lab.
     </p>
 
     <!-- ============ .dex files ============ -->
@@ -124,7 +125,7 @@
       </div>
 
       <figure>
-        <img src="images/allsafe4.png" alt="AllSafe DeepLinkTask exported activity with a BROWSABLE intent-filter in the decoded AndroidManifest.xml">
+        <img src="images/AllSafe/allsafe4.png" alt="AllSafe DeepLinkTask exported activity with a BROWSABLE intent-filter in the decoded AndroidManifest.xml">
         <figcaption>DeepLinkTask — exported, with a VIEW + BROWSABLE intent-filter on the allsafe:// scheme.</figcaption>
       </figure>
 
