@@ -1,0 +1,195 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Mobile — Concepts — Anthony</title>
+<meta name="description" content="Android app internals for pentesting — intent-filters and exported components: how a single manifest line becomes an attack path.">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<nav class="nav"><div class="wrap">
+  <a class="brand" href="index.html">~/sudoanthony</a>
+  <div class="links">
+    <a href="writeups.html">writeups</a>
+    <a href="vulns.html">vulns</a>
+    <a href="concepts.html">concepts</a>
+    <a href="https://github.com/sudoanthony">github</a>
+  </div>
+</div></nav>
+
+<div class="concept-wrap">
+<div class="concept-layout">
+
+  <!-- ==================== SIDEBAR (scrollspy) ==================== -->
+  <aside class="concept-toc">
+    <p class="toc-label">Mobile</p>
+    <nav id="tocNav">
+      <a href="#dex" data-toc>.dex files</a>
+      <a href="#intent-filter" data-toc>Intent-Filter</a>
+    </nav>
+  </aside>
+
+  <!-- ==================== CONTENT ==================== -->
+  <div class="concept-content">
+
+    <p style="margin-bottom:4px"><a href="concepts.html" style="color:var(--text-3);font-size:13.5px">&larr; concepts</a></p>
+    <h1>Mobile</h1>
+    <p class="concept-intro">
+      The Android building blocks behind the mobile writeups — the mechanisms that turn a single
+      line in a manifest into a real attack path. First up: the one that made <code>DeepLinkTask</code>
+      in AllSafe reachable from the open web.
+    </p>
+
+    <!-- ============ .dex files ============ -->
+    <section id="dex" class="concept-block">
+      <p class="kicker">Android bytecode · the app's compiled code</p>
+      <h2>.dex files</h2>
+
+      <div class="concept-sub">
+        <span class="sub-lbl">what it is</span>
+        <p><strong>Dalvik EXecutable</strong> — Android's compiled-code format. Your Java/Kotlin is
+        compiled to JVM <code>.class</code> files, then a tool (<code>d8</code>/<code>r8</code>)
+        converts those into a single <code>classes.dex</code> of Dalvik/ART bytecode, optimized for
+        mobile. That <code>classes.dex</code> <em>is</em> your app's code; the runtime (ART) executes it.</p>
+      </div>
+
+      <div class="concept-sub">
+        <span class="sub-lbl">why there are several</span>
+        <p>A single dex caps at <strong>65,536 method references</strong> — the "64K limit" — so bigger
+        apps spill into <code>classes2.dex</code>, <code>classes3.dex</code>, and so on
+        (<em>multidex</em>). AllSafe ships six, which by itself tells you it's a heavier Kotlin app than
+        a simple CTF box.</p>
+      </div>
+
+      <div class="concept-sub">
+        <span class="sub-lbl">why it matters for a pentest</span>
+        <p>The <code>.dex</code> is what <code>jadx</code> runs backwards — <code>.dex</code> bytecode
+        → readable Java — so it's where the app's logic lives and where static analysis happens. Two
+        caveats worth knowing: <strong>native code in <code>lib/*.so</code> is not in the dex</strong>
+        (that's reverse-engineering territory), and a near-empty <code>classes.dex</code> sitting next
+        to an encrypted blob in <code>assets/</code> is a sign the app is <strong>packed</strong> — the
+        real dex is decrypted into memory at runtime.</p>
+      </div>
+
+      <div class="seen-in">
+        <span class="lbl">seen in</span>
+        <a href="writeup-allsafe.html">AllSafe</a> — six <code>classes*.dex</code> files, the fingerprint of a multidex Kotlin app.
+      </div>
+    </section>
+
+    <!-- ============ Intent-Filter ============ -->
+    <section id="intent-filter" class="concept-block">
+      <p class="kicker">Android IPC · attack surface</p>
+      <h2>Intent-Filter</h2>
+
+      <div class="concept-sub">
+        <span class="sub-lbl">what it is</span>
+        <p>An <strong>Intent</strong> is a message: <em>"Start this thing"</em> or <em>"Handle this
+        data."</em> An <code>&lt;intent-filter&gt;</code> is a component saying <em>"I can handle
+        messages that look like this."</em></p>
+        <p>So when it comes to the <code>DeepLinkTask</code> filter we saw in AllSafe, it is saying:
+        <em>"I handle <code>VIEW</code> actions for URIs starting with
+        <code>allsafe://infosecadventures/congrats</code>."</em></p>
+      </div>
+
+      <div class="concept-sub">
+        <span class="sub-lbl">what <code>exported</code> controls</span>
+        <p>Whether other apps can start this component, or only the app itself.</p>
+        <ul>
+          <li><code>exported="false"</code> &rarr; <strong>internal only.</strong> Other apps can't touch it.</li>
+          <li><code>exported="true"</code> &rarr; <strong>any app on the device can invoke it</strong>, with whatever data they choose.</li>
+        </ul>
+      </div>
+
+      <div class="note warn">
+        <span class="lbl">don't trust the absence of the flag</span>
+        Sometimes devs add intent-filters for one purpose and don't think about <code>exported</code>,
+        publishing that component to every app on the device. Android 12 (SDK 31+) forced explicit
+        declaration for security. <strong>So don't read the absence of <code>android:exported</code>
+        as "not exported."</strong> Check the target SDK, check for an intent-filter, and reason from there.
+      </div>
+
+      <div class="concept-sub">
+        <span class="sub-lbl">why it's a big find</span>
+        <p>Exported components are the app's <strong>undocumented public API</strong>. Real examples
+        of what this enables:</p>
+        <ul>
+          <li>An activity that shows account details, exported &rarr; another app launches it directly, <strong>skipping the login screen entirely</strong>.</li>
+          <li>An exported content provider &rarr; any app <strong>queries the database</strong>.</li>
+          <li>An exported broadcast receiver that triggers a money transfer &rarr; a malicious app <strong>fires the broadcast</strong>.</li>
+          <li><strong>Your case:</strong> <code>BROWSABLE</code> extends reachability to the web — <strong>a link on any webpage can invoke it</strong>.</li>
+        </ul>
+      </div>
+
+      <figure>
+        <img src="images/allsafe4.png" alt="AllSafe DeepLinkTask exported activity with a BROWSABLE intent-filter in the decoded AndroidManifest.xml">
+        <figcaption>DeepLinkTask — exported, with a VIEW + BROWSABLE intent-filter on the allsafe:// scheme.</figcaption>
+      </figure>
+
+      <div class="seen-in">
+        <span class="lbl">seen in</span>
+        <a href="writeup-allsafe.html">AllSafe</a> — the exported <code>DeepLinkTask</code> activity,
+        reachable from any web page via its <code>BROWSABLE</code> deep link.
+      </div>
+    </section>
+
+  </div>
+</div>
+</div>
+
+<footer class="foot"><div class="wrap" style="display:flex;gap:18px;flex-wrap:wrap">
+  <a href="index.html">home</a>
+  <a href="writeups.html">writeups</a>
+  <a href="vulns.html">vulns</a>
+  <a href="concepts.html">concepts</a>
+  <a href="https://github.com/sudoanthony">github</a>
+</div></footer>
+
+<script>
+  const tocLinks = Array.from(document.querySelectorAll('#tocNav a'));
+  const sections = tocLinks
+    .map(a => document.getElementById(a.getAttribute('href').slice(1)))
+    .filter(Boolean);
+
+  function setActive(id) {
+    tocLinks.forEach(a => a.classList.toggle('active', a.getAttribute('href') === '#' + id));
+  }
+
+  const observer = new IntersectionObserver((entries) => {
+    const visible = entries.filter(e => e.isIntersecting);
+    if (visible.length) {
+      visible.sort((a, b) => a.boundingClientRect.top - b.boundingClientRect.top);
+      setActive(visible[0].target.id);
+    }
+  }, { root: null, rootMargin: '-96px 0px -70% 0px', threshold: 0 });
+
+  sections.forEach(sec => observer.observe(sec));
+
+  tocLinks.forEach(a => {
+    a.addEventListener('click', (e) => {
+      e.preventDefault();
+      const id = a.getAttribute('href').slice(1);
+      const target = document.getElementById(id);
+      if (!target) return;
+      setActive(id);
+      history.pushState(null, '', '#' + id);
+      target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    });
+  });
+
+  if (location.hash) {
+    const id = location.hash.slice(1);
+    const target = document.getElementById(id);
+    if (target) {
+      setActive(id);
+      requestAnimationFrame(() => target.scrollIntoView({ block: 'start' }));
+    }
+  } else if (sections.length) {
+    setActive(sections[0].id);
+  }
+</script>
+
+</body>
+</html>
