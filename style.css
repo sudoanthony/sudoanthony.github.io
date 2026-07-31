@@ -82,7 +82,7 @@ h1 {
   line-height: 1.05; letter-spacing: -1px; margin: 0 0 14px;
 }
 h2 {
-  color: var(--gold); font-size: 25px; font-weight: 650;
+  color: var(--text); font-size: 25px; font-weight: 650;
   letter-spacing: -0.4px; margin: 52px 0 14px;
   display: flex; align-items: baseline; gap: 12px;
 }
@@ -295,6 +295,34 @@ main h1[id], main h2[id], main h3[id] { scroll-margin-top: 76px; }
 .finding tr:last-child th, .finding tr:last-child td { border-bottom: none; }
 /* small MASVS / Top-10 kicker under each section heading */
 .secmeta { font-family: var(--mono); font-size: 12px; color: var(--text-4); margin: -6px 0 16px; letter-spacing: .3px; }
+/* gold section headers, opt-in per page: add class="writeup-gold" to <main> */
+.writeup-gold h2 { color: var(--gold); }
+
+/* ---------- tools page (distinct terminal-ish card style) ---------- */
+.toolgrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(290px, 1fr)); gap: 14px; margin: 8px 0 10px; }
+.toolcard {
+  position: relative; background: var(--bg-2); border: 1px solid var(--border);
+  border-left: 3px solid var(--border-2); border-radius: 10px; padding: 15px 16px;
+  transition: border-color .15s, transform .15s, box-shadow .15s; scroll-margin-top: 84px;
+}
+.toolcard:hover { transform: translateY(-2px); border-color: var(--border-2); }
+.toolcard:target { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
+.tc-head { display: flex; align-items: center; gap: 10px; margin-bottom: 9px; }
+.tc-glyph { font-family: var(--mono); font-size: 12px; font-weight: 700; color: #04342c; background: var(--accent); border-radius: 6px; padding: 3px 8px; }
+.tc-name { font-family: var(--mono); font-size: 16px; font-weight: 650; color: var(--text); letter-spacing: -.2px; }
+.tc-cat { margin-left: auto; font-family: var(--mono); font-size: 10px; text-transform: uppercase; letter-spacing: 1.2px; color: var(--text-4); }
+.tc-what { color: var(--text-3); font-size: 13.5px; line-height: 1.5; margin: 0 0 11px; }
+.tc-row { font-family: var(--mono); font-size: 12px; color: var(--text-2); margin: 6px 0; line-height: 1.5; }
+.tc-row .os { display: inline-block; background: var(--bg-3); color: var(--text-3); border-radius: 4px; padding: 1px 7px; margin-right: 7px; font-size: 10px; letter-spacing: .5px; }
+.tc-row code { font-size: 11.5px; }
+.tc-seen { font-family: var(--mono); font-size: 11.5px; color: var(--text-4); margin-top: 10px; }
+.tc-seen a { color: var(--text-2); }
+/* category accents */
+.toolcard.cat-recon   { border-left-color: var(--accent); }   .toolcard.cat-recon   .tc-glyph { background: var(--accent);   color: #04342c; }
+.toolcard.cat-web     { border-left-color: var(--medium); }   .toolcard.cat-web     .tc-glyph { background: var(--medium);   color: #3a2600; }
+.toolcard.cat-static  { border-left-color: var(--mobile); }   .toolcard.cat-static  .tc-glyph { background: var(--mobile);   color: #201545; }
+.toolcard.cat-runtime { border-left-color: var(--htb); }      .toolcard.cat-runtime .tc-glyph { background: var(--htb);      color: #17240a; }
+.toolcard.cat-util    { border-left-color: var(--accent-2); } .toolcard.cat-util    .tc-glyph { background: var(--accent-2); color: #0a1f33; }
 
 /* ---------- click-to-zoom lightbox (lightbox.js) ---------- */
 img.zoomable { cursor: zoom-in; }

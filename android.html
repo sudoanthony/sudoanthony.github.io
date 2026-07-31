@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Android - Concepts - Anthony</title>
-<meta name="description" content="Android app internals for pentesting - .dex bytecode, intent-filters and exported components: how a single manifest line becomes an attack path.">
+<meta name="description" content="Android internals for mobile pentesting, taught from zero: the sandbox, APK anatomy, .dex, the manifest, intent-filters, logcat, storage, adb, jadx vs apktool, Frida, and cert pinning.">
 <link rel="stylesheet" href="style.css">
 </head>
 <body>
@@ -15,6 +15,7 @@
     <a href="writeups.html">writeups</a>
     <a href="vulns.html">vulns</a>
     <a href="concepts.html">concepts</a>
+    <a href="tools.html">tools</a>
     <a href="https://github.com/sudoanthony">github</a>
   </div>
 </div></nav>
@@ -26,8 +27,18 @@
   <aside class="concept-toc">
     <p class="toc-label">Android</p>
     <nav id="tocNav">
+      <a href="#sandbox" data-toc>The sandbox</a>
+      <a href="#apk" data-toc>The APK</a>
       <a href="#dex" data-toc>.dex files</a>
+      <a href="#manifest" data-toc>The manifest</a>
       <a href="#intent-filter" data-toc>Intent-Filter</a>
+      <a href="#logcat" data-toc>logcat</a>
+      <a href="#storage" data-toc>App storage</a>
+      <a href="#adb" data-toc>adb</a>
+      <a href="#tools" data-toc>jadx vs apktool</a>
+      <a href="#frida" data-toc>Frida</a>
+      <a href="#pinning" data-toc>Cert pinning</a>
+      <a href="#lenses" data-toc>The four lenses</a>
     </nav>
   </aside>
 
@@ -37,11 +48,67 @@
     <p style="margin-bottom:4px"><a href="concepts.html" style="color:var(--text-3);font-size:13.5px">&larr; concepts</a></p>
     <h1>Android</h1>
     <p class="concept-intro">
-      The Android building blocks behind the mobile writeups - <code>.dex</code> bytecode, the
-      manifest, and the IPC mechanisms that turn a single line into a real attack path. These are
-      Android-specific; the iOS equivalents (IPA/Mach-O, URL schemes, ATS) get their own page once a
-      Mac is in the lab.
+      A from-zero tour of the Android internals that mobile pentesting rests on, written for someone
+      who has done a little web or CTF but no mobile. Read it top to bottom once and the writeups will
+      make sense. These are Android-specific; the iOS equivalents (IPA/Mach-O, URL schemes, ATS) get
+      their own page once a Mac is in the lab.
     </p>
+
+    <!-- ============ The sandbox ============ -->
+    <section id="sandbox" class="concept-block">
+      <p class="kicker">The core security boundary</p>
+      <h2>The sandbox</h2>
+      <div class="concept-sub">
+        <span class="sub-lbl">what it is</span>
+        <p>When an app installs, Android gives it its own Linux user (a unique UID) and a private
+        folder at <code>/data/data/&lt;package&gt;/</code>. By default, no app can read another app's
+        files. That isolation is the <strong>sandbox</strong>, and it is the one security boundary
+        everything else on the device is built on.</p>
+      </div>
+      <div class="concept-sub">
+        <span class="sub-lbl">why you root a test device</span>
+        <p>On a normal phone you cannot read another app's private data, which is exactly the point. As
+        a tester you root the device (or use a rootable emulator image) to become superuser and step
+        <em>outside</em> the sandbox, so you can see what the app is hiding. On a real engagement you do
+        this on your own rooted device or emulator, never the client's phone.</p>
+      </div>
+      <div class="note insight">
+        <span class="lbl">the question to always ask</span>
+        "If an attacker had this device, what could they pull out of the sandbox?" That single question
+        is most of the storage testing you will ever do.
+      </div>
+    </section>
+
+    <!-- ============ The APK ============ -->
+    <section id="apk" class="concept-block">
+      <p class="kicker">Package anatomy · what you are holding</p>
+      <h2>The APK</h2>
+      <div class="concept-sub">
+        <span class="sub-lbl">what it is</span>
+        <p>An Android app ships as an <strong>APK</strong> (Android Package). Mechanically it is just a
+        <strong>ZIP file</strong>. Rename it to <code>.zip</code>, unzip it, and you see the parts:</p>
+        <ul>
+          <li><code>AndroidManifest.xml</code> - the app's blueprint (components, permissions, exported entry points). Binary-encoded inside the APK.</li>
+          <li><code>classes.dex</code> - the compiled code (see <a href="#dex">.dex files</a>).</li>
+          <li><code>resources.arsc</code> + <code>res/</code> - compiled resources, layouts, and strings (this is where <code>strings.xml</code> lives).</li>
+          <li><code>lib/</code> - native libraries (<code>.so</code>, C/C++ code).</li>
+          <li><code>assets/</code> - bundled raw files; sometimes secrets, configs, or web content hide here.</li>
+          <li><code>META-INF/</code> - the signing info.</li>
+        </ul>
+      </div>
+      <div class="concept-sub">
+        <span class="sub-lbl">two things worth knowing</span>
+        <p>Play Store apps often ship as an <strong>AAB</strong> and install as <em>split APKs</em>
+        (<code>base.apk</code> plus <code>split_config.*.apk</code>); when you pull one you get several
+        files, and that is normal. And the file layout tells you the framework: a React Native app has a
+        JS bundle at <code>assets/index.android.bundle</code>, and a Flutter app compiles to
+        <code>lib/libapp.so</code>. Framework changes <em>where the logic lives</em>.</p>
+      </div>
+      <div class="seen-in">
+        <span class="lbl">seen in</span>
+        <a href="writeup-allsafe.html">AllSafe</a> - a <code>tar -tf</code> peek showed the dex pile, assets, and native libs before we ever decompiled.
+      </div>
+    </section>
 
     <!-- ============ .dex files ============ -->
     <section id="dex" class="concept-block">
@@ -66,17 +133,46 @@
 
       <div class="concept-sub">
         <span class="sub-lbl">why it matters for a pentest</span>
-        <p>The <code>.dex</code> is what <code>jadx</code> runs backwards - <code>.dex</code> bytecode
-        → readable Java - so it's where the app's logic lives and where static analysis happens. Two
-        caveats worth knowing: <strong>native code in <code>lib/*.so</code> is not in the dex</strong>
-        (that's reverse-engineering territory), and a near-empty <code>classes.dex</code> sitting next
-        to an encrypted blob in <code>assets/</code> is a sign the app is <strong>packed</strong> - the
-        real dex is decrypted into memory at runtime.</p>
+        <p>The <code>.dex</code> is what <code>jadx</code> runs backwards, from bytecode to readable
+        Java, so it's where the app's logic lives and where static analysis happens. Two caveats worth
+        knowing: <strong>native code in <code>lib/*.so</code> is not in the dex</strong> (that's
+        reverse-engineering territory), and a near-empty <code>classes.dex</code> sitting next to an
+        encrypted blob in <code>assets/</code> is a sign the app is <strong>packed</strong>, the real
+        dex is decrypted into memory at runtime.</p>
       </div>
 
       <div class="seen-in">
         <span class="lbl">seen in</span>
         <a href="writeup-allsafe.html">AllSafe</a> - six <code>classes*.dex</code> files, the fingerprint of a multidex Kotlin app.
+      </div>
+    </section>
+
+    <!-- ============ The manifest ============ -->
+    <section id="manifest" class="concept-block">
+      <p class="kicker">The attack-surface map · read this first</p>
+      <h2>The manifest</h2>
+      <div class="concept-sub">
+        <span class="sub-lbl">what it is</span>
+        <p><code>AndroidManifest.xml</code> is the app's blueprint. It declares every component
+        (activities, services, receivers, providers), the permissions the app requests, and which
+        components are exported. It is the first file you read on every test. Inside the APK it is
+        binary-encoded, so you decode it with <code>apktool</code> or read it in jadx's Resources view.</p>
+      </div>
+      <div class="concept-sub">
+        <span class="sub-lbl">flags and lines worth hunting</span>
+        <ul>
+          <li><code>android:debuggable="true"</code> - a debug build shipped to production. Attach a debugger, run code as the app, read its memory. Never belongs in a release.</li>
+          <li><code>android:allowBackup="true"</code> - pull the app's private data over <code>adb backup</code>, no root needed (largely neutered on Android 12+, still a weak default).</li>
+          <li><code>android:usesCleartextTraffic="true"</code> - the app may talk plain HTTP, trivial to intercept.</li>
+          <li><code>android:networkSecurityConfig</code> - points to an XML defining trusted CAs, cleartext exceptions, and pinning. Its <em>absence</em> plus cleartext on is itself a weak posture.</li>
+          <li><code>android:requestLegacyExternalStorage="true"</code> - opts the app out of Scoped Storage, so with the storage permissions it reads and writes broadly across shared storage. A privacy and data-exposure concern.</li>
+          <li><strong>exported components with an intent-filter</strong> - other apps can invoke them. Attack surface (see <a href="#intent-filter">Intent-Filter</a>).</li>
+          <li><strong>dangerous <code>&lt;uses-permission&gt;</code></strong> - <code>READ_SMS</code>, <code>ACCESS_FINE_LOCATION</code>, <code>READ_CONTACTS</code>, and similar over-broad permissions are a privacy concern.</li>
+        </ul>
+      </div>
+      <div class="seen-in">
+        <span class="lbl">seen in</span>
+        <a href="writeup-allsafe.html">AllSafe</a> - <code>debuggable</code> and <code>allowBackup</code> were both true, and <code>DeepLinkTask</code> was exported.
       </div>
     </section>
 
@@ -120,19 +216,220 @@
           <li>An activity that shows account details, exported &rarr; another app launches it directly, <strong>skipping the login screen entirely</strong>.</li>
           <li>An exported content provider &rarr; any app <strong>queries the database</strong>.</li>
           <li>An exported broadcast receiver that triggers a money transfer &rarr; a malicious app <strong>fires the broadcast</strong>.</li>
-          <li><strong>Your case:</strong> <code>BROWSABLE</code> extends reachability to the web - <strong>a link on any webpage can invoke it</strong>.</li>
+          <li><code>BROWSABLE</code> extends reachability to the web &rarr; <strong>a link on any webpage can invoke it</strong>.</li>
         </ul>
       </div>
 
       <figure>
-        <img src="images/AllSafe/allsafe4.png" alt="AllSafe DeepLinkTask exported activity with a BROWSABLE intent-filter in the decoded AndroidManifest.xml">
-        <figcaption>DeepLinkTask - exported, with a VIEW + BROWSABLE intent-filter on the allsafe:// scheme.</figcaption>
+        <img src="images/AllSafe/allsafe1c.png" alt="AllSafe DeepLinkTask VIEW + BROWSABLE intent-filter in the decoded AndroidManifest.xml">
+        <figcaption>The VIEW + BROWSABLE intent-filter on DeepLinkTask, reachable from the web.</figcaption>
       </figure>
 
       <div class="seen-in">
         <span class="lbl">seen in</span>
         <a href="writeup-allsafe.html">AllSafe</a> - the exported <code>DeepLinkTask</code> activity,
         reachable from any web page via its <code>BROWSABLE</code> deep link.
+      </div>
+    </section>
+
+    <!-- ============ logcat ============ -->
+    <section id="logcat" class="concept-block">
+      <p class="kicker">Android logging · data leakage</p>
+      <h2>logcat</h2>
+      <div class="concept-sub">
+        <span class="sub-lbl">what it is</span>
+        <p><strong>logcat</strong> is Android's system-wide log buffer. Apps write to it with
+        <code>android.util.Log</code> (<code>Log.d</code> for debug, <code>Log.e</code> for error, and
+        so on), and the OS writes to it too. You read the whole thing from your PC with
+        <code>adb logcat</code>, or filter it by tag: <code>adb logcat -s ALLSAFE</code>.</p>
+      </div>
+      <div class="concept-sub">
+        <span class="sub-lbl">why it is a finding</span>
+        <p>Anything an app logs there is recoverable: over USB with <code>adb logcat</code>, and on
+        older Android by any app holding the <code>READ_LOGS</code> permission. So if an app logs a
+        token, a URI carrying a session id, or PII, that data leaks into a readable buffer. The finding
+        is usually the <em>pattern</em>, not one value: the same log line will leak whatever secret
+        flows through it in the future.</p>
+      </div>
+      <div class="concept-sub">
+        <span class="sub-lbl">the fix</span>
+        <p>Never log request data or full URIs; strip debug logging from release builds (R8/ProGuard
+        rules, or a no-op logger in release). Maps to <strong>CWE-532</strong>,
+        <strong>MASVS-STORAGE</strong>, <strong>Mobile Top 10 M9</strong>.</p>
+      </div>
+      <div class="seen-in">
+        <span class="lbl">seen in</span>
+        <a href="writeup-allsafe.html">AllSafe</a> - <code>DeepLinkTask.onCreate</code> logs the full incoming deep-link URI with a <code>Log.d</code> call.
+      </div>
+    </section>
+
+    <!-- ============ App storage ============ -->
+    <section id="storage" class="concept-block">
+      <p class="kicker">Data at rest · where secrets hide</p>
+      <h2>App storage</h2>
+      <div class="concept-sub">
+        <span class="sub-lbl">the map</span>
+        <p>An app's private files live under <code>/data/data/&lt;package&gt;/</code>. Once you are root
+        you pull them off and read what the app left behind:</p>
+        <ul>
+          <li><code>shared_prefs/*.xml</code> - key/value settings (<strong>SharedPreferences</strong>). A classic dumping ground for tokens and flags in plaintext.</li>
+          <li><code>databases/*.db</code> - SQLite databases; open with any SQLite browser.</li>
+          <li><code>files/</code> - arbitrary app files; modern apps often use MMKV or DataStore here.</li>
+          <li><code>cache/</code> - temp data; sometimes sensitive things linger.</li>
+          <li>external storage (<code>/sdcard/</code>) - historically world-readable; anything sensitive here is a finding.</li>
+        </ul>
+      </div>
+      <div class="note warn">
+        <span class="lbl">do not confuse this with strings.xml</span>
+        <code>SharedPreferences</code> (<code>shared_prefs/*.xml</code>) is <em>runtime</em> storage the
+        app writes on the device. <code>strings.xml</code> is a <em>compiled resource</em> baked into
+        the APK. They are different lenses: one is storage (data at rest on the device), the other is
+        static analysis (reading the package). Mixing them up is a common beginner slip.
+      </div>
+      <div class="note insight">
+        <span class="lbl">the recurring lesson</span>
+        The OS gives apps a secure vault (the <strong>Android Keystore</strong>). Bugs happen when
+        developers store secrets somewhere else, or in the vault but configured weakly.
+      </div>
+    </section>
+
+    <!-- ============ adb ============ -->
+    <section id="adb" class="concept-block">
+      <p class="kicker">Android Debug Bridge · your remote control</p>
+      <h2>adb</h2>
+      <div class="concept-sub">
+        <span class="sub-lbl">what it is</span>
+        <p><code>adb</code> is the command line that talks to an Android device or emulator. It is the
+        tool you live in. The commands you reach for constantly:</p>
+      </div>
+      <pre><code>adb devices                         # list attached devices
+adb root                            # restart adbd as root (rootable image)
+adb shell                           # a shell on the device
+adb install app.apk                 # install an APK
+adb shell pm list packages          # list installed packages
+adb shell pm path &lt;package&gt;         # find the installed APK path
+adb pull &lt;path&gt; pulled.apk          # pull a file off the device
+adb logcat -s TAG                   # read the log buffer for a tag
+adb shell am start -W -a android.intent.action.VIEW -d "scheme://..."   # fire a deep link
+adb emu kill                        # cleanly stop the emulator</code></pre>
+      <div class="note">
+        <span class="lbl">Windows note</span>
+        There is no <code>grep</code> on Windows. Filter with <code>findstr /i allsafe</code> or
+        PowerShell's <code>Select-String</code>. And modern apps are split APKs, so pull every path
+        <code>pm path</code> prints, not just <code>base.apk</code>.
+      </div>
+    </section>
+
+    <!-- ============ jadx vs apktool ============ -->
+    <section id="tools" class="concept-block">
+      <p class="kicker">Tool boundaries · know what each gives you</p>
+      <h2>jadx vs apktool</h2>
+      <div class="concept-sub">
+        <span class="sub-lbl">why this matters</span>
+        <p>These two static tools are easy to confuse, and articulating the difference is a common
+        interview question. They do different jobs.</p>
+      </div>
+      <div class="concept-sub">
+        <span class="sub-lbl">jadx</span>
+        <p>Decompiles the <code>.dex</code> bytecode back to <strong>readable Java</strong> (and much of
+        Kotlin). Use the GUI (<code>jadx-gui</code>, with global search) or the CLI
+        (<code>jadx -d out app.apk</code>). This is where you read logic and constants. It does
+        <strong>not</strong> let you repackage the app.</p>
+      </div>
+      <div class="concept-sub">
+        <span class="sub-lbl">apktool</span>
+        <p>Decodes the binary <code>AndroidManifest.xml</code> and resources into readable form, and
+        disassembles the code into <strong>smali</strong> (a human-readable assembly for DEX).
+        Crucially, apktool can <strong>rebuild</strong> the APK after you edit smali or resources, so it
+        is the tool for patching and repackaging. It does <strong>not</strong> give you clean Java.</p>
+      </div>
+      <div class="note insight">
+        <span class="lbl">one line to remember</span>
+        <strong>jadx for reading</strong> the Java; <strong>apktool for the manifest, resources, smali,
+        and rebuilding.</strong>
+      </div>
+    </section>
+
+    <!-- ============ Frida ============ -->
+    <section id="frida" class="concept-block">
+      <p class="kicker">Runtime analysis · rewrite a running app</p>
+      <h2>Frida</h2>
+      <div class="concept-sub">
+        <span class="sub-lbl">what it is</span>
+        <p>Static analysis reads the app; <strong>dynamic analysis runs it</strong> and pokes at it
+        live. Frida is the main dynamic tool. It injects into a running process and lets you
+        <strong>hook</strong> functions: read their arguments, change return values, call internal
+        methods, dump decrypted data, all while the app runs.</p>
+      </div>
+      <div class="concept-sub">
+        <span class="sub-lbl">the two halves</span>
+        <p>A <strong>client</strong> on your PC (<code>pip install frida-tools</code>) and a
+        <strong>server</strong> binary on the device (<code>frida-server</code> pushed to
+        <code>/data/local/tmp</code> and run as root). <strong>objection</strong> is a Frida-powered
+        toolkit with ready-made commands so you do not have to write scripts on day one.</p>
+      </div>
+      <div class="note warn">
+        <span class="lbl">the number-one gotcha</span>
+        The <code>frida-server</code> version on the device <strong>must match</strong> your
+        <code>frida-tools</code> client version. A mismatch is the most common reason
+        <code>frida-ps -U</code> errors out.
+      </div>
+      <div class="concept-sub">
+        <span class="sub-lbl">why it matters</span>
+        <p>Some bugs only appear at runtime: root and tamper detection, certificate pinning, tokens
+        derived from the device at launch. You defeat those by hooking the check and forcing it to pass,
+        or by reading the value after the app computes it.</p>
+      </div>
+    </section>
+
+    <!-- ============ Cert pinning ============ -->
+    <section id="pinning" class="concept-block">
+      <p class="kicker">HTTPS interception · why your proxy goes blank</p>
+      <h2>Cert pinning &amp; the CA store</h2>
+      <div class="concept-sub">
+        <span class="sub-lbl">the setup</span>
+        <p>To read an app's HTTPS traffic you route the device through a proxy (Burp or mitmproxy) and
+        install the proxy's CA certificate on the device so it can decrypt TLS.</p>
+      </div>
+      <div class="concept-sub">
+        <span class="sub-lbl">the Android 7+ catch</span>
+        <p>Since Android 7, apps <strong>ignore user-installed CA certificates by default</strong> and
+        trust only the <strong>system</strong> CA store. So installing your Burp CA as a normal user
+        cert does nothing for app traffic. The fix on a rooted device: install the CA into the system
+        store at <code>/system/etc/security/cacerts/</code> with the correct hashed filename and
+        permissions (objection and scripts automate this).</p>
+      </div>
+      <div class="note warn">
+        <span class="lbl">the Android 14 wrinkle</span>
+        Android 14 moved the system CA store into an APEX module, so the old push method silently stops
+        working. That is why the AllSafe lab runs on API 33 (Android 13), the newest image where the
+        standard method still works.
+      </div>
+      <div class="concept-sub">
+        <span class="sub-lbl">certificate pinning</span>
+        <p>Even with your CA trusted, an app can <strong>pin</strong>: accept only one specific
+        certificate and refuse your proxy's. Your traffic goes blank. That is not a setup failure, it is
+        the app defending itself, and you bypass it by hooking the pinning check with <a href="#frida">Frida</a>.</p>
+      </div>
+    </section>
+
+    <!-- ============ The four lenses ============ -->
+    <section id="lenses" class="concept-block">
+      <p class="kicker">The mental model · a checklist for any app</p>
+      <h2>The four lenses</h2>
+      <div class="concept-sub">
+        <span class="sub-lbl">every technique is one of these</span>
+        <ul>
+          <li><strong>1. At rest, static analysis</strong> - decompile, read code and config, hunt hardcoded secrets, map the attack surface.</li>
+          <li><strong>2. At rest, storage</strong> - pull the app's files off the device and see what it left behind.</li>
+          <li><strong>3. In motion, network</strong> - sit between the app and its backend, read and tamper with traffic.</li>
+          <li><strong>4. At runtime, dynamic</strong> - hook the running app with Frida, inspect and rewrite its behavior.</li>
+        </ul>
+      </div>
+      <div class="note insight">
+        <span class="lbl">real findings chain them</span>
+        Read the code to find <em>where</em> a secret is stored (1), pull it off disk (2), confirm it is
+        reused on the wire (3), and prove a pinning bypass makes it interceptable (4).
       </div>
     </section>
 

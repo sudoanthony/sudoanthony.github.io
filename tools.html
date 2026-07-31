@@ -1,0 +1,241 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Tools — sudoanthony</title>
+<meta name="description" content="The pentesting toolkit I actually use, grouped by category: what each tool is for, how to install it on Windows and Linux, one key command, and the writeups it shows up in.">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<nav class="nav"><div class="wrap">
+  <a class="brand" href="index.html">~/sudoanthony</a>
+  <div class="links">
+    <a href="writeups.html">writeups</a>
+    <a href="vulns.html">vulns</a>
+    <a href="concepts.html">concepts</a>
+    <a href="tools.html">tools</a>
+    <a href="https://github.com/sudoanthony">github</a>
+  </div>
+</div></nav>
+
+<div class="concept-wrap">
+<div class="concept-layout">
+
+  <!-- ==================== SIDEBAR (scrollspy) ==================== -->
+  <aside class="concept-toc">
+    <p class="toc-label">Tools</p>
+    <nav id="tocNav">
+      <a href="#recon" data-toc>Recon &amp; Scanning</a>
+      <a href="#web" data-toc>Web &amp; Proxies</a>
+      <a href="#mobile-static" data-toc>Mobile: Static</a>
+      <a href="#mobile-runtime" data-toc>Mobile: Device &amp; Runtime</a>
+      <a href="#utils" data-toc>Utilities</a>
+    </nav>
+  </aside>
+
+  <!-- ==================== CONTENT ==================== -->
+  <div class="concept-content">
+
+    <p style="margin-bottom:4px"><a href="concepts.html" style="color:var(--text-3);font-size:13.5px">&larr; concepts</a></p>
+    <h1>Tools</h1>
+    <p class="concept-intro">
+      The toolkit I actually reach for, not an encyclopedia. Each card says what the tool is for, how
+      to install it on Windows and Linux, one command to get moving, and where it shows up in a
+      writeup. It grows one tool at a time as the writeups do.
+    </p>
+
+    <!-- ============ Recon & Scanning ============ -->
+    <section id="recon" class="concept-block">
+      <p class="kicker">Find hosts, ports, and services</p>
+      <h2>Recon &amp; Scanning</h2>
+      <div class="toolgrid">
+
+        <div class="toolcard cat-recon" id="nmap">
+          <div class="tc-head"><span class="tc-glyph">nm</span><span class="tc-name">nmap</span><span class="tc-cat">scanning</span></div>
+          <p class="tc-what">Network mapper. Discovers live hosts, open ports, and the service/version behind each one. First move on almost every network box.</p>
+          <div class="tc-row"><span class="os">WIN</span> <code>winget install Insecure.Nmap</code></div>
+          <div class="tc-row"><span class="os">LINUX</span> <code>sudo apt install nmap</code></div>
+          <div class="tc-row"><span class="os">CMD</span> <code>nmap -p- -sVC TARGET</code></div>
+          <div class="tc-seen">seen in <a href="writeup-biohazard.html">Biohazard</a>, <a href="writeup-abducted.html">Abducted</a></div>
+        </div>
+
+      </div>
+    </section>
+
+    <!-- ============ Web & Proxies ============ -->
+    <section id="web" class="concept-block">
+      <p class="kicker">Sit between the app and its backend</p>
+      <h2>Web &amp; Proxies</h2>
+      <div class="toolgrid">
+
+        <div class="toolcard cat-web" id="burp">
+          <div class="tc-head"><span class="tc-glyph">bp</span><span class="tc-name">Burp Suite</span><span class="tc-cat">proxy</span></div>
+          <p class="tc-what">Intercepting HTTP(S) proxy. Pause, read, and tamper with requests (Intercept), replay them (Repeater), and decode data. The Community edition is free.</p>
+          <div class="tc-row"><span class="os">WIN / LINUX</span> installer from portswigger.net (bundled Java)</div>
+          <div class="tc-row"><span class="os">USE</span> point the device/browser proxy at <code>127.0.0.1:8080</code>, then install Burp's CA</div>
+          <div class="tc-seen">seen in <a href="writeup-allsafe.html">AllSafe</a></div>
+        </div>
+
+        <div class="toolcard cat-web" id="mitmproxy">
+          <div class="tc-head"><span class="tc-glyph">mp</span><span class="tc-name">mitmproxy</span><span class="tc-cat">proxy</span></div>
+          <p class="tc-what">A free, scriptable intercepting proxy driven from the terminal (or a web UI). Handy when you want to automate or filter traffic instead of clicking.</p>
+          <div class="tc-row"><span class="os">WIN / LINUX</span> <code>pip install mitmproxy</code></div>
+          <div class="tc-row"><span class="os">CMD</span> <code>mitmproxy</code> &nbsp;or&nbsp; <code>mitmweb</code></div>
+        </div>
+
+      </div>
+    </section>
+
+    <!-- ============ Mobile: Static ============ -->
+    <section id="mobile-static" class="concept-block">
+      <p class="kicker">Read the app without running it</p>
+      <h2>Mobile: Static</h2>
+      <div class="toolgrid">
+
+        <div class="toolcard cat-static" id="jadx">
+          <div class="tc-head"><span class="tc-glyph">jdx</span><span class="tc-name">jadx</span><span class="tc-cat">decompiler</span></div>
+          <p class="tc-what">Decompiles <code>.dex</code> bytecode back to readable Java (and much of Kotlin). Your default for reading an Android app's logic. Does not repackage.</p>
+          <div class="tc-row"><span class="os">WIN</span> download the release zip, run <code>jadx-gui.bat</code></div>
+          <div class="tc-row"><span class="os">LINUX</span> <code>sudo apt install jadx</code></div>
+          <div class="tc-row"><span class="os">CMD</span> <code>jadx -d out app.apk</code></div>
+          <div class="tc-seen">seen in <a href="writeup-allsafe.html">AllSafe</a> &middot; concept: <a href="android.html#tools">jadx vs apktool</a></div>
+        </div>
+
+        <div class="toolcard cat-static" id="apktool">
+          <div class="tc-head"><span class="tc-glyph">apk</span><span class="tc-name">apktool</span><span class="tc-cat">decode / rebuild</span></div>
+          <p class="tc-what">Decodes the binary manifest and resources into files, disassembles code to smali, and (unlike jadx) can rebuild the APK. Reach for it to read the manifest as text or to patch and repackage.</p>
+          <div class="tc-row"><span class="os">WIN</span> jar + wrapper from apktool.org</div>
+          <div class="tc-row"><span class="os">LINUX</span> <code>sudo apt install apktool</code></div>
+          <div class="tc-row"><span class="os">CMD</span> <code>apktool d app.apk -o out</code></div>
+          <div class="tc-seen">seen in <a href="writeup-allsafe.html">AllSafe</a> &middot; concept: <a href="android.html#tools">jadx vs apktool</a></div>
+        </div>
+
+        <div class="toolcard cat-static" id="mobsf">
+          <div class="tc-head"><span class="tc-glyph">mob</span><span class="tc-name">MobSF</span><span class="tc-cat">automated</span></div>
+          <p class="tc-what">Mobile Security Framework. One-shot automated static analysis of an APK/IPA: manifest flags, secrets, trackers, and a score. A triage first pass, not the whole test.</p>
+          <div class="tc-row"><span class="os">DOCKER</span> <code>docker run -it --rm -p 8000:8000 opensecurity/mobile-security-framework-mobsf</code></div>
+          <div class="tc-row"><span class="os">HOSTED</span> <a href="https://mobsf.live">mobsf.live</a> (public/lab apps only, never a client binary)</div>
+          <div class="tc-seen">seen in <a href="writeup-allsafe.html">AllSafe</a></div>
+        </div>
+
+      </div>
+    </section>
+
+    <!-- ============ Mobile: Device & Runtime ============ -->
+    <section id="mobile-runtime" class="concept-block">
+      <p class="kicker">Talk to the device and hook the running app</p>
+      <h2>Mobile: Device &amp; Runtime</h2>
+      <div class="toolgrid">
+
+        <div class="toolcard cat-runtime" id="android-studio">
+          <div class="tc-head"><span class="tc-glyph">as</span><span class="tc-name">Android Studio</span><span class="tc-cat">emulator</span></div>
+          <p class="tc-what">Ships the Android emulator and SDK. Create a Pixel virtual device on a <strong>Google APIs</strong> image (not Google Play) so you can get root.</p>
+          <div class="tc-row"><span class="os">WIN / LINUX</span> installer from developer.android.com</div>
+          <div class="tc-row"><span class="os">USE</span> Device Manager, new Pixel AVD, Google APIs image</div>
+          <div class="tc-seen">seen in <a href="writeup-allsafe.html">AllSafe</a> &middot; concept: <a href="android.html#sandbox">the sandbox</a></div>
+        </div>
+
+        <div class="toolcard cat-runtime" id="adb">
+          <div class="tc-head"><span class="tc-glyph">adb</span><span class="tc-name">adb</span><span class="tc-cat">device bridge</span></div>
+          <p class="tc-what">Android Debug Bridge. The command line that talks to a device or emulator: install apps, pull files, read logs, fire intents. The tool you live in.</p>
+          <div class="tc-row"><span class="os">WIN</span> Android SDK platform-tools (with Android Studio)</div>
+          <div class="tc-row"><span class="os">LINUX</span> <code>sudo apt install android-tools-adb</code></div>
+          <div class="tc-row"><span class="os">CMD</span> <code>adb devices</code> &middot; <code>adb pull</code> &middot; <code>adb logcat</code></div>
+          <div class="tc-seen">seen in <a href="writeup-allsafe.html">AllSafe</a> &middot; concept: <a href="android.html#adb">adb</a></div>
+        </div>
+
+        <div class="toolcard cat-runtime" id="frida">
+          <div class="tc-head"><span class="tc-glyph">fri</span><span class="tc-name">Frida</span><span class="tc-cat">instrumentation</span></div>
+          <p class="tc-what">Runtime instrumentation. Injects into a running app and hooks functions: read arguments, change return values, dump decrypted data, bypass root and pinning checks.</p>
+          <div class="tc-row"><span class="os">WIN / LINUX</span> <code>pip install frida-tools</code> + matching frida-server on device</div>
+          <div class="tc-row"><span class="os">CMD</span> <code>frida-ps -U</code></div>
+          <div class="tc-seen">seen in <a href="writeup-allsafe.html">AllSafe</a> &middot; concept: <a href="android.html#frida">Frida</a></div>
+        </div>
+
+        <div class="toolcard cat-runtime" id="objection">
+          <div class="tc-head"><span class="tc-glyph">obj</span><span class="tc-name">objection</span><span class="tc-cat">frida toolkit</span></div>
+          <p class="tc-what">A Frida-powered toolkit with ready-made commands, so you can hook common things (pinning, root checks, storage) without writing scripts on day one.</p>
+          <div class="tc-row"><span class="os">WIN / LINUX</span> <code>pip install objection</code></div>
+          <div class="tc-row"><span class="os">CMD</span> <code>objection -g PACKAGE explore</code></div>
+          <div class="tc-seen">seen in <a href="writeup-allsafe.html">AllSafe</a></div>
+        </div>
+
+      </div>
+    </section>
+
+    <!-- ============ Utilities ============ -->
+    <section id="utils" class="concept-block">
+      <p class="kicker">The everyday helpers</p>
+      <h2>Utilities</h2>
+      <div class="toolgrid">
+
+        <div class="toolcard cat-util" id="cyberchef">
+          <div class="tc-head"><span class="tc-glyph">cc</span><span class="tc-name">CyberChef</span><span class="tc-cat">encoding / crypto</span></div>
+          <p class="tc-what">A browser "swiss-army knife" for data: chain Base64/32/58 decodes, XOR, ROT, hex, and classical ciphers with a live preview. Fastest way to unwind an encoding stack.</p>
+          <div class="tc-row"><span class="os">HOSTED</span> gchq.github.io/CyberChef</div>
+          <div class="tc-row"><span class="os">OFFLINE</span> download the release and open the HTML locally</div>
+          <div class="tc-seen">seen in <a href="writeup-biohazard.html">Biohazard</a></div>
+        </div>
+
+      </div>
+    </section>
+
+  </div>
+</div>
+</div>
+
+<footer class="foot"><div class="wrap" style="display:flex;gap:18px;flex-wrap:wrap">
+  <a href="index.html">home</a>
+  <a href="writeups.html">writeups</a>
+  <a href="vulns.html">vulns</a>
+  <a href="concepts.html">concepts</a>
+  <a href="tools.html">tools</a>
+  <a href="https://github.com/sudoanthony">github</a>
+</div></footer>
+
+<script>
+  const tocLinks = Array.from(document.querySelectorAll('#tocNav a'));
+  const sections = tocLinks
+    .map(a => document.getElementById(a.getAttribute('href').slice(1)))
+    .filter(Boolean);
+
+  function setActive(id) {
+    tocLinks.forEach(a => a.classList.toggle('active', a.getAttribute('href') === '#' + id));
+  }
+
+  const observer = new IntersectionObserver((entries) => {
+    const visible = entries.filter(e => e.isIntersecting);
+    if (visible.length) {
+      visible.sort((a, b) => a.boundingClientRect.top - b.boundingClientRect.top);
+      setActive(visible[0].target.id);
+    }
+  }, { root: null, rootMargin: '-96px 0px -70% 0px', threshold: 0 });
+
+  sections.forEach(sec => observer.observe(sec));
+
+  tocLinks.forEach(a => {
+    a.addEventListener('click', (e) => {
+      e.preventDefault();
+      const id = a.getAttribute('href').slice(1);
+      const target = document.getElementById(id);
+      if (!target) return;
+      setActive(id);
+      history.pushState(null, '', '#' + id);
+      target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    });
+  });
+
+  if (location.hash) {
+    const id = location.hash.slice(1);
+    const target = document.getElementById(id);
+    if (target) { setActive(id); requestAnimationFrame(() => target.scrollIntoView({ block: 'start' })); }
+  } else if (sections.length) {
+    setActive(sections[0].id);
+  }
+</script>
+
+<script src="lightbox.js"></script>
+</body>
+</html>
