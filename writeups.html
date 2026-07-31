@@ -42,7 +42,7 @@
 
 <script src="data.js"></script>
 <script>
-  const platClass = p => /hack.?the.?box|htb/i.test(p || "") ? "htb" : "thm";
+  const platClass = p => /hack.?the.?box|htb/i.test(p || "") ? "htb" : /mobile/i.test(p || "") ? "mobile" : "thm";
   const diffClass = d => ({"very easy":"very-easy",easy:"easy",medium:"medium",hard:"hard",insane:"insane"}[(d||"").toLowerCase()] || "medium");
   const esc = s => (s||"").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");
 
@@ -58,7 +58,7 @@
   }
 
   const sorted = [...WRITEUPS].sort((a,b) => (a.date < b.date ? 1 : -1));
-  const order = ["TryHackMe", "HackTheBox"];
+  const order = ["TryHackMe", "HackTheBox", "Mobile"];
   const present = order.filter(p => sorted.some(w => w.platform === p))
     .concat([...new Set(sorted.map(w => w.platform))].filter(p => !order.includes(p)));
 
@@ -77,7 +77,6 @@
     const osPart = w.os ? osIcon(w.os) + esc(w.os) : "";
     const sub = '<span class="d-' + dc + '">' + esc(w.difficulty) + '</span> &middot; ' +
                 osPart + (w.category ? ' &middot; ' + esc(w.category) : '');
-    const chips = (w.tags || []).slice(0,3).map(t => '<span class="chip">' + esc(t) + '</span>').join("");
     return '<a class="bx ' + platClass(w.platform) + '" href="' + w.url + '">' +
       '<div class="face">' + iconHtml(w) +
         '<div class="nm">' + esc(w.title) + '</div>' +
@@ -86,7 +85,6 @@
       '<div class="revwrap"><div class="rev">' +
         '<div class="rt">' + esc(w.title) + '</div>' +
         '<div class="rs">' + esc(w.summary) + '</div>' +
-        '<div class="chips">' + chips + '</div>' +
       '</div></div>' +
     '</a>';
   }

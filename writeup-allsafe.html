@@ -1,0 +1,238 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>AllSafe — Android mobile app writeup</title>
+<meta name="description" content="Android application penetration test of Allsafe, worked chapter-by-chapter through the OWASP MASTG: static analysis, traffic, storage, crypto, auth, platform IPC, injection, and reverse engineering.">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<nav class="nav"><div class="wrap">
+  <a class="brand" href="index.html">~/sudoanthony</a>
+  <div class="links">
+    <a href="writeups.html">writeups</a>
+    <a href="vulns.html">vulns</a>
+    <a href="https://github.com/sudoanthony">github</a>
+  </div>
+</div></nav>
+
+<main class="wrap" style="padding-top:44px">
+
+  <!-- ============================================================
+       SHELL / TEMPLATE — writeup-allsafe.html
+       Structure only. Fill each section from your notes.
+         • Every section is one handbook chapter (2-9); 0/1/10 omitted.
+         • Each has a .secmeta MASVS/Top-10 kicker and one .finding
+           table in the MASTG report format — duplicate the <table>
+           block per finding inside a chapter.
+         • Redact flags/secrets as [redacted]. Swap .shot-todo boxes
+           for <figure> when you add screenshots.
+         • The left table-of-contents builds itself from the <h2>s
+           via writeup-toc.js — no need to maintain it by hand.
+       ============================================================ -->
+
+  <h1>AllSafe</h1>
+
+  <div class="meta">
+    <span class="badge mobile">Mobile</span>
+    <span class="badge medium">Medium</span>
+    <span class="badge red-team">red team</span>
+    <span class="sep">|</span>
+    <span>Android &middot; Allsafe (infosecadventures.allsafe)</span>
+    <span class="sep">|</span>
+    <span>[ date ]</span>
+  </div>
+
+  <div class="tldr">
+    <span class="lbl">tl;dr</span>
+    <p>[ One short paragraph: what Allsafe is, the lab (Pixel 5 AVD, API 33), and the
+    headline findings across the chapters below. ]</p>
+  </div>
+
+  <hr>
+
+  <!-- ==================== 01 — Recon & Static Analysis ==================== -->
+  <h2><span class="num">01</span>Recon &amp; Static Analysis</h2>
+  <p class="secmeta">MASVS: CODE, PRIVACY &nbsp;&middot;&nbsp; Mobile Top 10: M2, M8 &nbsp;&middot;&nbsp; Handbook ch.2</p>
+
+  <p>[ Intro: APK pull, jadx / apktool, manifest &amp; resource review, what you searched for. ]</p>
+
+  <div class="shot-todo">SCREENSHOT — jadx / apktool view (swap for a &lt;figure&gt;)</div>
+
+  <table class="finding">
+    <tr><th>Title</th><td>[ finding name ]</td></tr>
+    <tr><th>Severity</th><td>[ Low / Medium / High / Critical — tied to what it authorizes ]</td></tr>
+    <tr><th>Description</th><td>[ what the bug is ]</td></tr>
+    <tr><th>Impact</th><td>[ what an attacker gains ]</td></tr>
+    <tr><th>Evidence</th><td>[ file:line, command, or code snippet ]</td></tr>
+    <tr><th>MASTG</th><td>[ test ID(s) ]</td></tr>
+    <tr><th>Mobile Top 10</th><td>[ M# ]</td></tr>
+    <tr><th>Remediation</th><td>[ the fix a developer ships ]</td></tr>
+  </table>
+
+  <hr>
+
+  <!-- ==================== 02 — Traffic Interception & Cert Pinning ==================== -->
+  <h2><span class="num">02</span>Traffic Interception &amp; Cert Pinning</h2>
+  <p class="secmeta">MASVS: NETWORK &nbsp;&middot;&nbsp; Mobile Top 10: M5 &nbsp;&middot;&nbsp; Handbook ch.3</p>
+
+  <p>[ Burp CA setup, proxy config, whether HTTPS decrypts, any pinning and how it was bypassed. ]</p>
+
+  <div class="shot-todo">SCREENSHOT — Burp decrypting app traffic</div>
+
+  <table class="finding">
+    <tr><th>Title</th><td>[ finding name ]</td></tr>
+    <tr><th>Severity</th><td>[ … ]</td></tr>
+    <tr><th>Description</th><td>[ … ]</td></tr>
+    <tr><th>Impact</th><td>[ … ]</td></tr>
+    <tr><th>Evidence</th><td>[ … ]</td></tr>
+    <tr><th>MASTG</th><td>[ … ]</td></tr>
+    <tr><th>Mobile Top 10</th><td>[ … ]</td></tr>
+    <tr><th>Remediation</th><td>[ … ]</td></tr>
+  </table>
+
+  <hr>
+
+  <!-- ==================== 03 — Insecure Data Storage ==================== -->
+  <h2><span class="num">03</span>Insecure Data Storage</h2>
+  <p class="secmeta">MASVS: STORAGE &nbsp;&middot;&nbsp; Mobile Top 10: M9 &nbsp;&middot;&nbsp; Handbook ch.4</p>
+
+  <p>[ SharedPreferences, SQLite, files, external storage — what was stored in the clear. ]</p>
+
+  <div class="shot-todo">SCREENSHOT — recovered data on device</div>
+
+  <table class="finding">
+    <tr><th>Title</th><td>[ finding name ]</td></tr>
+    <tr><th>Severity</th><td>[ … ]</td></tr>
+    <tr><th>Description</th><td>[ … ]</td></tr>
+    <tr><th>Impact</th><td>[ … ]</td></tr>
+    <tr><th>Evidence</th><td>[ … ]</td></tr>
+    <tr><th>MASTG</th><td>[ … ]</td></tr>
+    <tr><th>Mobile Top 10</th><td>[ … ]</td></tr>
+    <tr><th>Remediation</th><td>[ … ]</td></tr>
+  </table>
+
+  <hr>
+
+  <!-- ==================== 04 — Broken Cryptography ==================== -->
+  <h2><span class="num">04</span>Broken Cryptography</h2>
+  <p class="secmeta">MASVS: CRYPTO &nbsp;&middot;&nbsp; Mobile Top 10: M10 &nbsp;&middot;&nbsp; Handbook ch.5</p>
+
+  <p>[ Weak algorithms, hardcoded keys/IVs, ECB, custom crypto — what breaks and why. ]</p>
+
+  <div class="shot-todo">SCREENSHOT — decrypted output / key material</div>
+
+  <table class="finding">
+    <tr><th>Title</th><td>[ finding name ]</td></tr>
+    <tr><th>Severity</th><td>[ … ]</td></tr>
+    <tr><th>Description</th><td>[ … ]</td></tr>
+    <tr><th>Impact</th><td>[ … ]</td></tr>
+    <tr><th>Evidence</th><td>[ … ]</td></tr>
+    <tr><th>MASTG</th><td>[ … ]</td></tr>
+    <tr><th>Mobile Top 10</th><td>[ … ]</td></tr>
+    <tr><th>Remediation</th><td>[ … ]</td></tr>
+  </table>
+
+  <hr>
+
+  <!-- ==================== 05 — Authentication & Session ==================== -->
+  <h2><span class="num">05</span>Authentication &amp; Session</h2>
+  <p class="secmeta">MASVS: AUTH &nbsp;&middot;&nbsp; Mobile Top 10: M1, M3 &nbsp;&middot;&nbsp; Handbook ch.6</p>
+
+  <p>[ Local auth bypass, biometric handling, session/token storage and reuse. ]</p>
+
+  <div class="shot-todo">SCREENSHOT — auth bypass in action</div>
+
+  <table class="finding">
+    <tr><th>Title</th><td>[ finding name ]</td></tr>
+    <tr><th>Severity</th><td>[ … ]</td></tr>
+    <tr><th>Description</th><td>[ … ]</td></tr>
+    <tr><th>Impact</th><td>[ … ]</td></tr>
+    <tr><th>Evidence</th><td>[ … ]</td></tr>
+    <tr><th>MASTG</th><td>[ … ]</td></tr>
+    <tr><th>Mobile Top 10</th><td>[ … ]</td></tr>
+    <tr><th>Remediation</th><td>[ … ]</td></tr>
+  </table>
+
+  <hr>
+
+  <!-- ==================== 06 — Platform Interaction (IPC, Deep Links, WebViews) ==================== -->
+  <h2><span class="num">06</span>Platform Interaction (IPC, Deep Links, WebViews)</h2>
+  <p class="secmeta">MASVS: PLATFORM &nbsp;&middot;&nbsp; Mobile Top 10: M4, M8 &nbsp;&middot;&nbsp; Handbook ch.7</p>
+
+  <p>[ Exported components, deep links, intents, WebView settings and JS bridges. ]</p>
+
+  <div class="shot-todo">SCREENSHOT — adb intent / deep link trigger</div>
+
+  <table class="finding">
+    <tr><th>Title</th><td>[ finding name ]</td></tr>
+    <tr><th>Severity</th><td>[ … ]</td></tr>
+    <tr><th>Description</th><td>[ … ]</td></tr>
+    <tr><th>Impact</th><td>[ … ]</td></tr>
+    <tr><th>Evidence</th><td>[ … ]</td></tr>
+    <tr><th>MASTG</th><td>[ … ]</td></tr>
+    <tr><th>Mobile Top 10</th><td>[ … ]</td></tr>
+    <tr><th>Remediation</th><td>[ … ]</td></tr>
+  </table>
+
+  <hr>
+
+  <!-- ==================== 07 — Code-Level Bugs & Injection ==================== -->
+  <h2><span class="num">07</span>Code-Level Bugs &amp; Injection</h2>
+  <p class="secmeta">MASVS: CODE &nbsp;&middot;&nbsp; Mobile Top 10: M4 &nbsp;&middot;&nbsp; Handbook ch.8</p>
+
+  <p>[ Input validation, SQL/command/path injection, unsafe deserialization. ]</p>
+
+  <div class="shot-todo">SCREENSHOT — injection payload &amp; result</div>
+
+  <table class="finding">
+    <tr><th>Title</th><td>[ finding name ]</td></tr>
+    <tr><th>Severity</th><td>[ … ]</td></tr>
+    <tr><th>Description</th><td>[ … ]</td></tr>
+    <tr><th>Impact</th><td>[ … ]</td></tr>
+    <tr><th>Evidence</th><td>[ … ]</td></tr>
+    <tr><th>MASTG</th><td>[ … ]</td></tr>
+    <tr><th>Mobile Top 10</th><td>[ … ]</td></tr>
+    <tr><th>Remediation</th><td>[ … ]</td></tr>
+  </table>
+
+  <hr>
+
+  <!-- ==================== 08 — Reverse Engineering & Anti-Tamper ==================== -->
+  <h2><span class="num">08</span>Reverse Engineering &amp; Anti-Tamper</h2>
+  <p class="secmeta">MASVS: RESILIENCE &nbsp;&middot;&nbsp; Mobile Top 10: M7 &nbsp;&middot;&nbsp; Handbook ch.9</p>
+
+  <p>[ Frida instrumentation, root/tamper detection and bypass, obfuscation, patching. ]</p>
+
+  <div class="shot-todo">SCREENSHOT — Frida hook / bypass</div>
+
+  <table class="finding">
+    <tr><th>Title</th><td>[ finding name ]</td></tr>
+    <tr><th>Severity</th><td>[ … ]</td></tr>
+    <tr><th>Description</th><td>[ … ]</td></tr>
+    <tr><th>Impact</th><td>[ … ]</td></tr>
+    <tr><th>Evidence</th><td>[ … ]</td></tr>
+    <tr><th>MASTG</th><td>[ … ]</td></tr>
+    <tr><th>Mobile Top 10</th><td>[ … ]</td></tr>
+    <tr><th>Remediation</th><td>[ … ]</td></tr>
+  </table>
+
+  <p style="margin-top:32px">
+    <a href="writeups.html">&larr; all writeups</a> &nbsp;&middot;&nbsp;
+    <a href="vulns.html">techniques used &rarr;</a>
+  </p>
+
+</main>
+
+<footer class="foot"><div class="wrap" style="display:flex;gap:18px;flex-wrap:wrap">
+  <a href="index.html">home</a>
+  <a href="writeups.html">writeups</a>
+  <a href="vulns.html">vulns</a>
+  <a href="https://github.com/sudoanthony">github</a>
+</div></footer>
+
+<script src="writeup-toc.js"></script>
+</body>
+</html>

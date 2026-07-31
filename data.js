@@ -23,6 +23,19 @@
 
 const WRITEUPS = [
   {
+    title:      "AllSafe",
+    url:        "writeup-allsafe.html",
+    platform:   "Mobile",
+    team:       "red",
+    difficulty: "Medium",
+    os:         "Android",
+    category:   "App Pentest",
+    icon:       "images/icons/allsafe.png",
+    date:       "2026-07-31",
+    summary:    "Android app pentest of Allsafe, worked chapter-by-chapter through the OWASP MASTG: static analysis, traffic interception, insecure storage, crypto, auth, platform IPC, injection, and reverse engineering.",
+    tags:       ["hardcoded-secret", "insecure-logging", "exported-component"]
+  },
+  {
     title:      "Abducted",
     url:        "writeup-abducted.html",
     platform:   "HackTheBox",
@@ -51,6 +64,42 @@ const WRITEUPS = [
 ];
 
 const VULNS = [
+  {
+    id:    "hardcoded-secret",
+    name:  "Hardcoded secret in app resources",
+    cat:   "mobile",
+    sev:   "low",
+    ext:   "CWE-798 · MASVS-STORAGE · M8",
+    blurb: "A secret compiled into the APK (strings.xml / resources / smali) — recoverable by anyone with the binary. Severity depends on what the secret authorizes; a challenge-gate key is Low, a live API key is not.",
+    deepdive: "",
+    uses: [
+      { writeup: "AllSafe", url: "writeup-allsafe.html", ctx: "UUID in strings.xml gates a deep link — found via the R.string.key reference, not a keyword grep" }
+    ]
+  },
+  {
+    id:    "insecure-logging",
+    name:  "Sensitive data written to logcat",
+    cat:   "mobile",
+    sev:   "low",
+    ext:   "CWE-532 · MASVS-STORAGE · M9",
+    blurb: "App logs that leak URIs, tokens, or PII to logcat. The pattern is the finding — it would leak any future secret carried through the same code path.",
+    deepdive: "",
+    uses: [
+      { writeup: "AllSafe", url: "writeup-allsafe.html", ctx: "full deep-link Uri (with query string) concatenated into a Log.d call" }
+    ]
+  },
+  {
+    id:    "exported-component",
+    name:  "Exported component / BROWSABLE deep link",
+    cat:   "mobile",
+    sev:   "med",
+    ext:   "CWE-926 · MASVS-PLATFORM · M8",
+    blurb: "An activity exported with a VIEW + BROWSABLE intent filter is reachable from any web page — an unauthenticated entry point into app internals.",
+    deepdive: "",
+    uses: [
+      { writeup: "AllSafe", url: "writeup-allsafe.html", ctx: "exported activity + BROWSABLE deep link invokable from an arbitrary web page" }
+    ]
+  },
   {
     id:    "command-injection",
     name:  "OS command injection",

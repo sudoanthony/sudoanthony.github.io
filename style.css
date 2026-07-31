@@ -30,6 +30,7 @@
   /* platforms */
   --thm:       #ec4899;   /* TryHackMe = pink   */
   --htb:       #9fef00;   /* HackTheBox = green */
+  --mobile:    #a78bfa;   /* Mobile = violet    */
 
   /* difficulty / severity */
   --easy:   #5dcaa5;
@@ -136,6 +137,7 @@ figcaption { color: var(--text-4); font-size: 13px; margin-top: 7px; font-family
 /* platform */
 .badge.thm { background: rgba(236,72,153,0.15); color: #f087ba; }
 .badge.htb { background: rgba(159,239,0,0.13);  color: #c3f24d; }
+.badge.mobile { background: rgba(167,139,250,0.16); color: #c4b5fd; }
 /* team */
 .badge.red-team  { background: rgba(226,114,111,0.14); color: #eb9d9b; }
 .badge.blue-team { background: rgba(122,176,232,0.14); color: #a6c8ee; }
@@ -179,11 +181,13 @@ figcaption { color: var(--text-4); font-size: 13px; margin-top: 7px; font-family
 .platform-head .dot { width: 9px; height: 9px; border-radius: 50%; }
 .platform-head .dot.thm { background: var(--thm); }
 .platform-head .dot.htb { background: var(--htb); }
+.platform-head .dot.mobile { background: var(--mobile); }
 .platform-head .name { font-size: 18px; font-weight: 600; color: var(--text); }
 .platform-head .count { font-family: var(--mono); font-size: 12px; color: var(--text-4); }
 .platform-head .plogo { height: 30px; width: auto; border-radius: 6px; display: block; }
 .platform-head .plogo-thm { height: 42px; }
 .platform-head .plogo-htb { height: 30px; }
+.platform-head .plogo-mobile { height: 30px; }
 
 /* ---------- vulns index ---------- */
 .filters { display: flex; flex-wrap: wrap; gap: 7px; margin: 22px 0 30px; }
@@ -228,6 +232,7 @@ figcaption { color: var(--text-4); font-size: 13px; margin-top: 7px; font-family
 .bx:hover .face { border-color: var(--border-2); }
 .bx.thm .face { border-top: 3px solid var(--thm); }
 .bx.htb .face { border-top: 3px solid var(--htb); }
+.bx.mobile .face { border-top: 3px solid var(--mobile); }
 .bx .icon { width: 52px; height: 52px; position: relative; display: flex; align-items: center; justify-content: center; }
 .bx .icon img { width: 52px; height: 52px; object-fit: contain; }
 .bx .mono { width: 52px; height: 52px; border-radius: 12px; background: var(--bg-3); color: var(--text-3); display: flex; align-items: center; justify-content: center; font-family: var(--mono); font-size: 24px; font-weight: 600; }
@@ -237,7 +242,7 @@ figcaption { color: var(--text-4); font-size: 13px; margin-top: 7px; font-family
 .bx .sub svg{opacity:.85;}
 .bx .revwrap { overflow: hidden; }
 .bx .rev {
-  height: 176px; margin-top: 10px; box-sizing: border-box; padding: 15px;
+  min-height: 176px; margin-top: 10px; box-sizing: border-box; padding: 15px;
   border: 1px solid var(--border-2); border-radius: 12px; background: var(--bg-3);
   display: flex; flex-direction: column; gap: 7px;
   transform: translateY(-12px); transition: transform .3s cubic-bezier(.4,0,.2,1);
@@ -245,14 +250,47 @@ figcaption { color: var(--text-4); font-size: 13px; margin-top: 7px; font-family
 }
 .bx:hover .rev { transform: translateY(0); }
 .bx .rev .rt { font-size: 14px; font-weight: 600; color: var(--text); }
-.bx .rev .rs { font-size: 11.5px; line-height: 1.45; color: var(--text-2); overflow: hidden; display: -webkit-box; -webkit-line-clamp: 5; -webkit-box-orient: vertical; }
-.bx .rev .chips { display: flex; flex-wrap: wrap; gap: 5px; margin-top: auto; }
-.bx .rev .chip { font-family: var(--mono); font-size: 9.5px; background: var(--bg-2); color: #9fe1cb; border-radius: 99px; padding: 3px 8px; }
+/* full summary — no clamp; the card grows to fit it (see grid-template-rows above) */
+.bx .rev .rs { font-size: 11.5px; line-height: 1.45; color: var(--text-2); }
 .bx.card-add .face { border-style: dashed; color: var(--text-4); }
 .bx.card-add .mono { background: transparent; border: 1px dashed var(--border-2); color: var(--text-4); font-size: 28px; }
 .bx.card-add .nm, .bx.card-add .sub { color: var(--text-4); }
 /* touch devices: no hover — stay collapsed, tap navigates */
 @media (hover: none) { .bx:hover { grid-template-rows: 176px 0fr; } }
+
+/* ---------- writeup left TOC (scroll-spy, auto-built by writeup-toc.js) ---------- */
+/* sits in the left gutter beside the 800px content column; hidden when the
+   viewport is too narrow to fit it. Anchor offset keeps headings clear of nav. */
+main h1[id], main h2[id], main h3[id] { scroll-margin-top: 76px; }
+.wtoc {
+  position: fixed; top: 96px; width: 208px;
+  left: calc(50% - 640px);
+  max-height: calc(100vh - 130px); overflow-y: auto;
+  font-family: var(--mono); z-index: 5;
+}
+.wtoc .wtoc-label {
+  font-size: 10.5px; text-transform: uppercase; letter-spacing: 1.5px;
+  color: var(--text-4); margin: 0 0 12px; padding-left: 13px;
+}
+.wtoc nav { display: flex; flex-direction: column; gap: 1px; }
+.wtoc a {
+  color: var(--text-3); font-size: 12.5px; line-height: 1.35;
+  padding: 6px 0 6px 13px; border-left: 2px solid var(--border);
+  text-decoration: none; transition: color .12s, border-color .12s;
+}
+.wtoc a:hover { color: var(--text); text-decoration: none; }
+.wtoc a.active { color: var(--accent); border-left-color: var(--accent); font-weight: 600; }
+/* not enough left gutter to hold the TOC — hide it, page reads normally */
+@media (max-width: 1300px) { .wtoc { display: none; } }
+
+/* ---------- finding report table (MASTG §-style: one table per finding) ---------- */
+.finding { width: 100%; border-collapse: collapse; font-size: 14.5px; margin: 8px 0 10px; }
+.finding th, .finding td { border-bottom: 1px solid var(--border); vertical-align: top; padding: 9px 0; }
+.finding th { text-align: left; width: 132px; white-space: nowrap; padding-right: 14px; color: var(--text); font-weight: 600; }
+.finding td { color: var(--text-3); }
+.finding tr:last-child th, .finding tr:last-child td { border-bottom: none; }
+/* small MASVS / Top-10 kicker under each section heading */
+.secmeta { font-family: var(--mono); font-size: 12px; color: var(--text-4); margin: -6px 0 16px; letter-spacing: .3px; }
 
 /* ---------- footer ---------- */
 .foot { border-top: 1px solid var(--border); margin-top: 64px; padding: 26px 0 48px; font-family: var(--mono); font-size: 12.5px; color: var(--text-4); display: flex; gap: 18px; flex-wrap: wrap; }
