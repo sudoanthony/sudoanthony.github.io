@@ -295,6 +295,19 @@ main h1[id], main h2[id], main h3[id] { scroll-margin-top: 76px; }
 /* small MASVS / Top-10 kicker under each section heading */
 .secmeta { font-family: var(--mono); font-size: 12px; color: var(--text-4); margin: -6px 0 16px; letter-spacing: .3px; }
 
+/* ---------- click-to-zoom lightbox (lightbox.js) ---------- */
+img.zoomable { cursor: zoom-in; }
+.lightbox {
+  position: fixed; inset: 0; z-index: 100; display: none; padding: 24px;
+  align-items: center; justify-content: center;
+  background: rgba(0,0,0,0.9); cursor: zoom-out;
+}
+.lightbox.open { display: flex; }
+.lightbox img {
+  max-width: 96vw; max-height: 94vh; width: auto; height: auto;
+  border-radius: 6px; box-shadow: 0 12px 40px rgba(0,0,0,0.6);
+}
+
 /* ---------- footer ---------- */
 .foot { border-top: 1px solid var(--border); margin-top: 64px; padding: 26px 0 48px; font-family: var(--mono); font-size: 12.5px; color: var(--text-4); display: flex; gap: 18px; flex-wrap: wrap; }
 .foot a { color: var(--text-3); }
