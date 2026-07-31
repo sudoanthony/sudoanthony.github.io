@@ -31,6 +31,7 @@
   --thm:       #ec4899;   /* TryHackMe = pink   */
   --htb:       #9fef00;   /* HackTheBox = green */
   --mobile:    #a78bfa;   /* Mobile = violet    */
+  --gold:      #f2c14e;   /* section headers    */
 
   /* difficulty / severity */
   --easy:   #5dcaa5;
@@ -81,7 +82,7 @@ h1 {
   line-height: 1.05; letter-spacing: -1px; margin: 0 0 14px;
 }
 h2 {
-  color: var(--text); font-size: 25px; font-weight: 650;
+  color: var(--gold); font-size: 25px; font-weight: 650;
   letter-spacing: -0.4px; margin: 52px 0 14px;
   display: flex; align-items: baseline; gap: 12px;
 }
@@ -263,8 +264,8 @@ figcaption { color: var(--text-4); font-size: 13px; margin-top: 7px; font-family
    viewport is too narrow to fit it. Anchor offset keeps headings clear of nav. */
 main h1[id], main h2[id], main h3[id] { scroll-margin-top: 76px; }
 .wtoc {
-  position: fixed; top: 96px; width: 208px;
-  left: calc(50% - 640px);
+  position: fixed; top: 96px; width: 242px;
+  left: calc(50% - 672px);
   max-height: calc(100vh - 130px); overflow-y: auto;
   font-family: var(--mono); z-index: 5;
 }
@@ -280,14 +281,16 @@ main h1[id], main h2[id], main h3[id] { scroll-margin-top: 76px; }
 }
 .wtoc a:hover { color: var(--text); text-decoration: none; }
 .wtoc a.active { color: var(--accent); border-left-color: var(--accent); font-weight: 600; }
-/* not enough left gutter to hold the TOC — hide it, page reads normally */
-@media (max-width: 1300px) { .wtoc { display: none; } }
+/* not enough left gutter to hold the TOC, hide it and the page reads normally */
+@media (max-width: 1400px) { .wtoc { display: none; } }
 
-/* ---------- finding report table (MASTG §-style: one table per finding) ---------- */
-.finding { width: 100%; border-collapse: collapse; font-size: 14.5px; margin: 8px 0 10px; }
-.finding th, .finding td { border-bottom: 1px solid var(--border); vertical-align: top; padding: 9px 0; }
-.finding th { text-align: left; width: 132px; white-space: nowrap; padding-right: 14px; color: var(--text); font-weight: 600; }
+/* ---------- finding report table (MASTG-style: one boxed table per finding) ---------- */
+.finding { width: 100%; border-collapse: separate; border-spacing: 0; font-size: 14.5px; margin: 22px 0 32px; border: 1px solid var(--border-2); border-radius: 10px; overflow: hidden; }
+.finding th, .finding td { border-bottom: 1px solid var(--border); vertical-align: top; padding: 10px 14px; }
+.finding th { text-align: left; width: 138px; white-space: nowrap; color: var(--text-2); font-weight: 600; background: rgba(255,255,255,0.02); }
 .finding td { color: var(--text-3); }
+.finding tr:first-child th, .finding tr:first-child td { background: rgba(242,193,78,0.08); }
+.finding tr:first-child td { color: var(--gold); font-weight: 700; font-size: 15.5px; }
 .finding tr:last-child th, .finding tr:last-child td { border-bottom: none; }
 /* small MASVS / Top-10 kicker under each section heading */
 .secmeta { font-family: var(--mono); font-size: 12px; color: var(--text-4); margin: -6px 0 16px; letter-spacing: .3px; }

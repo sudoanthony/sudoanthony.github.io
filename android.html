@@ -3,8 +3,8 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Android — Concepts — Anthony</title>
-<meta name="description" content="Android app internals for pentesting — .dex bytecode, intent-filters and exported components: how a single manifest line becomes an attack path.">
+<title>Android - Concepts - Anthony</title>
+<meta name="description" content="Android app internals for pentesting - .dex bytecode, intent-filters and exported components: how a single manifest line becomes an attack path.">
 <link rel="stylesheet" href="style.css">
 </head>
 <body>
@@ -37,7 +37,7 @@
     <p style="margin-bottom:4px"><a href="concepts.html" style="color:var(--text-3);font-size:13.5px">&larr; concepts</a></p>
     <h1>Android</h1>
     <p class="concept-intro">
-      The Android building blocks behind the mobile writeups — <code>.dex</code> bytecode, the
+      The Android building blocks behind the mobile writeups - <code>.dex</code> bytecode, the
       manifest, and the IPC mechanisms that turn a single line into a real attack path. These are
       Android-specific; the iOS equivalents (IPA/Mach-O, URL schemes, ATS) get their own page once a
       Mac is in the lab.
@@ -50,7 +50,7 @@
 
       <div class="concept-sub">
         <span class="sub-lbl">what it is</span>
-        <p><strong>Dalvik EXecutable</strong> — Android's compiled-code format. Your Java/Kotlin is
+        <p><strong>Dalvik EXecutable</strong> - Android's compiled-code format. Your Java/Kotlin is
         compiled to JVM <code>.class</code> files, then a tool (<code>d8</code>/<code>r8</code>)
         converts those into a single <code>classes.dex</code> of Dalvik/ART bytecode, optimized for
         mobile. That <code>classes.dex</code> <em>is</em> your app's code; the runtime (ART) executes it.</p>
@@ -58,7 +58,7 @@
 
       <div class="concept-sub">
         <span class="sub-lbl">why there are several</span>
-        <p>A single dex caps at <strong>65,536 method references</strong> — the "64K limit" — so bigger
+        <p>A single dex caps at <strong>65,536 method references</strong> - the "64K limit" - so bigger
         apps spill into <code>classes2.dex</code>, <code>classes3.dex</code>, and so on
         (<em>multidex</em>). AllSafe ships six, which by itself tells you it's a heavier Kotlin app than
         a simple CTF box.</p>
@@ -66,17 +66,17 @@
 
       <div class="concept-sub">
         <span class="sub-lbl">why it matters for a pentest</span>
-        <p>The <code>.dex</code> is what <code>jadx</code> runs backwards — <code>.dex</code> bytecode
-        → readable Java — so it's where the app's logic lives and where static analysis happens. Two
+        <p>The <code>.dex</code> is what <code>jadx</code> runs backwards - <code>.dex</code> bytecode
+        → readable Java - so it's where the app's logic lives and where static analysis happens. Two
         caveats worth knowing: <strong>native code in <code>lib/*.so</code> is not in the dex</strong>
         (that's reverse-engineering territory), and a near-empty <code>classes.dex</code> sitting next
-        to an encrypted blob in <code>assets/</code> is a sign the app is <strong>packed</strong> — the
+        to an encrypted blob in <code>assets/</code> is a sign the app is <strong>packed</strong> - the
         real dex is decrypted into memory at runtime.</p>
       </div>
 
       <div class="seen-in">
         <span class="lbl">seen in</span>
-        <a href="writeup-allsafe.html">AllSafe</a> — six <code>classes*.dex</code> files, the fingerprint of a multidex Kotlin app.
+        <a href="writeup-allsafe.html">AllSafe</a> - six <code>classes*.dex</code> files, the fingerprint of a multidex Kotlin app.
       </div>
     </section>
 
@@ -120,18 +120,18 @@
           <li>An activity that shows account details, exported &rarr; another app launches it directly, <strong>skipping the login screen entirely</strong>.</li>
           <li>An exported content provider &rarr; any app <strong>queries the database</strong>.</li>
           <li>An exported broadcast receiver that triggers a money transfer &rarr; a malicious app <strong>fires the broadcast</strong>.</li>
-          <li><strong>Your case:</strong> <code>BROWSABLE</code> extends reachability to the web — <strong>a link on any webpage can invoke it</strong>.</li>
+          <li><strong>Your case:</strong> <code>BROWSABLE</code> extends reachability to the web - <strong>a link on any webpage can invoke it</strong>.</li>
         </ul>
       </div>
 
       <figure>
         <img src="images/AllSafe/allsafe4.png" alt="AllSafe DeepLinkTask exported activity with a BROWSABLE intent-filter in the decoded AndroidManifest.xml">
-        <figcaption>DeepLinkTask — exported, with a VIEW + BROWSABLE intent-filter on the allsafe:// scheme.</figcaption>
+        <figcaption>DeepLinkTask - exported, with a VIEW + BROWSABLE intent-filter on the allsafe:// scheme.</figcaption>
       </figure>
 
       <div class="seen-in">
         <span class="lbl">seen in</span>
-        <a href="writeup-allsafe.html">AllSafe</a> — the exported <code>DeepLinkTask</code> activity,
+        <a href="writeup-allsafe.html">AllSafe</a> - the exported <code>DeepLinkTask</code> activity,
         reachable from any web page via its <code>BROWSABLE</code> deep link.
       </div>
     </section>
