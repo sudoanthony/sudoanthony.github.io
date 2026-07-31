@@ -33,7 +33,7 @@ const NO_COLOR = ARGS.includes('--no-color') || !!process.env.NO_COLOR;
 
 /* ---------- known-good values -------------------------------- */
 
-const DIFFICULTIES = ['Very Easy', 'Easy', 'Medium', 'Hard', 'Insane'];
+const DIFFICULTIES = ['Very Easy', 'Easy', 'Medium', 'Hard', 'Insane', 'Practice'];
 const PLATFORMS    = ['TryHackMe', 'HackTheBox', 'Mobile'];
 const TEAMS        = ['red', 'blue'];
 const SEVERITIES   = ['crit', 'high', 'med', 'low'];
@@ -154,11 +154,12 @@ WRITEUPS.forEach((w, i) => {
   }
 
   for (const f of WRITEUP_FIELDS) {
-    if (!(f in w)) { err(at, `Missing field: ${f}`); continue; }
+    const optional = f === 'difficulty';   // difficulty is optional (e.g. training apps aren't rated)
+    if (!(f in w)) { if (!optional) err(at, `Missing field: ${f}`); continue; }
     const v = w[f];
     const empty = f === 'tags' ? !Array.isArray(v) || v.length === 0
                                : typeof v !== 'string' || v.trim() === '';
-    if (empty) err(at, `Field "${f}" is empty${f === 'tags' ? ' or not an array' : ''}`);
+    if (empty && !optional) err(at, `Field "${f}" is empty${f === 'tags' ? ' or not an array' : ''}`);
   }
 
   const extra = Object.keys(w).filter(k => !WRITEUP_FIELDS.includes(k));

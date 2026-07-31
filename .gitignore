@@ -1,0 +1,4 @@
+# OS / filesystem junk
+.fuse_hidden*
+.DS_Store
+Thumbs.db

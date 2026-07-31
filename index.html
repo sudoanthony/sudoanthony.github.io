@@ -88,7 +88,7 @@
   const latest = sorted[0];
 
   const platClass = p => /hack.?the.?box|htb/i.test(p || '') ? 'htb' : /mobile/i.test(p || '') ? 'mobile' : 'thm';
-  const diffClass = d => ({"very easy":"very-easy",easy:'easy',medium:'medium',hard:'hard',insane:'insane'}[(d||'').toLowerCase()] || 'medium');
+  const diffClass = d => ({"very easy":"very-easy",easy:'easy',medium:'medium',hard:'hard',insane:'insane',practice:'practice'}[(d||'').toLowerCase()] || 'medium');
   const teamClass = t => (t||'').toLowerCase()==='blue' ? 'blue-team' : 'red-team';
   const teamLabel = t => (t||'').toLowerCase()==='blue' ? 'blue team' : 'red team';
 
@@ -99,7 +99,7 @@
         '<div class="desc">' + latest.summary + '</div>' +
         '<div class="row">' +
           '<span class="badge ' + platClass(latest.platform) + '">' + latest.platform + '</span>' +
-          '<span class="badge ' + diffClass(latest.difficulty) + '">' + latest.difficulty + '</span>' +
+          (latest.difficulty ? '<span class="badge ' + diffClass(latest.difficulty) + '">' + latest.difficulty + '</span>' : '') +
           '<span class="badge ' + teamClass(latest.team) + '">' + teamLabel(latest.team) + '</span>' +
           '<span style="font-family:var(--mono);font-size:11.5px;color:var(--text-4);margin-left:auto">' + latest.date + '</span>' +
         '</div>' +

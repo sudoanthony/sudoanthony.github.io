@@ -44,7 +44,7 @@
 <script src="data.js"></script>
 <script>
   const platClass = p => /hack.?the.?box|htb/i.test(p || "") ? "htb" : /mobile/i.test(p || "") ? "mobile" : "thm";
-  const diffClass = d => ({"very easy":"very-easy",easy:"easy",medium:"medium",hard:"hard",insane:"insane"}[(d||"").toLowerCase()] || "medium");
+  const diffClass = d => ({"very easy":"very-easy",easy:"easy",medium:"medium",hard:"hard",insane:"insane",practice:"practice"}[(d||"").toLowerCase()] || "medium");
   const esc = s => (s||"").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");
 
   // small inline OS glyphs (no external font needed)
@@ -76,8 +76,8 @@
   function boxCard(w) {
     const dc = diffClass(w.difficulty);
     const osPart = w.os ? osIcon(w.os) + esc(w.os) : "";
-    const sub = '<span class="d-' + dc + '">' + esc(w.difficulty) + '</span> &middot; ' +
-                osPart + (w.category ? ' &middot; ' + esc(w.category) : '');
+    const diffPart = w.difficulty ? '<span class="d-' + dc + '">' + esc(w.difficulty) + '</span>' : '';
+    const sub = [diffPart, osPart, (w.category ? esc(w.category) : '')].filter(Boolean).join(' &middot; ');
     return '<a class="bx ' + platClass(w.platform) + '" href="' + w.url + '">' +
       '<div class="face">' + iconHtml(w) +
         '<div class="nm">' + esc(w.title) + '</div>' +

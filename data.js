@@ -27,7 +27,7 @@ const WRITEUPS = [
     url:        "writeup-allsafe.html",
     platform:   "Mobile",
     team:       "red",
-    difficulty: "Medium",
+    difficulty: "Practice",
     os:         "Android",
     category:   "App Pentest",
     icon:       "images/icons/allsafe.png",
