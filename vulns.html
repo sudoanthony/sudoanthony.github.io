@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Vulnerability index — Anthony</title>
+<title>Vulnerability index - Anthony</title>
 <meta name="description" content="Every technique used across all writeups, grouped and cross-linked.">
 <link rel="stylesheet" href="style.css">
 <style>
@@ -84,7 +84,7 @@
       const uses = v.uses.map(u =>
         '<div class="use"><span class="arrow">→</span> ' +
           '<a href="' + u.url + '">' + u.writeup + '</a> ' +
-          '<span class="ctx">— ' + u.ctx + '</span></div>').join('');
+          '<span class="ctx">- ' + u.ctx + '</span></div>').join('');
       return '<div class="vuln" id="' + v.id + '">' +
         '<div class="head">' + nameHtml + ext +
           '<span class="id">· ' + count + '</span>' + dive + '</div>' +

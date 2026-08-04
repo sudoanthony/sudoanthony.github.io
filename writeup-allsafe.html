@@ -3,9 +3,29 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>AllSafe - Android mobile app writeup</title>
-<meta name="description" content="Android application penetration test of Allsafe, worked chapter by chapter through the OWASP MASVS and MASTG: static analysis, traffic, storage, crypto, auth, platform IPC, injection, and reverse engineering.">
+<title>OWASP Mobile Top 10 (2024) - Android pentest methodology</title>
+<meta name="description" content="A hands-on Android mobile penetration testing methodology walked through the OWASP Mobile Top 10 (2024) and MASVS/MASTG, using the intentionally vulnerable apps AllSafe and InsecureBankv2 as live examples: static analysis, traffic and cert pinning, storage, crypto, auth, platform IPC, injection, and reverse engineering.">
 <link rel="stylesheet" href="style.css">
+<style>
+  /* Sub-section headers (Concept, Case 1/2/3, Report...): violet + a divider so
+     sections are easy to tell apart. Scoped to this page only. */
+  .writeup-gold h3 {
+    color: var(--mobile);
+    font-size: 20px;
+    margin-top: 40px;
+    padding-top: 13px;
+    border-top: 1px solid var(--border);
+  }
+  /* Bypass Option sub-headers: a lighter purple than the Case headers, no divider. */
+  .writeup-gold h4.bypass {
+    color: #c7b8fb;
+    font-size: 17px;
+    font-weight: 600;
+    margin: 28px 0 6px;
+  }
+  /* OWASP Mobile Top 10 risk IDs and MASVS/MASTG tags in a soft pink. */
+  .risk { color: #ff9aae; font-weight: 600; }
+</style>
 </head>
 <body>
 
@@ -25,18 +45,21 @@
   <!-- SHELL / TEMPLATE. Findings use .finding tables; redact secrets where needed.
        The left table of contents builds itself from the h2 headings via writeup-toc.js. -->
 
-  <h1>AllSafe</h1>
+  <h1>OWASP Mobile Top 10: Android Methodology</h1>
+  <p>A hands-on mobile penetration testing walkthrough, mapped to the OWASP Mobile Top 10 (2024)
+  and MASVS/MASTG, demonstrated through the intentionally vulnerable apps
+  <strong>AllSafe</strong> and <strong>InsecureBankv2</strong>.</p>
 
   <div class="meta">
     <span class="badge mobile">Mobile</span>
     <span class="badge practice">Practice</span>
     <span class="badge red-team">red team</span>
     <span class="sep">|</span>
-    <span>Android &middot; Allsafe (infosecadventures.allsafe) &middot; Windows</span>
+    <span>Android &middot; AllSafe + InsecureBankv2 + AndroGoat &middot; Windows</span>
   </div>
   <hr>
   <!-- ==================== What is AllSafe? ==================== -->
-  <h2>What is AllSafe?</h2>
+  <h2>What is AllSafe, InsecureBankv2, and AndroGoat?</h2>
   <p>AllSafe is an open-source, intentionally vulnerable Android application by Info Sec Adventures.
   Each screen is a self-contained challenge covering a common mobile bug class, which makes it a safe
   and legal target for practicing static and dynamic analysis without touching anyone else's app.</p>
@@ -47,9 +70,20 @@
   </div>
   <figcaption>AllSafe app icon and menu as seen in a Pixel 5 emulator via Android Studio.</figcaption>
 
+  <p>AllSafe is the <strong>primary target</strong> of this guide, but documenting a clean example of every
+  OWASP Mobile Top 10 (2024) risk takes more than one app, so two others help out.
+  <strong>InsecureBankv2</strong> ships a real backend, which lets us show what AllSafe can't: cleartext
+  credentials on the wire and a server that trusts client-supplied data (M5, M4).
+  <strong>AndroGoat</strong> ships a correctly implemented certificate-pinning screen, so we can practice
+  the real pinning bypasses (objection, Frida) against a pin that actually fights back. AllSafe is the
+  spine; the other two fill the gaps where an example needs a live backend or a working control.</p>
+
   <!-- ==================== Objective ==================== -->
   <h2>Objective</h2>
-  <p>The purpose of this write-up is to map all bugs we find in AllSafe to the MASVS Control Groups.</p>
+  <p>This write-up is a <strong>methodology guide</strong>: a repeatable process for testing an Android
+  app, walked through the <strong>OWASP Mobile Top 10 (2024)</strong> and mapped to the MASVS control
+  groups. AllSafe, InsecureBankv2, and AndroGoat are the live examples, but the aim is the <em>method</em>,
+  something I (and anyone starting mobile pentesting) can reuse on the next app.</p>
   <p>The standard is divided into various groups of controls, labeled MASVS-XXXXX, that represent the
   most critical areas of the mobile attack surface:</p>
   <ul>
@@ -72,7 +106,7 @@
   <h2>Methodology</h2>
   <p>Each chapter becomes a theme, mapped to its MASVS group and the OWASP Mobile Top 10 (2024):</p>
   <ul>
-    <li><strong>Recon &amp; Static Analysis</strong> will cover hardcoded secrets, insecure logging, exported components, and risky manifest flags (MASVS-CODE, MASVS-PRIVACY; M2, M8).</li>
+    <li><strong>Recon &amp; Static Analysis</strong> will cover hardcoded secrets, insecure logging, exported components, and risky manifest flags (MASVS-CODE, MASVS-PRIVACY; M2, M6, M8).</li>
     <li><strong>Traffic &amp; Cert Pinning</strong> will cover cleartext traffic, TLS interception, and certificate-pinning bypass (MASVS-NETWORK; M5).</li>
     <li><strong>Insecure Data Storage</strong> will cover SharedPreferences, SQLite, and files left in the clear (MASVS-STORAGE; M9).</li>
     <li><strong>Broken Cryptography</strong> will cover weak algorithms, hardcoded keys and IVs, ECB, and custom crypto (MASVS-CRYPTO; M10).</li>
@@ -91,7 +125,10 @@
     <li><a href="tools.html#apktool">apktool</a> (decode the manifest and resources)</li>
     <li><a href="tools.html#burp">Burp Suite Community Edition</a> (intercepting proxy)</li>
     <li><a href="tools.html#mobsf">MobSF</a> (automated static analysis)</li>
-    <li><a href="https://wanderingbytes.github.io/mobile-pentest-handbook/">The Mobile Pentesting Walkthrough</a> (the handbook this follows)</li>
+    <li><a href="tools.html#frida">Frida</a> (dynamic instrumentation - runtime hooking and pinning bypass)</li>
+    <li><a href="tools.html#objection">objection</a> (Frida-powered toolkit - one-command pinning bypass)</li>
+    <li><a href="tools.html#androgoat">AndroGoat</a> &amp; <a href="tools.html#insecurebankv2">InsecureBankv2</a> (extra vulnerable practice apps used in this section)</li>
+    <li><a href="tools.html#wsl">WSL</a> (Windows Subsystem for Linux - runs the InsecureBankv2 backend)</li>
     <li><a href="https://mas.owasp.org/">OWASP MASVS &amp; MASTG</a> (the standard we map findings to)</li>
   </ul>
 
@@ -99,7 +136,7 @@
 
   <!-- ==================== 01 - Recon & Static Analysis ==================== -->
   <h2><span class="num">01</span>Recon &amp; Static Analysis</h2>
-  <p class="secmeta">MASVS: CODE, PRIVACY &nbsp;&middot;&nbsp; Mobile Top 10: M2, M8 &nbsp;&middot;&nbsp; Handbook ch.2</p>
+  <p class="secmeta">MASVS: CODE, PRIVACY &nbsp;&middot;&nbsp; Mobile Top 10: M2, M6, M8</p>
 
   <p>AllSafe is a stand-in for real apps we would check in the real world. In a real engagement,
   usually we will get:</p>
@@ -279,10 +316,18 @@
     <tr><th>Description</th><td><code>DeepLinkTask.onCreate</code> logs the full incoming URI (query string included) with <code>Log.d("ALLSAFE", "... Data: " + data)</code>.</td></tr>
     <tr><th>Impact</th><td>logcat is readable over USB/<code>adb logcat</code> and, on older Android, by apps with <code>READ_LOGS</code>. Any token or PII routed through the deep link would leak.</td></tr>
     <tr><th>Evidence</th><td><code>infosecadventures.allsafe.challenges.DeepLinkTask.onCreate()</code> &rarr; <code>Log.d("ALLSAFE", "... Data: " + data)</code>; observe with <code>adb logcat -s ALLSAFE</code>.</td></tr>
-    <tr><th>MASVS / CWE</th><td>MASVS-STORAGE &middot; CWE-532</td></tr>
-    <tr><th>Mobile Top 10</th><td>M9 &middot; M8</td></tr>
+    <tr><th>MASVS / CWE</th><td>MASVS-STORAGE / MASVS-PRIVACY &middot; CWE-532</td></tr>
+    <tr><th>Mobile Top 10</th><td>M6 &middot; M9</td></tr>
     <tr><th>Remediation</th><td>Never log request URIs or user data; strip debug logging from release builds.</td></tr>
   </table>
+
+  <div class="note">
+    <span class="lbl">On M6 scope</span>
+    M6 (Inadequate Privacy Controls) is a broad category. In this guide we cover it through this insecure
+    logging leak, where the deep-link URI and any PII it carries end up in logcat. Its wider surface - PII
+    collection, over-permissioning, and third-party data sharing - is something we may explore in future
+    cases as we encounter them.
+  </div>
 
   <table class="finding">
     <tr><th>Title</th><td>Insecure build and backup configuration</td></tr>
@@ -306,28 +351,333 @@
 
   <!-- ==================== 02 - Traffic Interception & Cert Pinning ==================== -->
   <h2><span class="num">02</span>Traffic Interception &amp; Cert Pinning</h2>
-  <p class="secmeta">MASVS: NETWORK &nbsp;&middot;&nbsp; Mobile Top 10: M5 &nbsp;&middot;&nbsp; Handbook ch.3</p>
+  <p class="secmeta">MASVS: NETWORK &nbsp;&middot;&nbsp; Mobile Top 10: M5</p>
 
-  <p>[ Burp CA setup, proxy config, whether HTTPS decrypts, any pinning and how it was bypassed. ]</p>
+  <p>For this section we focus on traffic interception and certificate pinning. While this guide is mainly
+  built around AllSafe, we also bring in <strong>AndroGoat</strong> and <strong>InsecureBankv2</strong>
+  for their use cases in this scenario. Plus, it doesn't hurt to have more examples of vulnerabilities, no?</p>
 
-  <div class="shot-todo">SCREENSHOT - Burp decrypting app traffic</div>
+  <div class="note">
+    <span class="lbl">Android focus</span>
+    This guide focuses on Android. An iOS write-up (the IPA/Mach-O, ATS, Keychain, and the iOS equivalents
+    of these techniques) may follow in the future.
+  </div>
+
+  <p>Almost every mobile app is a thin client wrapped around HTTP(S) APIs. The login screen, the account
+  list, the "transfer money" button - they all become requests to a backend. If we can read and rewrite
+  those requests, the mobile pentest essentially becomes a web pentest with a different toolset.</p>
+
+  <p>For this section we grab that view: first by sitting in the middle of plain TLS, then by beating
+  certificate pinning, the wall that makes traffic vanish the moment we point a proxy at it. Since these
+  are safe apps we control, we aren't performing an active attack, but keep that in mind when testing real
+  apps of your own.</p>
+
+  <h3>Concept - the MITM proxy</h3>
+  <p>When the app makes an HTTPS call, two things happen: a <strong>TLS handshake</strong>, then
+  <strong>encrypted bytes</strong> start flowing. Our Burp man-in-the-middle (MITM) proxy breaks that
+  single call into two separate TLS sessions - <code>Device &harr; Proxy</code> and
+  <code>Proxy &harr; Server</code>. The proxy presents a certificate signed by its own CA, so to the app
+  the connection looks legit and it accepts it. That makes the whole game two moves:</p>
+  <ol>
+    <li><strong>Make the device trust the proxy CA.</strong> Install Burp's CA certificate and generic
+    HTTPS decrypts.</li>
+    <li><strong>Make the app accept that trust.</strong> Certificate pinning fights us here. A pinned app
+    ignores the device trust store entirely and checks the server certificate against a copy it ships
+    <em>inside the binary</em>. Our proxy CA isn't that copy, so the handshake fails and we see nothing.</li>
+  </ol>
+  <p>Once traffic is decrypted we can read credentials and session tokens off the wire, spot data sent
+  over cleartext <code>http://</code>, change an account number and replay, or fuzz parameters. Every
+  web/API technique applies from that point on; the mobile-specific skill is used only for that initial
+  decryption step.</p>
+
+  <div class="note warn">
+    <span class="lbl">Pinning is a feature, not a bug in your setup</span>
+    The most common beginner mistake is to see "app shows a network error / no requests in Burp" and
+    assume the proxy is misconfigured. Confirm the proxy first: open the device browser and load a site.
+    If that decrypts but the app doesn't, the proxy is fine and you've hit pinning. That distinction is
+    what this whole section is about.
+  </div>
+
+  <h3>The Burp Suite workflow</h3>
+  <ul>
+    <li><strong>HTTP history</strong> - the passive record of every request. Where we read creds, tokens, and cleartext.</li>
+    <li><strong>Intercept</strong> - pause a request in flight and edit it before it forwards. Live tampering.</li>
+    <li><strong>Repeater</strong> - replay and hand-edit a single request over and over. The core of API testing.</li>
+    <li><strong>Intruder</strong> - automate fuzzing a parameter across a wordlist.</li>
+    <li><strong>Match and replace</strong> - auto-rewrite a header or body on every request (force an <code>Authorization</code> header, strip a client-side flag).</li>
+    <li><strong>Target scope</strong> - add only our app's hosts so we aren't buried in OS noise, then filter history to in-scope only.</li>
+  </ul>
+
+  <h3 id="case1">Case 1 - No pinning: read and tamper</h3>
+  <p>Here we use <strong>InsecureBankv2</strong> to show how easily we can read and tamper traffic when
+  certificate pinning is not present.</p>
+
+  <p><strong>Reading.</strong> With InsecureBankv2 set up and pointed at its backend, we log in with
+  <code>dinesh</code> / <code>Dinesh@123$</code>.</p>
+  <figure><img src="images/AllSafe/insecurebank1.png" alt="InsecureBankv2 login screen"><figcaption>Logging in to InsecureBankv2.</figcaption></figure>
+  <figure><img src="images/AllSafe/insecurebank2.png" alt="login credentials in cleartext in Burp HTTP history"><figcaption>The username and password sent over cleartext, visible in Burp's HTTP history.</figcaption></figure>
+  <p>Checking Burp's HTTP history, we see those username and password credentials sent in cleartext. With
+  no pinning in the way, reading is trivial.</p>
+
+  <p><strong>Tampering.</strong> Go to Transfer and tap <strong>Get Accounts</strong>, which pulls the real
+  account numbers from the InsecureBankv2 database. Turn <strong>Intercept</strong> on in Burp Proxy, enter
+  an amount (<code>50000</code>), and hit Transfer. We send that captured request to Repeater, where we can
+  freely change anything - the account numbers or the amount. We change <code>50000</code> to
+  <code>20000</code>, hit <strong>Send</strong>, and:</p>
+  <figure><img src="images/AllSafe/insecurebank3.png" alt="server confirms the tampered transfer amount"><figcaption>The server confirms the tampered amount as a successful transfer.</figcaption></figure>
+  <p>Despite the app originally sending <code>50000</code>, the server accepted our tampered
+  <code>20000</code> and reported the transfer as successful. The app trusts client-supplied values it
+  should be validating server-side.</p>
+  <div class="note">
+    <span class="lbl">Note</span>
+    That same request also carries the username and password in cleartext on <em>every</em> transfer, not
+    just at login - another problem worth adding to the report.
+  </div>
+
+  <h3 id="case2">Case 2 - When the user CA isn't trusted (NSC)</h3>
+  <p><strong>API 23 and below (Android 6 and older).</strong> These apps trust user certs by default, so we
+  just install our CA and we're set.</p>
+  <figure><img src="images/AllSafe/step2a.png" alt="PortSwigger CA in the Android system trust store"><figcaption>In the Android device under Settings &rarr; Security &rarr; Encryption &amp; credentials &rarr; Trusted credentials &rarr; System tab.</figcaption></figure>
+  <p>The picture above shows the certificate hash we placed in
+  <code>/system/etc/security/cacerts/</code>. On the right, the Android device shows that same PortSwigger
+  certificate we exported from Burp Suite, which makes us trusted to the app.</p>
+
+  <p><strong>API 24 and above (Android 7+).</strong> These apps only trust the system CA store by default.
+  They ignore user-installed certs unless the app ships an NSC (Network Security Config) that explicitly
+  opts in with <code>&lt;certificates src=&quot;user&quot;/&gt;</code>. Most apps do <em>not</em> opt in, because
+  trusting user certs is the insecure choice, so our exported Burp certificate is invisible to the app. In
+  that case we promote the CA into the system store (which needs <code>root</code>), and then app HTTPS
+  decrypts.</p>
+
+  <div class="note insight">
+    <span class="lbl">Important nuance - it's the app's targetSdk, not the device</span>
+    This user-CA behavior keys off the <strong>app's <code>targetSdkVersion</code></strong>, not the
+    device's Android version. An app targeting API 23 still trusts user certs even on an Android 14 phone.
+    So when deciding "do I need Case 2," check the <em>app's</em> targetSdk, not just the OS.
+  </div>
+
+  <p><strong>Diagnosis flowchart:</strong></p>
+  <ol>
+    <li>Browser decrypts too? No &rarr; the proxy is broken (a setup problem).</li>
+    <li>Browser decrypts but the app doesn't, and pushing your CA to the system store fixes it &rarr; that
+    was Case 2.</li>
+    <li>App still blocks even with the CA in the system store &rarr; that is Case 3, pinning (a stronger
+    check that ignores the trust store entirely).</li>
+  </ol>
+  <div class="note">
+    <span class="lbl">Set-up guide coming later</span>
+    For an in-depth install and set-up guide, I plan a future write-up covering Windows and Linux. For now,
+    this write-up focuses on pentesting methodology and examples of the OWASP Mobile Top 10 (2024). Stay
+    tuned.
+  </div>
+
+  <h3 id="case3">Case 3 - Certificate pinning</h3>
+  <p>A pinned app loads fine in the device browser, but in the app every HTTPS call fails with a generic
+  "network error" / "can't connect," and Burp logs a TLS alert (handshake failure / unknown CA) instead of
+  a decrypted flow. That asymmetry is the signature of pinning. (See the
+  <a href="android.html#pinning">certificate pinning concept</a>.) In Case 3, we have several methods for
+  bypassing certificate pinning, listed below in order from easiest to most difficult:</p>
+  <figure><img src="images/AllSafe/androgoat1.png" alt="AndroGoat main screen"><figcaption>AndroGoat, our target for the pinning bypasses.</figcaption></figure>
+
+  <h4 class="bypass">Bypass Option 1 - objection</h4>
+  <p>Under Network Intercepting we see several options.</p>
+  <figure><img src="images/AllSafe/androgoat2.png" alt="AndroGoat Network Intercepting options"><figcaption>The Network Intercepting screen: HTTP, HTTPS, and two Certificate Pinning options.</figcaption></figure>
+  <p>Let's choose <strong>Certificate Pinning - OkHttp3</strong> and... nothing happens. Intercept is on in
+  Burp, but nothing shows up. When we tap <code>HTTP</code> and <code>HTTPS</code> we get responses from
+  <code>demo.testfire.net</code> and <code>owasp.org</code>, but nothing for either certificate pinning
+  button.</p>
+  <figure><img src="images/AllSafe/androgoat3.png" alt="HTTP and HTTPS decrypt but pinning buttons return nothing"><figcaption>HTTP and HTTPS decrypt, but the pinning buttons return nothing - the signature of working pinning.</figcaption></figure>
+  <p>As we covered above, this is the classic sign that certificate pinning <em>is</em> working - which is
+  perfect, because now we can try objection:</p>
+  <pre><code>objection -g owasp.sat.agoat explore
+# at the objection prompt:
+android sslpinning disable</code></pre>
+  <p>(<code>-g</code> takes the package name; use the one you confirmed with <code>pm list packages</code>.)
+  Re-trigger the request in the app and it should now decrypt in the proxy.</p>
+
+  <h4 class="bypass">Bypass Option 2 - Frida + frida-multiple-unpinning</h4>
+  <p>Since objection's hook is generic
+  and may miss, the community CodeShare script <code>frida-multiple-unpinning</code> (by httptoolkit /
+  akabe1) hooks a long list of pinning APIs at once. It's a single-purpose script built for unpinning;
+  objection is a Swiss-army knife where unpinning is just one blade.</p>
+  <pre><code>frida -U -f owasp.sat.agoat --codeshare akabe1/frida-multiple-unpinning</code></pre>
+  <figure><img src="images/AllSafe/fridaunpin1.png" alt="Frida running the multiple-unpinning script"><figcaption>Frida when the unpinning script runs successfully.</figcaption></figure>
+  <p>Back in AndroGoat, we try the same links again:</p>
+  <figure><img src="images/AllSafe/fridaunpin2.png" alt="all four requests decrypted with the Frida hook active"><figcaption>Left: the four requests matching each button, in order. Middle: the app. Right: the Frida terminal showing the TrustManager and OkHTTPv3 bypasses.</figcaption></figure>
+  <p>This time all four buttons - <code>HTTP</code>, <code>HTTPS</code>, and both
+  <code>Certificate Pinning - OkHttp3</code> and <code>Certificate Pinning - Native</code> - show us the
+  decrypted HTTPS traffic.</p>
+  <div class="note">
+    <span class="lbl">Note</span>
+    Depending on your installed Frida version and the version bundled inside objection, the two may not be
+    able to talk to each other when you try to run objection. That's another scenario where Option 2 is the
+    move.
+  </div>
+
+  <h4 class="bypass">Bypass Option 3 - hook the specific class</h4>
+  <p>The generic scripts cover OkHttp, the
+  default <code>TrustManager</code>, and friends, but a custom or obfuscated implementation can slip past.
+  For this method we stop the Frida command from Option 2 and target the class directly. Back in
+  <code>jadx</code>, we look inside the code, identify the exact framework giving us trouble, and hook it
+  precisely. In any decompiled app, you hunt for the method that validates the server certificate and
+  throws on a mismatch.</p>
+  <figure><img src="images/AllSafe/androjadx1.png" alt="CertificatePinner class in jadx"><figcaption>Finding the pinning class in jadx.</figcaption></figure>
+  <ul>
+    <li><strong>Known class names:</strong> <code>CertificatePinner</code> (OkHttp), <code>X509TrustManager</code> / <code>TrustManager</code>, <code>HostnameVerifier</code>, <code>TrustKit</code>, or the literal word <code>pinning</code>.</li>
+    <li><strong>Telltale method names:</strong> <code>check</code>, <code>checkServerTrusted</code>, <code>verify</code>, <code>checkTrusted</code>.</li>
+    <li><strong>The exception it throws:</strong> <code>SSLPeerUnverifiedException</code> or <code>CertificateException</code>. Find the method that throws one of those on a cert mismatch and we've found the pin.</li>
+  </ul>
+  <p>For an OkHttp app like AndroGoat that method is <code>okhttp3.CertificatePinner.check()</code>; for a
+  custom implementation it's whatever class jadx reveals doing the same job. The method that throws is the
+  constant you search for, not the class name. We then neutralize it with a small Frida script that
+  replaces every overload of <code>check()</code> with a no-op:</p>
+  <pre><code>Java.perform(function () {
+    var CertificatePinner = Java.use('okhttp3.CertificatePinner');
+    CertificatePinner.check.overloads.forEach(function (overload) {
+        overload.implementation = function () {
+            console.log('[+] okhttp3.CertificatePinner.check() bypassed');
+            return;   // return without throwing = the pin passes
+        };
+    });
+});</code></pre>
+
+  <h4 class="bypass">Bypass Option 4 - Flutter (proxy fails even with no pinning)</h4>
+  <p>Flutter apps bundle
+  their own TLS stack (BoringSSL inside <code>libflutter.so</code>) and ignore the system trust store, so
+  traffic won't proxy at all and route-via-proxy alone shows nothing. This <em>looks</em> like pinning, but
+  it's the runtime never consulting our CA. The bypass is to patch the native verify function:
+  <strong>reFlutter</strong> repackages the APK to route through our proxy and disable verification, or a
+  Frida script patches <code>ssl_verify_cert_chain</code> /
+  <code>ssl_crypto_x509_session_verify_cert_chain</code> in <code>libflutter.so</code> (by scanning for the
+  function's byte pattern) to force it to return success. This is an advanced technique we reach for only
+  once we confirm a Flutter target, so we'll cover it in depth later.</p>
+
+  <h3>Finding an M5 flaw in an unexpected way in AllSafe</h3>
+  <p>One AllSafe result deserves its own walk-through, because it looks like a setup fluke but is actually
+  a vulnerability. AllSafe includes a Certificate Pinning challenge, so we point Burp at it.</p>
+  <figure><img src="images/AllSafe/allsafecertpin1.png" alt="AllSafe Certificate Pinning challenge screen"><figcaption>The Certificate Pinning challenge in AllSafe.</figcaption></figure>
+  <p>But something interesting happens the moment we tap "Send Request":</p>
+  <figure><img src="images/AllSafe/allsafecertpin2.png" alt="the request already decrypted in Burp HTTP history"><figcaption>The HTTPS traffic is already decrypted and readable in Burp.</figcaption></figure>
+  <p>The HTTPS traffic is already decrypted and we can read it, which means no certificate pinning is
+  effectively taking place. Have we somehow already bypassed it? Normally you would reach for a tool like
+  Frida or objection to defeat pinning, but our set-up has already neutralized it. That is not luck - we
+  may have found an even more severe M5 vulnerability.</p>
+
+  <p><strong>So what happened?</strong> Let's read the challenge code at
+  <code>infosecadventures.allsafe.challenges.CertificatePinning</code>.</p>
+  <figure><img src="images/AllSafe/allsafecertpin3.png" alt="the INVALID_HASH constant in the CertificatePinning class"><figcaption>The pinning class, starting with a placeholder hash.</figcaption></figure>
+
+  <p><strong>a) A pin that can never match.</strong> The class defines a deliberately invalid fingerprint:</p>
+  <pre><code>private static final String INVALID_HASH = "sha256/AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=";</code></pre>
+
+  <figure><img src="images/AllSafe/allsafecertpin4.png" alt="extractPeerCertificateChain deliberately failing a pinned request"><figcaption>A request pinned to the invalid hash, made to fail on purpose.</figcaption></figure>
+  <p><strong>b) It fails a request on purpose to see the real cert.</strong> On screen load,
+  <code>extractPeerCertificateChain()</code> builds a client pinned to that invalid hash and fires a
+  request that is guaranteed to fail:</p>
+  <pre><code>private void extractPeerCertificateChain() {
+    OkHttpClient okHttpClient = new OkHttpClient.Builder()
+        .certificatePinner(new CertificatePinner.Builder()
+            .add("httpbin.io", INVALID_HASH).build())   // a pin that can never match
+        .build();
+    Request request = new Request.Builder().url("https://httpbin.io/json").build();
+    okHttpClient.newCall(request).enqueue(new AnonymousClass2());   // fails on purpose
+}</code></pre>
+
+  <p><strong>c) It scrapes the real cert hashes out of the failure</strong>
+  (<code>AnonymousClass2.onFailure</code>). When a pin does not match, OkHttp throws an error whose message
+  lists the real peer-certificate fingerprints it just saw. The code reads them out of that text:</p>
+  <pre><code>String[] lines = message.split(System.getProperty("line.separator"));
+for (String line : lines) {
+    if (!line.trim().equals(INVALID_HASH) &amp;&amp; line.trim().startsWith("sha256")) {
+        String pin = line.trim().split(":")[0].trim();
+        this.hashes.add(pin);          // stores whatever cert was actually on the wire
+    }
+}</code></pre>
+
+  <p><strong>d) It pins to those harvested hashes</strong> (button handler,
+  <code>lambda$onCreateView$0</code>). When we tap the button, the "real" check is built from the
+  fingerprints it just collected:</p>
+  <pre><code>CertificatePinner.Builder certificatePinner = new CertificatePinner.Builder();
+for (String hash : this.hashes) {
+    certificatePinner.add("httpbin.io", hash);   // pins to the cert it just observed
+}
+OkHttpClient okHttpClient = new OkHttpClient.Builder()
+    .certificatePinner(certificatePinner.build()).build();</code></pre>
+
+  <p><strong>Why it auto-bypassed.</strong> A correct pin is a <strong>fixed</strong> fingerprint of the
+  genuine server, compiled into the app, so any certificate that isn't the real server's fails. AllSafe
+  never hardcodes one. Instead it snaps a fingerprint of whatever certificate is on the wire at connect
+  time, then pins to that. With Burp trusted and in the middle, the certificate it observes is
+  <em>Burp's</em>, so it harvests Burp's fingerprint and pins to Burp. When the real request runs, Burp's
+  cert matches the Burp-derived pin, the check passes, and the traffic decrypts. Nothing to bypass - the
+  control validates the man-in-the-middle against itself.</p>
+
+  <div class="note insight">
+    <span class="lbl">Is this Case 2, or something else?</span>
+    A fair question: did our own trusted CA fix this, the way it does in <a href="#case2">Case 2</a> above?
+    No. Case 2 is a <em>trust</em> problem - the app refuses a user cert, and promoting it to the system
+    store fixes it. Here our CA was already trusted, and a <em>correctly</em> pinned app would still have
+    blocked us, because pinning ignores the trust store entirely. So this belongs to <a href="#case3">Case
+    3 (certificate pinning)</a>, but as the anomaly: the pin is derived from the live connection, so it
+    accepts Burp automatically. It doesn't fall under any of the four bypass options either, because
+    <strong>no bypass was needed</strong>. That is what makes it worse than ordinary missing pinning - the
+    control is present but inert by design.
+  </div>
+
+  <h3>So what did we find in Traffic Interception &amp; Cert Pinning?</h3>
+  <p>The findings from this section, written up as report entries. Severities are calibrated to what each
+  issue actually authorizes: a control that only helps an attacker who already owns the device isn't
+  "critical," no matter how satisfying the bypass was.</p>
 
   <table class="finding">
-    <tr><th>Title</th><td>[ finding name ]</td></tr>
-    <tr><th>Severity</th><td>[ ... ]</td></tr>
-    <tr><th>Description</th><td>[ ... ]</td></tr>
-    <tr><th>Impact</th><td>[ ... ]</td></tr>
-    <tr><th>Evidence</th><td>[ ... ]</td></tr>
-    <tr><th>MASTG</th><td>[ ... ]</td></tr>
-    <tr><th>Mobile Top 10</th><td>[ ... ]</td></tr>
-    <tr><th>Remediation</th><td>[ ... ]</td></tr>
+    <tr><th>Title</th><td>Cleartext transmission of credentials (InsecureBankv2)</td></tr>
+    <tr><th>Severity</th><td><strong>High</strong>. Credentials travel in the clear at login and on every transfer, so anyone on the network path reads them with no tooling and no pinning to defeat.</td></tr>
+    <tr><th>Description</th><td>InsecureBankv2 sends the username and password over the network without effective transport protection. They are readable in Burp's HTTP history at login and again in the body of every <code>/dotransfer</code> request.</td></tr>
+    <tr><th>Impact</th><td>A network attacker captures working credentials directly, with no MITM certificate trickery or pinning bypass required.</td></tr>
+    <tr><th>Evidence</th><td>The login POST and every <code>/dotransfer</code> body contain <code>username=...&amp;password=...</code> in readable cleartext.</td></tr>
+    <tr><th>MASVS / CWE</th><td>MASVS-NETWORK-1 &middot; MASTG "Testing Data Encryption on the Network" &middot; CWE-319</td></tr>
+    <tr><th>Mobile Top 10</th><td>M5 - Insecure Communication</td></tr>
+    <tr><th>Remediation</th><td>Serve every endpoint over TLS; never transmit credentials in the clear; on Android set <code>cleartextTrafficPermitted="false"</code> in the Network Security Config.</td></tr>
+  </table>
+
+  <table class="finding">
+    <tr><th>Title</th><td>Server trusts client-supplied transfer parameters (InsecureBankv2)</td></tr>
+    <tr><th>Severity</th><td><strong>High</strong>. Account numbers and amount are honored without server-side validation, so a tampered request moves money as instructed.</td></tr>
+    <tr><th>Description</th><td>The <code>/dotransfer</code> request carries <code>from_acc</code>, <code>to_acc</code>, and <code>amount</code> entirely from the client. Editing them in Repeater and replaying makes the server process the tampered values.</td></tr>
+    <tr><th>Impact</th><td>An attacker can change the amount and the source and destination accounts, enabling unauthorized transfers.</td></tr>
+    <tr><th>Evidence</th><td>The app sent <code>amount=50000</code>; a Repeater replay with <code>amount=20000</code> returned a successful transfer for the tampered value.</td></tr>
+    <tr><th>MASVS / CWE</th><td>MASVS-CODE &middot; CWE-602 (client-side enforcement of server-side security)</td></tr>
+    <tr><th>Mobile Top 10</th><td>M4 - Insufficient Input/Output Validation</td></tr>
+    <tr><th>Remediation</th><td>Validate and authorize every transfer parameter server-side; bind the source account to the authenticated session; never trust a client-supplied amount or account.</td></tr>
+  </table>
+
+  <table class="finding">
+    <tr><th>Title</th><td>Ineffective certificate pinning, runtime-derived pin (AllSafe)</td></tr>
+    <tr><th>Severity</th><td><strong>Low to Medium</strong>. Defense-in-depth: exploiting it still needs an on-path position plus a CA already trusted on the device, so it is not remotely exploitable on its own.</td></tr>
+    <tr><th>Description</th><td>The Certificate Pinning challenge derives its pins at runtime from the observed peer-certificate chain (it forces an OkHttp pin failure to harvest the real hashes, then pins to them) instead of using a fixed, build-time pin.</td></tr>
+    <tr><th>Impact</th><td>Because the pin is taken from whatever certificate is on the wire, a trusted MITM (our Burp CA) is pinned-to automatically. The control gives no assurance of server identity and adds nothing over default TLS; traffic decrypts with no Frida/objection bypass.</td></tr>
+    <tr><th>Evidence</th><td><code>infosecadventures.allsafe.challenges.CertificatePinning</code>: <code>extractPeerCertificateChain()</code> pins to <code>INVALID_HASH</code> to force a failure, <code>AnonymousClass2.onFailure</code> scrapes the real hashes into <code>hashes</code>, and the button handler pins to those harvested values.</td></tr>
+    <tr><th>MASVS / MASTG</th><td>MASVS-NETWORK-2 &middot; MASTG endpoint-identity / certificate-pinning tests</td></tr>
+    <tr><th>Mobile Top 10</th><td>M5 - Insecure Communication</td></tr>
+    <tr><th>Remediation</th><td>Pin to a fixed, build-time value (the real server's leaf or CA public-key hash), with backup pins for rotation. Never derive the pin from the live connection.</td></tr>
+  </table>
+
+  <table class="finding">
+    <tr><th>Title</th><td>Certificate pinning bypassable via runtime instrumentation (AndroGoat)</td></tr>
+    <tr><th>Severity</th><td><strong>Informational to Low</strong>. Pinning is correctly implemented and blocks a trusted proxy; defeating it needs a rooted device plus a Frida/objection hook, so it is not remotely exploitable.</td></tr>
+    <tr><th>Description</th><td>AndroGoat's OkHttp pinning enforces correctly - traffic blocks under our proxy while the browser still decrypts. On a rooted device we neutralized the pin at runtime with objection (<code>android sslpinning disable</code>), <code>frida-multiple-unpinning</code>, and a targeted <code>CertificatePinner.check()</code> hook.</td></tr>
+    <tr><th>Impact</th><td>On a device the attacker fully controls, client-side pinning does not prevent traffic inspection. This is an inherent limit of client-side controls, not a flaw unique to AndroGoat.</td></tr>
+    <tr><th>Evidence</th><td>The pinning requests returned nothing until a Frida unpinning hook was attached, after which they decrypted in Burp's HTTP history.</td></tr>
+    <tr><th>MASVS / MASTG</th><td>MASVS-NETWORK-2 (endpoint identity) &middot; MASVS-RESILIENCE (anti-tampering) &middot; MASTG certificate-pinning tests</td></tr>
+    <tr><th>Mobile Top 10</th><td>M5 - Insecure Communication (with an M7 resilience angle)</td></tr>
+    <tr><th>Remediation</th><td>Keep pinning as defense-in-depth, but layer additional protections (root/tamper detection, attestation). Do not rely on client-side pinning alone as a security boundary.</td></tr>
   </table>
 
   <hr>
 
   <!-- ==================== 03 - Insecure Data Storage ==================== -->
   <h2><span class="num">03</span>Insecure Data Storage</h2>
-  <p class="secmeta">MASVS: STORAGE &nbsp;&middot;&nbsp; Mobile Top 10: M9 &nbsp;&middot;&nbsp; Handbook ch.4</p>
+  <p class="secmeta">MASVS: STORAGE &nbsp;&middot;&nbsp; Mobile Top 10: M9</p>
 
   <p>[ SharedPreferences, SQLite, files, external storage: what was stored in the clear. ]</p>
 
@@ -348,7 +698,7 @@
 
   <!-- ==================== 04 - Broken Cryptography ==================== -->
   <h2><span class="num">04</span>Broken Cryptography</h2>
-  <p class="secmeta">MASVS: CRYPTO &nbsp;&middot;&nbsp; Mobile Top 10: M10 &nbsp;&middot;&nbsp; Handbook ch.5</p>
+  <p class="secmeta">MASVS: CRYPTO &nbsp;&middot;&nbsp; Mobile Top 10: M10</p>
 
   <p>[ Weak algorithms, hardcoded keys/IVs, ECB, custom crypto: what breaks and why. ]</p>
 
@@ -369,7 +719,7 @@
 
   <!-- ==================== 05 - Authentication & Session ==================== -->
   <h2><span class="num">05</span>Authentication &amp; Session</h2>
-  <p class="secmeta">MASVS: AUTH &nbsp;&middot;&nbsp; Mobile Top 10: M1, M3 &nbsp;&middot;&nbsp; Handbook ch.6</p>
+  <p class="secmeta">MASVS: AUTH &nbsp;&middot;&nbsp; Mobile Top 10: M1, M3</p>
 
   <p>[ Local auth bypass, biometric handling, session/token storage and reuse. ]</p>
 
@@ -390,7 +740,7 @@
 
   <!-- ==================== 06 - Platform Interaction (IPC, Deep Links, WebViews) ==================== -->
   <h2><span class="num">06</span>Platform Interaction (IPC, Deep Links, WebViews)</h2>
-  <p class="secmeta">MASVS: PLATFORM &nbsp;&middot;&nbsp; Mobile Top 10: M4, M8 &nbsp;&middot;&nbsp; Handbook ch.7</p>
+  <p class="secmeta">MASVS: PLATFORM &nbsp;&middot;&nbsp; Mobile Top 10: M4, M8</p>
 
   <p>[ Exported components, deep links, intents, WebView settings and JS bridges. ]</p>
 
@@ -411,7 +761,7 @@
 
   <!-- ==================== 07 - Code-Level Bugs & Injection ==================== -->
   <h2><span class="num">07</span>Code-Level Bugs &amp; Injection</h2>
-  <p class="secmeta">MASVS: CODE &nbsp;&middot;&nbsp; Mobile Top 10: M4 &nbsp;&middot;&nbsp; Handbook ch.8</p>
+  <p class="secmeta">MASVS: CODE &nbsp;&middot;&nbsp; Mobile Top 10: M4</p>
 
   <p>[ Input validation, SQL/command/path injection, unsafe deserialization. ]</p>
 
@@ -432,7 +782,7 @@
 
   <!-- ==================== 08 - Reverse Engineering & Anti-Tamper ==================== -->
   <h2><span class="num">08</span>Reverse Engineering &amp; Anti-Tamper</h2>
-  <p class="secmeta">MASVS: RESILIENCE &nbsp;&middot;&nbsp; Mobile Top 10: M7 &nbsp;&middot;&nbsp; Handbook ch.9</p>
+  <p class="secmeta">MASVS: RESILIENCE &nbsp;&middot;&nbsp; Mobile Top 10: M7</p>
 
   <p>[ Frida instrumentation, root/tamper detection and bypass, obfuscation, patching. ]</p>
 
@@ -465,5 +815,29 @@
 
 <script src="writeup-toc.js"></script>
 <script src="lightbox.js"></script>
+<script>
+/* Colour OWASP Mobile Top 10 risk IDs (M1-M10) and MASVS/MASTG tags pink-red. */
+(function () {
+  var rx = /\b(M(?:10|[1-9])|MASVS(?:-[A-Z]+(?:-\d+)?)?|MASTG(?:-[A-Z0-9-]+)?)\b/g;
+  var SKIP = { CODE: 1, PRE: 1, SCRIPT: 1, STYLE: 1, A: 1 };
+  function esc(s) { return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;'); }
+  function walk(node) {
+    if (node.nodeType === 3) {
+      var t = node.nodeValue;
+      rx.lastIndex = 0;
+      if (t && rx.test(t)) {
+        var span = document.createElement('span');
+        span.innerHTML = esc(t).replace(rx, '<span class="risk">$1</span>');
+        node.parentNode.replaceChild(span, node);
+      }
+    } else if (node.nodeType === 1 && !SKIP[node.tagName] &&
+               !(node.classList && node.classList.contains('risk'))) {
+      Array.prototype.slice.call(node.childNodes).forEach(walk);
+    }
+  }
+  var main = document.querySelector('main');
+  if (main) walk(main);
+})();
+</script>
 </body>
 </html>

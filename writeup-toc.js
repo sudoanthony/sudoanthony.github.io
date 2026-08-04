@@ -1,5 +1,5 @@
 /* ================================================================
-   writeup-toc.js  —  auto-built left table of contents for writeups
+   writeup-toc.js  -  auto-built left table of contents for writeups
    ----------------------------------------------------------------
    Drop <script src="writeup-toc.js"></script> before </body> on any
    writeup page. It reads every <h2> inside <main>, builds a sticky

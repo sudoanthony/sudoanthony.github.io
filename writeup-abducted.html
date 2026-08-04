@@ -3,8 +3,8 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Abducted — HackTheBox writeup</title>
-<meta name="description" content="HackTheBox Abducted (Medium) — Samba print-subsystem command injection, credential reuse, wide-link abuse, and a systemd/polkit path to root.">
+<title>Abducted - HackTheBox writeup</title>
+<meta name="description" content="HackTheBox Abducted (Medium) - Samba print-subsystem command injection, credential reuse, wide-link abuse, and a systemd/polkit path to root.">
 <link rel="stylesheet" href="style.css">
 </head>
 <body>
@@ -22,7 +22,7 @@
 
 <main class="wrap" style="padding-top:44px">
 
-  <!-- SCAFFOLD — you're mid-box. Fill each section from YOUR run (and your notes
+  <!-- SCAFFOLD - you're mid-box. Fill each section from YOUR run (and your notes
        template). Redact flag values. Swap the SCREENSHOT boxes for <figure>. The
        section order below matches the intended chain so your notes drop straight in. -->
 
@@ -57,7 +57,7 @@
 
   <h2><span class="num">01</span>Enumeration</h2>
   <p class="prompt">nmap (22/139/445), then SMB recon: null/guest session, share listing, and rpcclient
-  for users. Note the bait — weak password policy + no lockout are there to tempt a pointless brute.</p>
+  for users. Note the bait - weak password policy + no lockout are there to tempt a pointless brute.</p>
   <pre><code><span class="p">$</span> nmap -p- --min-rate 10000 <span class="prompt">IP</span>
 <span class="p">$</span> smbclient -L //<span class="prompt">IP</span>/ -N          <span class="c"># HP-Reception, projects, transfer, IPC$</span>
 <span class="p">$</span> rpcclient -N <span class="prompt">IP</span> -U ""            <span class="c"># enumdomusers -> scott</span></code></pre>
@@ -67,22 +67,22 @@
 
   <hr>
 
-  <h2><span class="num">02</span>Foothold — CVE-2026-4480 (Samba print injection)</h2>
+  <h2><span class="num">02</span>Foothold - CVE-2026-4480 (Samba print injection)</h2>
   <p class="prompt">Explain the bug: the print-job name (%J) is passed to the shell unescaped. Show
   connecting to HP-Reception anonymously and printing a file whose NAME is a shell payload. Confirm
   execution with a ping, then swap for a reverse shell -> land as nobody.</p>
-  <div class="shot-todo">SCREENSHOT — reverse shell as nobody</div>
+  <div class="shot-todo">SCREENSHOT - reverse shell as nobody</div>
 
   <hr>
 
-  <h2><span class="num">03</span>Lateral to scott — credential reuse</h2>
+  <h2><span class="num">03</span>Lateral to scott - credential reuse</h2>
   <p class="prompt">From nobody, enumerate the filesystem. Cover /opt/offsite-backup: the rclone.conf
   with an obfuscated password, decoding it with <code>rclone reveal</code>, and reusing it for scott
   (su / SSH). Grab user.txt (redacted).</p>
 
   <hr>
 
-  <h2><span class="num">04</span>Lateral to marcus — Samba wide-link abuse</h2>
+  <h2><span class="num">04</span>Lateral to marcus - Samba wide-link abuse</h2>
   <p class="prompt">Read /etc/samba/shares.conf: the transfer share is <code>valid users = scott</code>,
   <code>force user = marcus</code>, <code>wide links = yes</code>. Explain why that's exploitable:
   symlink /home/marcus into the share, access it over SMB as scott (running as marcus), drop an SSH
@@ -90,12 +90,12 @@
 
   <hr>
 
-  <h2><span class="num">05</span>Privilege escalation to root — systemd drop-in + polkit</h2>
+  <h2><span class="num">05</span>Privilege escalation to root - systemd drop-in + polkit</h2>
   <p class="prompt">marcus is in the <code>operators</code> group, which owns the
   <code>smbd.service.d</code> drop-in dir and (via a polkit rule) can restart smbd. Write an
   <code>ExecStartPre</code> that copies bash to a SetUID binary, reload + restart smbd, run the SetUID
   bash with <code>-p</code> -> root. Redact root.txt.</p>
-  <div class="shot-todo">SCREENSHOT — id showing uid=0 and redacted root proof</div>
+  <div class="shot-todo">SCREENSHOT - id showing uid=0 and redacted root proof</div>
 
   <hr>
 

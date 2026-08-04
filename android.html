@@ -37,7 +37,9 @@
       <a href="#adb" data-toc>adb</a>
       <a href="#tools" data-toc>jadx vs apktool</a>
       <a href="#frida" data-toc>Frida</a>
+      <a href="#okhttp" data-toc>OkHttp</a>
       <a href="#pinning" data-toc>Cert pinning</a>
+      <a href="#api" data-toc>API &amp; API levels</a>
       <a href="#lenses" data-toc>The four lenses</a>
     </nav>
   </aside>
@@ -382,6 +384,53 @@ adb emu kill                        # cleanly stop the emulator</code></pre>
       </div>
     </section>
 
+    <!-- ============ OkHttp ============ -->
+    <section id="okhttp" class="concept-block">
+      <p class="kicker">The networking library · where HTTPS calls are made</p>
+      <h2>OkHttp</h2>
+      <div class="concept-sub">
+        <span class="sub-lbl">what it is</span>
+        <p><strong>OkHttp</strong> is the networking library most Android apps use to make HTTP and
+        HTTPS requests. Instead of writing raw socket and TLS code, a developer drops in OkHttp and
+        calls it to fetch a URL, post a form, or talk to an API. If you see <code>okhttp3.*</code> in the
+        imports of a decompiled class, that class is making network calls.</p>
+      </div>
+      <div class="concept-sub">
+        <span class="sub-lbl">why it matters for a pentest</span>
+        <p>OkHttp is where the app's traffic originates, so it is also where the app's network defenses
+        live. Two pieces show up constantly: the <code>OkHttpClient</code> (the configured HTTP client,
+        built once and reused) and <code>CertificatePinner</code> (OkHttp's built-in certificate pinning,
+        covered in <a href="#pinning">Cert pinning</a>). When you want to know how an app pins, or whether
+        it talks cleartext, you grep the decompiled code for <code>OkHttpClient</code> and
+        <code>CertificatePinner</code> and read how they are wired up.</p>
+      </div>
+      <div class="concept-sub">
+        <span class="sub-lbl">CertificatePinner in one look</span>
+        <p>Pinning in OkHttp is set up by adding a host and an expected fingerprint to a
+        <code>CertificatePinner</code>, then handing it to the client:</p>
+        <pre><code>new OkHttpClient.Builder()
+    .certificatePinner(new CertificatePinner.Builder()
+        .add("api.example.com", "sha256/AAAA...=")   // the expected server fingerprint
+        .build())
+    .build();</code></pre>
+        <p>The whole defense rests on that fingerprint being a <strong>fixed value baked in at build
+        time</strong>. If the fingerprint is instead read from the live connection at runtime, the pin
+        just matches whoever is on the wire, including your proxy, and the control does nothing.</p>
+      </div>
+      <div class="note insight">
+        <span class="lbl">the tell</span>
+        A hardcoded <code>sha256/...</code> string passed to <code>CertificatePinner.add(...)</code> is
+        real pinning. A fingerprint the code pulls out of the connection first and <em>then</em> pins to
+        is pinning that defeats itself.
+      </div>
+      <div class="seen-in">
+        <span class="lbl">seen in</span>
+        <a href="writeup-allsafe.html">AllSafe</a> - the Certificate Pinning challenge builds its
+        <code>CertificatePinner</code> from hashes it harvests off the live TLS connection, so with Burp
+        trusted it pins to Burp and the traffic decrypts with no bypass.
+      </div>
+    </section>
+
     <!-- ============ Cert pinning ============ -->
     <section id="pinning" class="concept-block">
       <p class="kicker">HTTPS interception · why your proxy goes blank</p>
@@ -410,6 +459,40 @@ adb emu kill                        # cleanly stop the emulator</code></pre>
         <p>Even with your CA trusted, an app can <strong>pin</strong>: accept only one specific
         certificate and refuse your proxy's. Your traffic goes blank. That is not a setup failure, it is
         the app defending itself, and you bypass it by hooking the pinning check with <a href="#frida">Frida</a>.</p>
+      </div>
+    </section>
+
+    <!-- ============ API & API levels ============ -->
+    <section id="api" class="concept-block">
+      <p class="kicker">Two meanings of one word &middot; interfaces and version levels</p>
+      <h2>API &amp; API levels</h2>
+      <div class="concept-sub">
+        <span class="sub-lbl">API - the general meaning</span>
+        <p>An <strong>API</strong> (Application Programming Interface) is a defined way for one piece of
+        software to talk to another. When a mobile app logs you in or loads your account, it calls its
+        backend's <strong>HTTP API</strong>: a set of URL endpoints that take a request and return data.
+        That is the "thin client wrapped around HTTP APIs" idea, and it is why intercepting those calls
+        (see <a href="#pinning">cert pinning</a>) turns a mobile test into a web/API test.</p>
+      </div>
+      <div class="concept-sub">
+        <span class="sub-lbl">Android "API level" - a version number</span>
+        <p>Confusingly, Android also uses "API" to mean the <strong>API level</strong>: an integer that
+        identifies a platform version. API 33 = Android 13, API 24 = Android 7, API 23 = Android 6. Read a
+        device's level with <code>adb shell getprop ro.build.version.sdk</code>. It matters because
+        platform security behavior changes at specific levels. For example, apps stopped trusting
+        user-installed CA certificates by default at <strong>API 24</strong>.</p>
+      </div>
+      <div class="note insight">
+        <span class="lbl">the nuance that trips people up</span>
+        Whether an app trusts your user CA depends on the <strong>app's <code>targetSdkVersion</code></strong>,
+        not the phone's Android version. An app that targets API 23 still trusts user certs even on an
+        Android 14 device. So check the app's target
+        (<code>adb shell dumpsys package &lt;pkg&gt; | grep targetSdk</code>), not just the OS, before
+        deciding you need a system-store CA push.
+      </div>
+      <div class="seen-in">
+        <span class="lbl">seen in</span>
+        <a href="writeup-allsafe.html">Traffic &amp; Cert Pinning</a> - the user-CA-trust split at API 23 vs API 24 (Case 2) turns entirely on the app's targetSdk.
       </div>
     </section>
 

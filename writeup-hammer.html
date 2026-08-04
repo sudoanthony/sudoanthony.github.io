@@ -3,8 +3,8 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Hammer — TryHackMe writeup</title>
-<meta name="description" content="TryHackMe Hammer (Medium) — writeup.">
+<title>Hammer - TryHackMe writeup</title>
+<meta name="description" content="TryHackMe Hammer (Medium) - writeup.">
 <link rel="stylesheet" href="style.css">
 </head>
 <body>
@@ -26,8 +26,8 @@
        GOLDEN WRITEUP TEMPLATE  (spoiler-free skeleton)
        ----------------------------------------------------------------
        This is deliberately EMPTY of any Hammer solution. It's the shape
-       of a strong writeup — recon, foothold, priv-esc, root cause,
-       reflection — which is the same for almost every box. You fill it in
+       of a strong writeup - recon, foothold, priv-esc, root cause,
+       reflection - which is the same for almost every box. You fill it in
        AFTER you solve the room, in your own words.
 
        Legend for the guidance you'll see:
@@ -41,7 +41,7 @@
 
   <h1>Hammer</h1>
 
-  <!-- META LINE — quick facts. -->
+  <!-- META LINE - quick facts. -->
   <div class="meta">
     <span class="pill crit">pwned</span>
     <span>TryHackMe</span><span class="dot">·</span>
@@ -51,7 +51,7 @@
     <span class="prompt">time taken</span>
   </div>
 
-  <!-- TL;DR — write this LAST, once you've finished. Two or three sentences
+  <!-- TL;DR - write this LAST, once you've finished. Two or three sentences
        that capture the whole path at a high level. Highest-value paragraph
        on the page: it lets a skimming interviewer grasp the box instantly. -->
   <p style="color:var(--text-2); font-size:17px; border-left:3px solid var(--accent); padding-left:16px; margin:22px 0 8px">
@@ -59,7 +59,7 @@
     <span class="prompt">One-paragraph summary of the full chain, written after you finish.</span>
   </p>
 
-  <!-- TAGS — add these AFTER you solve, once you know which techniques the box used.
+  <!-- TAGS - add these AFTER you solve, once you know which techniques the box used.
        Each chip links to vulns.html#<id>, and the id must match an entry in data.js.
        Example format (delete and replace with your real ones):
        <div class="tags">
@@ -70,7 +70,7 @@
   </div>
 
   <div class="note charm" style="margin-top:24px">
-    <span class="lbl">your charm — the hook</span>
+    <span class="lbl">your charm - the hook</span>
     Open with a sentence or two of personality before the technical part: why you picked
     this box, your first impression, or what you were hoping to practise. Short and honest.
     This is the bit that makes the writeup feel like yours.
@@ -82,7 +82,7 @@
   <h2><span class="num">01</span>Enumeration</h2>
 
   <p class="prompt">What did you scan, and what stood out? Narrate the thinking, not just
-  the commands — one line on why a result mattered beats five screenshots. Drop your port
+  the commands - one line on why a result mattered beats five screenshots. Drop your port
   scan / service enumeration here.</p>
 
   <pre><code><span class="c"># paste the commands you actually ran</span>
@@ -96,10 +96,10 @@
          <img src="images/hammer-nmap.png" alt="nmap results" style="width:100%;border:1px solid var(--border);border-radius:8px">
          <figcaption style="color:var(--text-4);font-size:13px;margin-top:6px">nmap output</figcaption>
        </figure>
-       Keep images purposeful — annotate what matters, don't wall-of-screenshot. -->
+       Keep images purposeful - annotate what matters, don't wall-of-screenshot. -->
 
   <div class="note charm">
-    <span class="lbl">your charm — the honest detour</span>
+    <span class="lbl">your charm - the honest detour</span>
     Write the moment you got stuck and what got you moving again. "I almost missed X until I
     checked Y" is more useful to a reader than a suspiciously clean path. Realism reads as
     competence.
@@ -115,14 +115,14 @@
   to follow, then tackle each.</p>
 
   <div class="note charm">
-    <span class="lbl">your charm — teach the mechanism</span>
+    <span class="lbl">your charm - teach the mechanism</span>
     When you use a technique, spend two or three sentences explaining <em>why</em> it works,
-    in your own words — as if teaching a junior. This is the clearest signal to an employer
+    in your own words - as if teaching a junior. This is the clearest signal to an employer
     that you understand the bug rather than just running a payload.
   </div>
 
   <div class="note">
-    <span class="lbl">rule — never paste flag values</span>
+    <span class="lbl">rule - never paste flag values</span>
     Say "recovered the user flag" or blur it in a screenshot. Method public, answer redacted.
     Dumping flags invites copyright takedowns and signals you'll paste secrets into public
     repos. Delete this note once it's habit.
@@ -137,9 +137,9 @@
   that revealed the path and the step that escalated you.</p>
 
   <div class="note charm">
-    <span class="lbl">your charm — the "why it works" box</span>
+    <span class="lbl">your charm - the "why it works" box</span>
     Name the underlying misconfiguration(s) plainly. If two weaknesses combined to make this
-    possible, say so — connecting them is the difference between "I followed steps" and "I
+    possible, say so - connecting them is the difference between "I followed steps" and "I
     understand this system".
   </div>
 
@@ -151,7 +151,7 @@
   <div class="note">
     <span class="lbl">this section is your differentiator</span>
     Most writeups stop at the flag and never say how they'd <em>fix</em> the bugs. Adding this
-    makes yours read like a pentest report, not a walkthrough — the fastest way to look
+    makes yours read like a pentest report, not a walkthrough - the fastest way to look
     employable. One or two sentences per issue. Delete this note when done.
   </div>
 
@@ -178,7 +178,7 @@
   <h2><span class="num">05</span>Takeaways</h2>
 
   <div class="note charm">
-    <span class="lbl">your charm — close with reflection</span>
+    <span class="lbl">your charm - close with reflection</span>
     Three or four honest lines: what was new to you, what you'd do faster next time, and how
     this pattern shows up in the real world. A genuine reflection is what the reader remembers.
   </div>

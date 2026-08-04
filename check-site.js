@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /* ================================================================
-   check-site.js  —  pre-publish checker for sudoanthony.github.io
+   check-site.js  -  pre-publish checker for sudoanthony.github.io
    ----------------------------------------------------------------
    Run from the repo root:      node check-site.js
    Treat warnings as errors:    node check-site.js --strict
@@ -101,7 +101,7 @@ function stripTags(s) {
    ================================================================ */
 
 if (!exists('data.js')) {
-  err('data.js', 'File not found — are you running this from the repo root?');
+  err('data.js', 'File not found - are you running this from the repo root?');
   report();
 }
 
@@ -122,7 +122,7 @@ try {
   WRITEUPS = sandbox.__W;
   VULNS = sandbox.__V;
 } catch (e) {
-  err('data.js', `Syntax error — the site will render blank: ${e.message}`,
+  err('data.js', `Syntax error - the site will render blank: ${e.message}`,
       'Usually a trailing comma, a missing } or ], or a smart quote pasted from notes.');
   report();
 }
@@ -131,7 +131,7 @@ if (!Array.isArray(WRITEUPS)) err('data.js', 'WRITEUPS is missing or not an arra
 if (!Array.isArray(VULNS))    err('data.js', 'VULNS is missing or not an array');
 if (errors.length) report();
 
-note(`data.js parsed — ${WRITEUPS.length} writeups, ${VULNS.length} vulns`);
+note(`data.js parsed - ${WRITEUPS.length} writeups, ${VULNS.length} vulns`);
 
 /* ================================================================
    2 & 3. WRITEUPS schema, ordering, duplicates
@@ -142,7 +142,7 @@ const seenUrls = new Map();
 const imagesDirPresent = exists('images');
 
 if (!imagesDirPresent) {
-  note('no images/ directory here — icon existence checks skipped');
+  note('no images/ directory here - icon existence checks skipped');
 }
 
 WRITEUPS.forEach((w, i) => {
@@ -183,24 +183,24 @@ WRITEUPS.forEach((w, i) => {
     const d = new Date(w.date + 'T00:00:00Z');
     if (isNaN(d.getTime())) err(at, `date "${w.date}" is not a real date`);
     else if (d.getTime() > Date.now() + 864e5)
-      warn(at, `date "${w.date}" is in the future — this box will sit at the top as "latest"`);
+      warn(at, `date "${w.date}" is in the future - this box will sit at the top as "latest"`);
   }
 
   if (w.url && !/^writeup-[a-z0-9-]+\.html$/.test(w.url))
     warn(at, `url "${w.url}" does not look like writeup-<box>.html`);
 
   if (w.summary && w.summary.length > 320)
-    warn(at, `summary is ${w.summary.length} chars — long for a hover card`);
+    warn(at, `summary is ${w.summary.length} chars - long for a hover card`);
 
   // duplicates
   if (w.title) {
     if (seenTitles.has(w.title))
-      err(at, `Duplicate title — also at WRITEUPS[${seenTitles.get(w.title)}]`);
+      err(at, `Duplicate title - also at WRITEUPS[${seenTitles.get(w.title)}]`);
     else seenTitles.set(w.title, i);
   }
   if (w.url) {
     if (seenUrls.has(w.url))
-      err(at, `Duplicate url "${w.url}" — also at WRITEUPS[${seenUrls.get(w.url)}]`);
+      err(at, `Duplicate url "${w.url}" - also at WRITEUPS[${seenUrls.get(w.url)}]`);
     else seenUrls.set(w.url, i);
   }
 
@@ -210,7 +210,7 @@ WRITEUPS.forEach((w, i) => {
             'Create the page before adding the data.js entry, or the card 404s.');
 
   if (w.icon && imagesDirPresent && !exists(w.icon))
-    warn(at, `Icon "${w.icon}" not found — the card will fall back to a letter`);
+    warn(at, `Icon "${w.icon}" not found - the card will fall back to a letter`);
 });
 
 // newest-first ordering
@@ -234,9 +234,9 @@ VULNS.forEach((v, i) => {
   const at = `VULNS[${i}] ${v && v.id ? `"${v.id}"` : '(no id)'}`;
 
   if (!v || typeof v !== 'object') { err(at, 'Not an object'); return; }
-  if (!v.id)    err(at, 'Missing id — this is what tags[] matches against');
+  if (!v.id)    err(at, 'Missing id - this is what tags[] matches against');
   if (!v.name)  err(at, 'Missing name');
-  if (!v.blurb) warn(at, 'Empty blurb — the vuln index row will look bare');
+  if (!v.blurb) warn(at, 'Empty blurb - the vuln index row will look bare');
   if (!Array.isArray(v.uses)) { err(at, 'uses[] is missing or not an array'); return; }
 
   if (v.sev && !SEVERITIES.includes(v.sev))
@@ -248,7 +248,7 @@ VULNS.forEach((v, i) => {
   }
 
   if (v.uses.length === 0)
-    warn(at, 'No uses[] entries — this vuln shows up with no boxes under it');
+    warn(at, 'No uses[] entries - this vuln shows up with no boxes under it');
 
   const seenUse = new Set();
   v.uses.forEach((u, j) => {
@@ -265,8 +265,8 @@ VULNS.forEach((v, i) => {
     } else if (u.url && u.url !== w.url) {
       err(uat, `url "${u.url}" disagrees with WRITEUPS entry ("${w.url}")`);
     }
-    if (!u.url) warn(uat, 'Missing url — the row will not link anywhere');
-    if (!u.ctx) warn(uat, 'Missing ctx — the one-line "how it was used" note');
+    if (!u.url) warn(uat, 'Missing url - the row will not link anywhere');
+    if (!u.ctx) warn(uat, 'Missing ctx - the one-line "how it was used" note');
   });
 });
 
@@ -292,7 +292,7 @@ WRITEUPS.forEach((w, i) => {
     const listed = (v.uses || []).some(u => u && u.writeup === w.title);
     if (!listed) {
       err(at, `tagged "${tag}" but VULNS["${tag}"].uses[] does not list "${w.title}"`,
-              `Step 3 of publishing — add { writeup: "${w.title}", url: "${w.url}", ctx: "..." } to that vuln.`);
+              `Step 3 of publishing - add { writeup: "${w.title}", url: "${w.url}", ctx: "..." } to that vuln.`);
     }
   });
 });
@@ -326,7 +326,7 @@ const onDisk = fs.readdirSync(ROOT).filter(f => /^writeup-.+\.html$/i.test(f));
 const referenced = new Set(WRITEUPS.map(w => w && w.url).filter(Boolean));
 
 onDisk.filter(f => !referenced.has(f)).forEach(f => {
-  warn(f, 'Page exists but no WRITEUPS entry points at it — invisible on the site',
+  warn(f, 'Page exists but no WRITEUPS entry points at it - invisible on the site',
           'Either add the data.js entry, or leave it if the box is still in progress.');
 });
 
@@ -338,7 +338,7 @@ const REDACTED = /^\s*(\[?redacted\]?|\.{3}|x+|snip+(ed)?|removed)\s*$/i;
 
 // Things like THM{...}, flag{...}, helmet_key{...}
 const BRACE_FLAG = /\b([A-Za-z][A-Za-z0-9_]{1,20})\{([^}<\n]{0,120})\}/g;
-// Bare long hashes — often legitimate writeup content, so only a warning
+// Bare long hashes - often legitimate writeup content, so only a warning
 const BARE_HASH = /\b[0-9a-f]{32,64}\b/gi;
 // Anything that reads like a printed flag file
 const FLAG_FILE = /\b(user|root|local|proof)\.txt\b\s*[:=]?\s*([0-9a-f]{16,})/gi;
@@ -395,8 +395,8 @@ WRITEUPS.forEach(w => {
   const at = w.url;
 
   const h1s = [...src.matchAll(/<h1[^>]*>([\s\S]*?)<\/h1>/gi)].map(m => stripTags(m[1]));
-  if (h1s.length === 0) err(at, 'No <h1> — the box title is the top of the size hierarchy');
-  else if (h1s.length > 1) warn(at, `${h1s.length} <h1> elements — expected exactly one`);
+  if (h1s.length === 0) err(at, 'No <h1> - the box title is the top of the size hierarchy');
+  else if (h1s.length > 1) warn(at, `${h1s.length} <h1> elements - expected exactly one`);
   else if (w.title && !h1s[0].toLowerCase().includes(w.title.toLowerCase()))
     warn(at, `<h1> is "${h1s[0]}" but data.js title is "${w.title}"`);
 
@@ -414,7 +414,7 @@ WRITEUPS.forEach(w => {
   const firstH2 = src.search(/<h2[^>]*>/i);
   const firstH3 = src.search(/<h3[^>]*>/i);
   if (firstH3 !== -1 && (firstH2 === -1 || firstH3 < firstH2))
-    warn(at, '<h3> appears before any <h2> — heading levels skipped');
+    warn(at, '<h3> appears before any <h2> - heading levels skipped');
 
   // numbered section prefixes should run 01, 02, 03...
   const nums = [...src.matchAll(/<h2[^>]*>\s*<span class="num">\s*(\d+)\s*<\/span>/gi)]
@@ -455,7 +455,7 @@ htmlFiles.forEach(f => {
 
 missingAssets.forEach((wheres, target) => {
   const isImage = /\.(png|jpe?g|gif|svg|webp)$/i.test(target);
-  const msg = `Missing local file "${target}" — referenced by ${wheres.slice(0, 3).join(', ')}${wheres.length > 3 ? ` +${wheres.length - 3} more` : ''}`;
+  const msg = `Missing local file "${target}" - referenced by ${wheres.slice(0, 3).join(', ')}${wheres.length > 3 ? ` +${wheres.length - 3} more` : ''}`;
   if (isImage) warn(target, msg, 'Broken image on the live page.');
   else err(target, msg);
 });
@@ -469,7 +469,7 @@ report();
 function report() {
   const line = '-'.repeat(64);
   console.log('');
-  console.log(C.bold('  sudoanthony.github.io — pre-publish check'));
+  console.log(C.bold('  sudoanthony.github.io - pre-publish check'));
   console.log(C.dim(`  ${ROOT}`));
   console.log(C.dim(`  ${line}`));
 
@@ -492,7 +492,7 @@ function report() {
 
   const e = errors.length, w = warnings.length;
   if (e === 0 && w === 0) {
-    console.log(`  ${C.green('PASS')}  nothing to fix — safe to publish`);
+    console.log(`  ${C.green('PASS')}  nothing to fix - safe to publish`);
   } else if (e === 0) {
     console.log(`  ${STRICT ? C.red('FAIL') : C.green('PASS')}  ${w} warning${w === 1 ? '' : 's'}, 0 errors${STRICT ? ' (--strict: warnings count as failures)' : ''}`);
   } else {

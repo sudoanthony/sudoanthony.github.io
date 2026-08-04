@@ -3,8 +3,8 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Ciphers — Concepts — Anthony</title>
-<meta name="description" content="Vigenère and ROT13 — how to identify each on sight, their history, and how (or whether) they're used today.">
+<title>Ciphers - Concepts - Anthony</title>
+<meta name="description" content="Vigenère and ROT13 - how to identify each on sight, their history, and how (or whether) they're used today.">
 <link rel="stylesheet" href="style.css">
 </head>
 <body>
@@ -39,7 +39,7 @@
     <p style="margin-bottom:4px"><a href="concepts.html" style="color:var(--text-3);font-size:13.5px">&larr; concepts</a></p>
     <h1>Classical ciphers</h1>
     <p class="concept-intro">
-      Unlike an encoding, a classical cipher involves an actual key — the ciphertext can't be
+      Unlike an encoding, a classical cipher involves an actual key - the ciphertext can't be
       reversed without knowing (or recovering) it. That's the whole reason a hash-identifier
       fails on this category and a straight <code>base64 -d</code> produces garbage: there's a
       real transformation happening, just one that 19th-century pen-and-paper techniques can
@@ -54,7 +54,7 @@
 
       <div class="concept-sub">
         <span class="sub-lbl">identify it</span>
-        <p>Looks like scrambled English — letters are shuffled, but word lengths and spacing are
+        <p>Looks like scrambled English - letters are shuffled, but word lengths and spacing are
         untouched, which is the giveaway versus an encoding. If a straightforward Caesar/ROT-shift
         doesn't produce readable text, but the structure still looks language-like, suspect a
         keyed polyalphabetic cipher and look for a keyword mentioned elsewhere.</p>
@@ -64,7 +64,7 @@
         <span class="sub-lbl">history &amp; significance</span>
         <p>Described in the 16th century and misattributed for centuries to Blaise de Vigenère
         (the actual inventor was Giovan Battista Bellaso). It was called <em>le chiffre
-        indéchiffrable</em> — "the indecipherable cipher" — because unlike a simple Caesar shift,
+        indéchiffrable</em> - "the indecipherable cipher" - because unlike a simple Caesar shift,
         it uses a repeating keyword to shift each letter by a different amount, defeating basic
         frequency analysis. It held that reputation for roughly 300 years until Friedrich
         Kasiski published a general break for it in 1863, using the repeating key length itself
@@ -72,8 +72,8 @@
       </div>
 
       <div class="concept-sub">
-        <span class="sub-lbl">modern use — or what replaced it</span>
-        <p>Purely historical/educational today — no real system protects data with it. Its
+        <span class="sub-lbl">modern use - or what replaced it</span>
+        <p>Purely historical/educational today - no real system protects data with it. Its
         conceptual descendant is the <strong>one-time pad</strong>: a Vigenère cipher where the
         key is truly random, as long as the message, and never reused, which makes it
         mathematically unbreakable. Vigenère itself fails that bar because its key repeats.</p>
@@ -87,7 +87,7 @@
 
       <div class="seen-in">
         <span class="lbl">seen in</span>
-        <a href="writeup-biohazard.html">Biohazard</a> — twice: the dining-room shield-key message
+        <a href="writeup-biohazard.html">Biohazard</a> - twice: the dining-room shield-key message
         (key <code>rebecca</code>, found via the music-sheet puzzle) and the hidden-closet MO disk
         message (key <code>albert</code>, found via SSH).
       </div>
@@ -100,7 +100,7 @@
 
       <div class="concept-sub">
         <span class="sub-lbl">identify it</span>
-        <p>Same tell as Vigenère — word structure and spacing survive — but ROT13 has no keyword
+        <p>Same tell as Vigenère - word structure and spacing survive - but ROT13 has no keyword
         to look for at all, because the shift is always exactly 13. If rotating every letter by
         13 produces plain English immediately, that's all it ever is.</p>
       </div>
@@ -110,12 +110,12 @@
         <p>A special case of the Caesar cipher (itself named for Julius Caesar, who reportedly
         used a shift-of-3 for military messages). ROT13's specific appeal is mathematical: since
         the English alphabet has 26 letters, applying the same ROT13 transform twice returns the
-        original text — encoding and decoding are the identical operation.</p>
+        original text - encoding and decoding are the identical operation.</p>
       </div>
 
       <div class="concept-sub">
         <span class="sub-lbl">modern use</span>
-        <p>Never used for actual security — a shift of 13 offers zero real protection. Its one
+        <p>Never used for actual security - a shift of 13 offers zero real protection. Its one
         legitimate modern niche is on forums and Usenet-era text: obscuring spoilers, puzzle
         answers, or offensive text from a casual glance without fully deleting it, since the
         reader chooses whether to decode it.</p>
@@ -129,7 +129,7 @@
 
       <div class="seen-in">
         <span class="lbl">seen in</span>
-        <a href="writeup-biohazard.html">Biohazard</a> — the blue-jewel note hidden in
+        <a href="writeup-biohazard.html">Biohazard</a> - the blue-jewel note hidden in
         <code>/diningRoom2F/</code>'s page source.
       </div>
     </section>
@@ -145,7 +145,7 @@
       <div class="tool-grid">
         <div class="tool-card">
           <p class="tn">CyberChef</p>
-          <p class="td">"Vigenère Decode" and "ROT13" recipes with a live preview — the fastest
+          <p class="td">"Vigenère Decode" and "ROT13" recipes with a live preview - the fastest
           way to test a candidate key without writing a script.</p>
         </div>
         <div class="tool-card">
@@ -155,13 +155,13 @@
         </div>
         <div class="tool-card">
           <p class="tn">tr (Linux)</p>
-          <p class="td">One-liner ROT13: <code>tr 'A-Za-z' 'N-ZA-Mn-za-m'</code> — no tool
+          <p class="td">One-liner ROT13: <code>tr 'A-Za-z' 'N-ZA-Mn-za-m'</code> - no tool
           needed, just the shell.</p>
         </div>
         <div class="tool-card">
           <p class="tn">quipqiup</p>
           <p class="td">Automatic solver for simple substitution ciphers using frequency
-          analysis and a dictionary — handy when there's no keyword to find at all.</p>
+          analysis and a dictionary - handy when there's no keyword to find at all.</p>
         </div>
       </div>
     </section>

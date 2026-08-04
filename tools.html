@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Tools — sudoanthony</title>
+<title>Tools - sudoanthony</title>
 <meta name="description" content="The pentesting toolkit I actually use, grouped by category: what each tool is for, how to install it on Windows and Linux, one key command, and the writeups it shows up in.">
 <link rel="stylesheet" href="style.css">
 </head>
@@ -31,6 +31,7 @@
       <a href="#web" data-toc>Web &amp; Proxies</a>
       <a href="#mobile-static" data-toc>Mobile: Static</a>
       <a href="#mobile-runtime" data-toc>Mobile: Device &amp; Runtime</a>
+      <a href="#targets" data-toc>Targets</a>
       <a href="#utils" data-toc>Utilities</a>
     </nav>
   </aside>
@@ -165,11 +166,52 @@
       </div>
     </section>
 
+    <!-- ============ Targets ============ -->
+    <section id="targets" class="concept-block">
+      <p class="kicker">The intentionally vulnerable practice apps</p>
+      <h2>Targets</h2>
+      <div class="toolgrid">
+
+        <div class="toolcard cat-runtime" id="allsafe">
+          <div class="tc-head"><span class="tc-glyph">al</span><span class="tc-name">AllSafe</span><span class="tc-cat">practice app</span></div>
+          <p class="tc-what">The primary target for this guide. An intentionally vulnerable Android app (Info Sec Adventures) with self-contained challenges across most mobile bug classes, from hardcoded secrets to certificate pinning.</p>
+          <div class="tc-row"><span class="os">INSTALL</span> APK from github.com/t0thkr1s/allsafe releases, then <code>adb install allsafe.apk</code></div>
+          <div class="tc-row"><span class="os">PKG</span> <code>infosecadventures.allsafe</code></div>
+          <div class="tc-seen">seen in <a href="writeup-allsafe.html">AllSafe</a></div>
+        </div>
+
+        <div class="toolcard cat-runtime" id="androgoat">
+          <div class="tc-head"><span class="tc-glyph">ag</span><span class="tc-name">AndroGoat</span><span class="tc-cat">practice app</span></div>
+          <p class="tc-what">An intentionally vulnerable Android app (Kotlin) with 20+ challenges. Used here for its working certificate-pinning screens to practice objection and Frida bypasses.</p>
+          <div class="tc-row"><span class="os">INSTALL</span> APK from github.com/satishpatnayak/AndroGoat releases, then <code>adb install AndroGoat.apk</code></div>
+          <div class="tc-row"><span class="os">PKG</span> <code>owasp.sat.agoat</code></div>
+          <div class="tc-seen">seen in <a href="writeup-allsafe.html">AllSafe</a></div>
+        </div>
+
+        <div class="toolcard cat-runtime" id="insecurebankv2">
+          <div class="tc-head"><span class="tc-glyph">ib</span><span class="tc-name">InsecureBankv2</span><span class="tc-cat">practice app</span></div>
+          <p class="tc-what">A vulnerable banking app with a real backend, so you can watch login and transfer requests travel. Used here for cleartext credentials and transfer-parameter tampering.</p>
+          <div class="tc-row"><span class="os">INSTALL</span> clone github.com/dineshshetty/Android-InsecureBankv2, then <code>adb install InsecureBankv2.apk</code></div>
+          <div class="tc-row"><span class="os">BACKEND</span> Python 2 Flask in <code>AndroLabServer/</code>: <code>python2 app.py</code> (serves :8888)</div>
+          <div class="tc-seen">seen in <a href="writeup-allsafe.html">AllSafe</a></div>
+        </div>
+
+      </div>
+    </section>
+
     <!-- ============ Utilities ============ -->
     <section id="utils" class="concept-block">
       <p class="kicker">The everyday helpers</p>
       <h2>Utilities</h2>
       <div class="toolgrid">
+
+        <div class="toolcard cat-util" id="wsl">
+          <div class="tc-head"><span class="tc-glyph">wsl</span><span class="tc-name">WSL</span><span class="tc-cat">linux on windows</span></div>
+          <p class="tc-what">Windows Subsystem for Linux. A lightweight Linux shell inside Windows, no full VM. Used here to run the InsecureBankv2 Python 2 backend (Ubuntu 22.04 still ships python2).</p>
+          <div class="tc-row"><span class="os">WIN</span> <code>wsl --install</code> in an admin PowerShell, then reboot</div>
+          <div class="tc-row"><span class="os">CMD</span> <code>wsl -d Ubuntu-22.04</code></div>
+          <div class="tc-seen">seen in <a href="writeup-allsafe.html">AllSafe</a></div>
+        </div>
 
         <div class="toolcard cat-util" id="cyberchef">
           <div class="tc-head"><span class="tc-glyph">cc</span><span class="tc-name">CyberChef</span><span class="tc-cat">encoding / crypto</span></div>

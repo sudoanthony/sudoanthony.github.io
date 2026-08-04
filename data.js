@@ -1,5 +1,5 @@
 /* ================================================================
-   data.js  —  THE ONLY FILE YOU EDIT WHEN YOU PUBLISH A WRITEUP
+   data.js  -  THE ONLY FILE YOU EDIT WHEN YOU PUBLISH A WRITEUP
    ----------------------------------------------------------------
    WRITEUPS  drives the home page + the writeups.html card grid
    VULNS     drives vulns.html (the big index) automatically
@@ -14,7 +14,7 @@
        os:         "Linux",                    // Linux | Windows | ...
        category:   "Web",                      // Web | SMB | AD | Crypto | ...
        icon:       "images/icons/boxname.png", // your icon (falls back to a letter if missing)
-       date:       "2026-08-01",               // YYYY-MM-DD — controls order + "latest"
+       date:       "2026-08-01",               // YYYY-MM-DD - controls order + "latest"
        summary:    "One or two sentences shown on hover.",
        tags:       ["some-technique"]          // must match ids in VULNS below
      },
@@ -23,7 +23,7 @@
 
 const WRITEUPS = [
   {
-    title:      "AllSafe",
+    title:      "OWASP Mobile Top 10: Android",
     url:        "writeup-allsafe.html",
     platform:   "Mobile",
     team:       "red",
@@ -32,7 +32,7 @@ const WRITEUPS = [
     category:   "App Pentest",
     icon:       "images/icons/allsafe.png",
     date:       "2026-07-31",
-    summary:    "Android app pentest of Allsafe, worked chapter-by-chapter through the OWASP MASTG: static analysis, traffic interception, insecure storage, crypto, auth, platform IPC, injection, and reverse engineering.",
+    summary:    "Featuring AllSafe, with help from InsecureBankv2 and AndroGoat. A mobile penetration testing methodology that works all three Android targets to demonstrate each risk of the OWASP Mobile Top 10 (2024) - worked examples with screenshots, plus a severity-rated report for every vulnerability found.",
     tags:       ["hardcoded-secret", "insecure-logging", "exported-component"]
   },
   {
@@ -70,10 +70,10 @@ const VULNS = [
     cat:   "mobile",
     sev:   "low",
     ext:   "CWE-798 · MASVS-STORAGE · M8",
-    blurb: "A secret compiled into the APK (strings.xml / resources / smali) — recoverable by anyone with the binary. Severity depends on what the secret authorizes; a challenge-gate key is Low, a live API key is not.",
+    blurb: "A secret compiled into the APK (strings.xml / resources / smali) - recoverable by anyone with the binary. Severity depends on what the secret authorizes; a challenge-gate key is Low, a live API key is not.",
     deepdive: "",
     uses: [
-      { writeup: "AllSafe", url: "writeup-allsafe.html", ctx: "UUID in strings.xml gates a deep link — found via the R.string.key reference, not a keyword grep" }
+      { writeup: "OWASP Mobile Top 10: Android", url: "writeup-allsafe.html", ctx: "UUID in strings.xml gates a deep link - found via the R.string.key reference, not a keyword grep" }
     ]
   },
   {
@@ -82,10 +82,10 @@ const VULNS = [
     cat:   "mobile",
     sev:   "low",
     ext:   "CWE-532 · MASVS-STORAGE · M9",
-    blurb: "App logs that leak URIs, tokens, or PII to logcat. The pattern is the finding — it would leak any future secret carried through the same code path.",
+    blurb: "App logs that leak URIs, tokens, or PII to logcat. The pattern is the finding - it would leak any future secret carried through the same code path.",
     deepdive: "",
     uses: [
-      { writeup: "AllSafe", url: "writeup-allsafe.html", ctx: "full deep-link Uri (with query string) concatenated into a Log.d call" }
+      { writeup: "OWASP Mobile Top 10: Android", url: "writeup-allsafe.html", ctx: "full deep-link Uri (with query string) concatenated into a Log.d call" }
     ]
   },
   {
@@ -94,10 +94,10 @@ const VULNS = [
     cat:   "mobile",
     sev:   "med",
     ext:   "CWE-926 · MASVS-PLATFORM · M8",
-    blurb: "An activity exported with a VIEW + BROWSABLE intent filter is reachable from any web page — an unauthenticated entry point into app internals.",
+    blurb: "An activity exported with a VIEW + BROWSABLE intent filter is reachable from any web page - an unauthenticated entry point into app internals.",
     deepdive: "",
     uses: [
-      { writeup: "AllSafe", url: "writeup-allsafe.html", ctx: "exported activity + BROWSABLE deep link invokable from an arbitrary web page" }
+      { writeup: "OWASP Mobile Top 10: Android", url: "writeup-allsafe.html", ctx: "exported activity + BROWSABLE deep link invokable from an arbitrary web page" }
     ]
   },
   {
@@ -106,10 +106,10 @@ const VULNS = [
     cat:   "web",
     sev:   "crit",
     ext:   "CWE-78",
-    blurb: "Unescaped, client-controlled input passed into a shell command — here, Samba's print subsystem (CVE-2026-4480) executing a crafted print-job name.",
+    blurb: "Unescaped, client-controlled input passed into a shell command - here, Samba's print subsystem (CVE-2026-4480) executing a crafted print-job name.",
     deepdive: "",
     uses: [
-      { writeup: "Abducted", url: "writeup-abducted.html", ctx: "CVE-2026-4480 — %J print-job name reaches the shell unescaped -> reverse shell as nobody" }
+      { writeup: "Abducted", url: "writeup-abducted.html", ctx: "CVE-2026-4480 - %J print-job name reaches the shell unescaped -> reverse shell as nobody" }
     ]
   },
   {
@@ -131,7 +131,7 @@ const VULNS = [
     cat:   "auth",
     sev:   "high",
     ext:   "CWE-522",
-    blurb: "Credentials recoverable by a low-priv user and reused across accounts — obfuscated configs, key files, shared passwords.",
+    blurb: "Credentials recoverable by a low-priv user and reused across accounts - obfuscated configs, key files, shared passwords.",
     deepdive: "",
     uses: [
       { writeup: "Abducted", url: "writeup-abducted.html", ctx: "rclone-obfuscated backup password revealed and reused for scott's SSH" },
@@ -140,7 +140,7 @@ const VULNS = [
   },
   {
     id:    "steganography",
-    name:  "Steganography — data hidden in files",
+    name:  "Steganography - data hidden in files",
     cat:   "forensics",
     sev:   "med",
     ext:   "",
@@ -156,7 +156,7 @@ const VULNS = [
     cat:   "crypto",
     sev:   "med",
     ext:   "",
-    blurb: "Encodings (Base32/64/58) and classical ciphers (Vigenère, ROT13) used to 'protect' data — all reversible with no secret, identified by their alphabets.",
+    blurb: "Encodings (Base32/64/58) and classical ciphers (Vigenère, ROT13) used to 'protect' data - all reversible with no secret, identified by their alphabets.",
     deepdive: "",
     uses: [
       { writeup: "Biohazard", url: "writeup-biohazard.html", ctx: "layered Base32 -> Vigenère -> Base64/Base32 -> Base58 chain guarding FTP creds" }

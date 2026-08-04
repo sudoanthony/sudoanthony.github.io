@@ -1,5 +1,5 @@
 /* ================================================================
-   lightbox.js  —  click any figure image to view it near full-screen
+   lightbox.js  -  click any figure image to view it near full-screen
    ----------------------------------------------------------------
    Drop <script src="lightbox.js"></script> before </body> on any page
    with images. Every image inside <main> or a concept page becomes
@@ -32,6 +32,9 @@
     }
 
     imgs.forEach(function (im) {
+      // Skip images that are inside a link (e.g. writeup grid icon-cards):
+      // let the click follow the link instead of opening the lightbox.
+      if (im.closest('a')) return;
       im.classList.add('zoomable');
       im.addEventListener('click', function () {
         open(im.currentSrc || im.src, im.alt);
