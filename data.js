@@ -33,7 +33,7 @@ const WRITEUPS = [
     icon:       "images/icons/allsafe.png",
     date:       "2026-07-31",
     summary:    "Featuring AllSafe, with help from InsecureBankv2 and AndroGoat. A mobile penetration testing methodology that works all three Android targets to demonstrate each risk of the OWASP Mobile Top 10 (2024) - worked examples with screenshots, plus a severity-rated report for every vulnerability found.",
-    tags:       ["hardcoded-secret", "insecure-logging", "exported-component"]
+    tags:       ["hardcoded-secret", "insecure-logging", "exported-component", "insecure-storage"]
   },
   {
     title:      "Abducted",
@@ -98,6 +98,18 @@ const VULNS = [
     deepdive: "",
     uses: [
       { writeup: "OWASP Mobile Top 10: Android", url: "writeup-allsafe.html", ctx: "exported activity + BROWSABLE deep link invokable from an arbitrary web page" }
+    ]
+  },
+  {
+    id:    "insecure-storage",
+    name:  "Sensitive data stored in cleartext on the device",
+    cat:   "mobile",
+    sev:   "low",
+    ext:   "CWE-312 · MASVS-STORAGE · M9",
+    blurb: "Credentials or tokens written to the app sandbox in plaintext - SharedPreferences XML, a SQLite row, a file. The sandbox only stops other apps at runtime; root, a backup, or forensic access reads it straight off the device. The fix is the Android Keystore (EncryptedSharedPreferences). Severity tracks reachability: worse on world-readable external storage than inside /data/data.",
+    deepdive: "",
+    uses: [
+      { writeup: "OWASP Mobile Top 10: Android", url: "writeup-allsafe.html", ctx: "credentials written to shared_prefs/user.xml in plaintext - no encryption, no Keystore; sandbox swept and /sdcard empty" }
     ]
   },
   {

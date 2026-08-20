@@ -27,6 +27,7 @@
   <aside class="concept-toc">
     <p class="toc-label">Android</p>
     <nav id="tocNav">
+      <a href="#owasp-top-10" data-toc>OWASP Mobile Top 10</a>
       <a href="#sandbox" data-toc>The sandbox</a>
       <a href="#apk" data-toc>The APK</a>
       <a href="#dex" data-toc>.dex files</a>
@@ -34,6 +35,7 @@
       <a href="#intent-filter" data-toc>Intent-Filter</a>
       <a href="#logcat" data-toc>logcat</a>
       <a href="#storage" data-toc>App storage</a>
+      <a href="#keystore" data-toc>The Keystore</a>
       <a href="#adb" data-toc>adb</a>
       <a href="#tools" data-toc>jadx vs apktool</a>
       <a href="#frida" data-toc>Frida</a>
@@ -55,6 +57,36 @@
       make sense. These are Android-specific; the iOS equivalents (IPA/Mach-O, URL schemes, ATS) get
       their own page once a Mac is in the lab.
     </p>
+
+    <!-- ============ OWASP Mobile Top 10 ============ -->
+    <section id="owasp-top-10" class="concept-block">
+      <p class="kicker">The framework · what every finding maps to</p>
+      <h2>OWASP Mobile Top 10</h2>
+      <div class="concept-sub">
+        <span class="sub-lbl">what it is</span>
+        <p>The industry-standard list of the ten most common mobile app risk categories, maintained by OWASP
+        alongside the deeper <a href="https://mas.owasp.org/">MASVS / MASTG</a>. This guide is built around
+        the <strong>2024</strong> revision - the renumbered one, where M9 is data storage. Every finding in
+        the writeups maps to one of these, which is why the whole site is organised one risk at a time.</p>
+      </div>
+      <ul class="toplist">
+        <li id="m1"><strong>M1 - Improper Credential Usage.</strong> Hardcoded credentials, or credentials handled or transmitted insecurely.</li>
+        <li id="m2"><strong>M2 - Inadequate Supply Chain Security.</strong> Vulnerable third-party SDKs, a tampered build pipeline, or malicious dependencies.</li>
+        <li id="m3"><strong>M3 - Insecure Authentication / Authorization.</strong> Weak or missing auth, broken session handling, or privilege checks done client-side.</li>
+        <li id="m4"><strong>M4 - Insufficient Input / Output Validation.</strong> Trusting client-supplied data, leading to injection and tampering.</li>
+        <li id="m5"><strong>M5 - Insecure Communication.</strong> Cleartext traffic, weak TLS, or broken and absent certificate pinning.</li>
+        <li id="m6"><strong>M6 - Inadequate Privacy Controls.</strong> Mishandling PII by leaking it to logs, other apps, or the network.</li>
+        <li id="m7"><strong>M7 - Insufficient Binary Protections.</strong> No obfuscation, anti-tamper, or root/debug detection; easy to reverse.</li>
+        <li id="m8"><strong>M8 - Security Misconfiguration.</strong> Unsafe defaults such as exported components, <code>debuggable</code> or <code>allowBackup</code> left on, and over-broad permissions.</li>
+        <li id="m9"><strong>M9 - Insecure Data Storage.</strong> Sensitive data left at rest in the clear.</li>
+        <li id="m10"><strong>M10 - Insufficient Cryptography.</strong> Weak algorithms, hardcoded keys, or bad parameters - crypto that is present but broken.</li>
+      </ul>
+      <div class="note">
+        <span class="lbl">2024 renumbering</span>
+        If you see an older M-number that doesn't line up (storage as M2, for example), that is the 2016
+        list. This guide uses the 2024 revision throughout.
+      </div>
+    </section>
 
     <!-- ============ The sandbox ============ -->
     <section id="sandbox" class="concept-block">
@@ -290,8 +322,55 @@
       </div>
       <div class="note insight">
         <span class="lbl">the recurring lesson</span>
-        The OS gives apps a secure vault (the <strong>Android Keystore</strong>). Bugs happen when
+        The OS gives apps a secure vault (the <a href="#keystore"><strong>Android Keystore</strong></a>). Bugs happen when
         developers store secrets somewhere else, or in the vault but configured weakly.
+      </div>
+    </section>
+
+    <!-- ============ Keystore ============ -->
+    <section id="keystore" class="concept-block">
+      <p class="kicker">The correct vault · why a plaintext file is a finding</p>
+      <h2>The Keystore</h2>
+      <div class="concept-sub">
+        <span class="sub-lbl">what it is</span>
+        <p>The <strong>Android Keystore</strong> is a system-managed vault for cryptographic keys. The
+        whole point: <strong>your app never holds the raw key.</strong> You ask the Keystore to generate a
+        key, and it keeps the actual key material. On most real devices that material lives inside
+        dedicated secure hardware - a <strong>TEE</strong> (Trusted Execution Environment) or a separate
+        security chip (<strong>StrongBox</strong>). Your app gets a <em>handle</em>, not the key. You hand
+        data to the Keystore and say "encrypt this with key X", and it does the crypto and hands back
+        ciphertext.</p>
+      </div>
+      <div class="concept-sub">
+        <span class="sub-lbl">why an attacker cares</span>
+        <p>With <code>shared_prefs/user.xml</code>, root or a backup gives you the plaintext directly, and
+        it is over. With a Keystore-backed secret, root pulling the files off the device gets you
+        <strong>ciphertext plus a key handle that is useless off the device</strong> - the key cannot be
+        exported out of the secure hardware. You would have to defeat the hardware, not just read a file.
+        That gap is the whole reason storing a secret in the Keystore is the fix and storing it in a
+        plaintext file is the bug.</p>
+      </div>
+      <div class="concept-sub">
+        <span class="sub-lbl">the everyday tool</span>
+        <p><strong>EncryptedSharedPreferences</strong> (from AndroidX Security / Jetpack) is the wrapper
+        built on top of this. It looks exactly like normal <code>SharedPreferences</code> to the
+        developer, but a Keystore-held master key encrypts both the keys and the values on disk. So the
+        correct fix for the classic plaintext-prefs bug is the same API shape - the file on disk is just
+        ciphertext, and the master key never leaves the Keystore.</p>
+      </div>
+      <div class="note insight">
+        <span class="lbl">why an empty keystore is the finding</span>
+        Checking the vault (<code>objection -g &lt;pkg&gt; explore</code> then
+        <code>android keystore list</code>) and getting <strong>nothing back</strong> is not a dead end -
+        it is the proof. It shows the app never used the vault at all: it went straight to a plaintext file
+        when the platform handed it a hardware-backed safe for free.
+      </div>
+      <div class="note">
+        <span class="lbl">the interview line</span>
+        SharedPreferences stores plaintext key/value XML in the app sandbox; the sandbox only stops other
+        apps at runtime, not root or a backup. The fix is the Android Keystore - hardware-backed keys the
+        app cannot export - usually via EncryptedSharedPreferences, so the file on disk is ciphertext and
+        the key never leaves secure hardware.
       </div>
     </section>
 

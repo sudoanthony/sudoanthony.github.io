@@ -25,6 +25,14 @@
   }
   /* OWASP Mobile Top 10 risk IDs and MASVS/MASTG tags in a soft pink. */
   .risk { color: #ff9aae; font-weight: 600; }
+  /* Multi-column reference table (the "check every time" storage checklist). */
+  .reftable { width: 100%; border-collapse: separate; border-spacing: 0; font-size: 13.5px; margin: 18px 0 30px; border: 1px solid var(--border-2); border-radius: 10px; overflow: hidden; }
+  .reftable th, .reftable td { border-bottom: 1px solid var(--border); vertical-align: top; padding: 9px 12px; text-align: left; }
+  .reftable thead th { color: var(--text-2); font-weight: 600; background: rgba(255,255,255,0.03); white-space: nowrap; }
+  .reftable td { color: var(--text-3); }
+  .reftable td:first-child { color: var(--text-2); font-weight: 600; white-space: nowrap; }
+  .reftable code { white-space: nowrap; }
+  .reftable tr:last-child td { border-bottom: none; }
 </style>
 </head>
 <body>
@@ -104,7 +112,8 @@
 
   <!-- ==================== Methodology ==================== -->
   <h2>Methodology</h2>
-  <p>Each chapter becomes a theme, mapped to its MASVS group and the OWASP Mobile Top 10 (2024):</p>
+  <p>Each chapter becomes a theme, mapped to its MASVS group and the
+  <a href="android.html#owasp-top-10">OWASP Mobile Top 10</a> (2024):</p>
   <ul>
     <li><strong>Recon &amp; Static Analysis</strong> will cover hardcoded secrets, insecure logging, exported components, and risky manifest flags (MASVS-CODE, MASVS-PRIVACY; M2, M6, M8).</li>
     <li><strong>Traffic &amp; Cert Pinning</strong> will cover cleartext traffic, TLS interception, and certificate-pinning bypass (MASVS-NETWORK; M5).</li>
@@ -136,7 +145,7 @@
 
   <!-- ==================== 01 - Recon & Static Analysis ==================== -->
   <h2><span class="num">01</span>Recon &amp; Static Analysis</h2>
-  <p class="secmeta">MASVS: CODE, PRIVACY &nbsp;&middot;&nbsp; Mobile Top 10: M2, M6, M8</p>
+  <p class="secmeta">MASVS: CODE, PRIVACY &nbsp;&middot;&nbsp; Mobile Top 10: <a href="android.html#m2" class="risk">M2</a>, <a href="android.html#m6" class="risk">M6</a>, <a href="android.html#m8" class="risk">M8</a></p>
 
   <p>AllSafe is a stand-in for real apps we would check in the real world. In a real engagement,
   usually we will get:</p>
@@ -351,7 +360,7 @@
 
   <!-- ==================== 02 - Traffic Interception & Cert Pinning ==================== -->
   <h2><span class="num">02</span>Traffic Interception &amp; Cert Pinning</h2>
-  <p class="secmeta">MASVS: NETWORK &nbsp;&middot;&nbsp; Mobile Top 10: M5</p>
+  <p class="secmeta">MASVS: NETWORK &nbsp;&middot;&nbsp; Mobile Top 10: <a href="android.html#m5" class="risk">M5</a></p>
 
   <p>For this section we focus on traffic interception and certificate pinning. While this guide is mainly
   built around AllSafe, we also bring in <strong>AndroGoat</strong> and <strong>InsecureBankv2</strong>
@@ -677,28 +686,102 @@ OkHttpClient okHttpClient = new OkHttpClient.Builder()
 
   <!-- ==================== 03 - Insecure Data Storage ==================== -->
   <h2><span class="num">03</span>Insecure Data Storage</h2>
-  <p class="secmeta">MASVS: STORAGE &nbsp;&middot;&nbsp; Mobile Top 10: M9</p>
+  <p class="secmeta">MASVS: STORAGE &nbsp;&middot;&nbsp; Mobile Top 10: <a href="android.html#m9" class="risk">M9</a></p>
 
-  <p>[ SharedPreferences, SQLite, files, external storage: what was stored in the clear. ]</p>
+  <p>As we know, each app runs as its own user within its own private directory, and other apps cannot read
+  its files. A lot of developers believe that, due to the nature of the
+  <a href="android.html#sandbox">sandbox</a>, they can just store their token in a file. While the sandbox
+  DOES defend against a malicious app reading a victim app's data at runtime, it does nothing against an
+  attacker who has the device itself.</p>
+  <ul>
+    <li><strong>Root</strong> - allows us to step outside the sandbox and read any app's private files directly.</li>
+    <li><strong>A backup</strong> (<a href="android.html#adb"><code>adb backup</code></a>, or an iTunes/Finder backup) can pull data off a non-rooted device if the app allows backup.</li>
+  </ul>
+  <p>We can't recover data that an app never wrote, so our workflow is always:</p>
+  <ol>
+    <li>Drive the app so it stores something.</li>
+    <li>Go and read the sandbox.</li>
+  </ol>
 
-  <div class="shot-todo">SCREENSHOT - recovered data on device</div>
+  <h3>Checking for insecure storage with AllSafe</h3>
+  <p>First let's navigate to the Insecure Shared Preferences challenge in the AllSafe app.</p>
+  <figure><img src="images/AllSafe/ch4insecure1.png" alt="AllSafe Insecure Shared Preferences challenge screen"><figcaption>The Insecure Shared Preferences challenge.</figcaption></figure>
+  <p>Let's enter some random credentials and click <strong>Store Credentials</strong>. Now that our
+  credentials are written into the app, let's see if we can find them.</p>
+  <figure><img src="images/AllSafe/ch4insecure2.png" alt="entering random credentials into the Store Credentials form"><figcaption>Storing credentials in the challenge.</figcaption></figure>
 
+  <p><strong>SharedPreferences</strong> (<code>/shared_prefs/*.xml</code>). Let's drop into a
+  <a href="android.html#adb">shell</a> on our Pixel 5 device and navigate to the
+  <code>infosecadventures</code> package. We can check our <a href="android.html#storage">shared_prefs</a>
+  here and search for everything that is an XML file.</p>
+  <figure><img src="images/AllSafe/ch4insecure3.png" alt="user.xml holding the stored credentials in plaintext"><figcaption>The stored credentials in <code>user.xml</code>.</figcaption></figure>
+  <p>This shows that the app wrote it straight as plaintext XML without any encryption or
+  <a href="android.html#keystore">Keystore</a>. This is a pretty clear-cut example of sensitive data stored
+  unencrypted on a device.</p>
+  <p>We can grep the entire sandbox for any potential secrets.</p>
+  <figure><img src="images/AllSafe/ch4insecure5.png" alt="recursive grep of the sandbox surfacing the same credentials"><figcaption>Grepping the sandbox turns up the same credentials.</figcaption></figure>
+  <p>We can see the same credentials we entered earlier.</p>
+
+  <h3>What I also checked besides SharedPreferences</h3>
+  <p>After checking the other files and folders, we don't see much else, but it's always good to enumerate
+  as much as we can. The above is just one example of how we can sniff for secrets.</p>
+  <p>We can also check the <a href="android.html#storage">sdcard</a>.</p>
+  <figure><img src="images/AllSafe/ch4insecure6.png" alt="external storage /sdcard/ checked and found empty"><figcaption>Checking external storage.</figcaption></figure>
+  <p>The reason we check the sdcard is that everything inside <code>/data/data/&lt;pkg&gt;</code> is inside
+  the app sandbox, so reading it needs root, a backup, or forensic access. External storage is NOT in the
+  sandbox (usually it's world-readable to any app with storage perms, it survives when the app is
+  uninstalled, and a plugged-in PC can read it without root at all). So when we are writing our report, our
+  plaintext password is <strong>Low to Medium</strong> inside <code>/data/data</code>, but it goes to
+  <strong>Medium to High</strong> on <code>/sdcard/</code>. We need to check this location because it is the
+  worst-case location for insecure data to be. Noting its emptiness is essential to our report.</p>
+  <p>We can also confirm the app never used the correct vault. Running
+  <a href="tools.html#objection">objection</a>'s <code>android keystore list</code> returns nothing - the
+  app stored its secret in a plaintext file instead of the <a href="android.html#keystore">Android
+  Keystore</a>.</p>
+  <figure><img src="images/AllSafe/ch4insecure7.png" alt="objection android keystore list returning no entries"><figcaption>The Keystore is empty - the app never used it.</figcaption></figure>
+
+  <h3>What to check every time - the storage checklist</h3>
+  <p>The full set of places sensitive data can come to rest on a device, why each one matters, and what
+  this pass turned up for AllSafe. Reachability drives severity: the same secret is worse the easier it is
+  to reach.</p>
+  <table class="reftable">
+    <thead>
+      <tr><th>Location</th><th>Where</th><th>Why we check it</th><th>What I saw</th></tr>
+    </thead>
+    <tbody>
+      <tr><td>SharedPreferences</td><td><code>shared_prefs/*.xml</code></td><td>The number-one dumping ground for plaintext credentials, tokens, and flags.</td><td><code>user.xml</code> held the credentials in plaintext - the finding.</td></tr>
+      <tr><td>SQLite databases</td><td><code>databases/*.db</code> (+ <code>-wal</code>, <code>-journal</code>)</td><td>Structured data; journal and WAL files often still hold "deleted" rows.</td><td>No <code>databases/</code> directory present.</td></tr>
+      <tr><td>Internal files</td><td><code>files/</code></td><td>Arbitrary app files; modern apps use MMKV or DataStore binary blobs (run <code>strings</code> on them).</td><td>Only benign artifacts (a ProfileInstaller marker and an empty <code>docs/</code>).</td></tr>
+      <tr><td>External storage</td><td><code>/sdcard/</code>, <code>/sdcard/Android/data/&lt;pkg&gt;/</code></td><td>Reachable with no root, so anything sensitive here is higher severity.</td><td>Empty.</td></tr>
+      <tr><td>Cache</td><td><code>cache/</code>, <code>code_cache/</code></td><td>Temp data, but sensitive API responses sometimes linger.</td><td>Empty.</td></tr>
+      <tr><td>logcat</td><td><a href="android.html#logcat"><code>adb logcat</code></a></td><td>Apps log tokens, URIs, or PII to a buffer that is readable over adb.</td><td>Clean - credentials were not written to the log.</td></tr>
+      <tr><td>Keystore</td><td><code>android keystore list</code> (objection)</td><td>The correct vault; an empty result proves the app skipped it.</td><td>Empty - the app never used the vault.</td></tr>
+      <tr><td>grep sweep</td><td><code>grep -rIiE "pass|token|secret|key"</code></td><td>Catch-all so you don't miss a file by eyeballing the tree.</td><td>Surfaced only <code>user.xml</code>.</td></tr>
+      <tr><td>Recents snapshot</td><td><code>/data/system_ce/0/snapshots/</code></td><td>The OS caches a thumbnail of the last screen; a sensitive screen leaks unless <code>FLAG_SECURE</code> is set.</td><td>Not exercised this pass.</td></tr>
+      <tr><td>Clipboard</td><td>system clipboard</td><td>"Copy secret" buttons leave data any other app can read.</td><td>Not exercised this pass.</td></tr>
+      <tr><td>Keyboard cache</td><td>IME learned-words store</td><td>Sensitive strings typed into non-password fields get learned by the keyboard.</td><td>Not exercised this pass.</td></tr>
+    </tbody>
+  </table>
+
+  <h3>So what did we find in Insecure Data Storage?</h3>
+  <p>One finding, written up as a report entry. The severity is calibrated to what recovering the data
+  actually takes: data that only an attacker who already controls the device can reach isn't "critical."</p>
   <table class="finding">
-    <tr><th>Title</th><td>[ finding name ]</td></tr>
-    <tr><th>Severity</th><td>[ ... ]</td></tr>
-    <tr><th>Description</th><td>[ ... ]</td></tr>
-    <tr><th>Impact</th><td>[ ... ]</td></tr>
-    <tr><th>Evidence</th><td>[ ... ]</td></tr>
-    <tr><th>MASTG</th><td>[ ... ]</td></tr>
-    <tr><th>Mobile Top 10</th><td>[ ... ]</td></tr>
-    <tr><th>Remediation</th><td>[ ... ]</td></tr>
+    <tr><th>Title</th><td>Sensitive credentials stored in plaintext SharedPreferences (AllSafe)</td></tr>
+    <tr><th>Severity</th><td><strong>Low to Medium</strong>. The credentials sit in the app sandbox at <code>/data/data/&lt;pkg&gt;/shared_prefs/user.xml</code>, so reading them needs root, a backup, or forensic access to the device - not remotely exploitable. The same data on external storage (<code>/sdcard/</code>) would raise this to Medium to High, since /sdcard is reachable with no root; here it was empty.</td></tr>
+    <tr><th>Description</th><td>AllSafe's Insecure Shared Preferences challenge writes the username and password to <code>shared_prefs/user.xml</code> as plaintext key/value XML, with no encryption and without using the Android Keystore.</td></tr>
+    <tr><th>Impact</th><td>An attacker with root, a backup, or forensic access to the device recovers the stored credentials directly from the file.</td></tr>
+    <tr><th>Evidence</th><td>After storing credentials in the challenge, <code>user.xml</code> contained the username and password as cleartext <code>&lt;string&gt;</code> values; a recursive grep of the sandbox surfaced the same values and nothing else.</td></tr>
+    <tr><th>MASVS / MASTG</th><td>MASVS-STORAGE-1 &middot; MASTG "Testing Local Storage for Sensitive Data" &middot; CWE-312</td></tr>
+    <tr><th>Mobile Top 10</th><td>M9 - Insecure Data Storage</td></tr>
+    <tr><th>Remediation</th><td>Avoid storing credentials on the device where possible; if you must, use EncryptedSharedPreferences backed by an Android Keystore master key, so the file on disk is ciphertext and the key never leaves secure hardware.</td></tr>
   </table>
 
   <hr>
 
   <!-- ==================== 04 - Broken Cryptography ==================== -->
   <h2><span class="num">04</span>Broken Cryptography</h2>
-  <p class="secmeta">MASVS: CRYPTO &nbsp;&middot;&nbsp; Mobile Top 10: M10</p>
+  <p class="secmeta">MASVS: CRYPTO &nbsp;&middot;&nbsp; Mobile Top 10: <a href="android.html#m10" class="risk">M10</a></p>
 
   <p>[ Weak algorithms, hardcoded keys/IVs, ECB, custom crypto: what breaks and why. ]</p>
 
@@ -719,7 +802,7 @@ OkHttpClient okHttpClient = new OkHttpClient.Builder()
 
   <!-- ==================== 05 - Authentication & Session ==================== -->
   <h2><span class="num">05</span>Authentication &amp; Session</h2>
-  <p class="secmeta">MASVS: AUTH &nbsp;&middot;&nbsp; Mobile Top 10: M1, M3</p>
+  <p class="secmeta">MASVS: AUTH &nbsp;&middot;&nbsp; Mobile Top 10: <a href="android.html#m1" class="risk">M1</a>, <a href="android.html#m3" class="risk">M3</a></p>
 
   <p>[ Local auth bypass, biometric handling, session/token storage and reuse. ]</p>
 
@@ -740,7 +823,7 @@ OkHttpClient okHttpClient = new OkHttpClient.Builder()
 
   <!-- ==================== 06 - Platform Interaction (IPC, Deep Links, WebViews) ==================== -->
   <h2><span class="num">06</span>Platform Interaction (IPC, Deep Links, WebViews)</h2>
-  <p class="secmeta">MASVS: PLATFORM &nbsp;&middot;&nbsp; Mobile Top 10: M4, M8</p>
+  <p class="secmeta">MASVS: PLATFORM &nbsp;&middot;&nbsp; Mobile Top 10: <a href="android.html#m4" class="risk">M4</a>, <a href="android.html#m8" class="risk">M8</a></p>
 
   <p>[ Exported components, deep links, intents, WebView settings and JS bridges. ]</p>
 
@@ -761,7 +844,7 @@ OkHttpClient okHttpClient = new OkHttpClient.Builder()
 
   <!-- ==================== 07 - Code-Level Bugs & Injection ==================== -->
   <h2><span class="num">07</span>Code-Level Bugs &amp; Injection</h2>
-  <p class="secmeta">MASVS: CODE &nbsp;&middot;&nbsp; Mobile Top 10: M4</p>
+  <p class="secmeta">MASVS: CODE &nbsp;&middot;&nbsp; Mobile Top 10: <a href="android.html#m4" class="risk">M4</a></p>
 
   <p>[ Input validation, SQL/command/path injection, unsafe deserialization. ]</p>
 
@@ -782,7 +865,7 @@ OkHttpClient okHttpClient = new OkHttpClient.Builder()
 
   <!-- ==================== 08 - Reverse Engineering & Anti-Tamper ==================== -->
   <h2><span class="num">08</span>Reverse Engineering &amp; Anti-Tamper</h2>
-  <p class="secmeta">MASVS: RESILIENCE &nbsp;&middot;&nbsp; Mobile Top 10: M7</p>
+  <p class="secmeta">MASVS: RESILIENCE &nbsp;&middot;&nbsp; Mobile Top 10: <a href="android.html#m7" class="risk">M7</a></p>
 
   <p>[ Frida instrumentation, root/tamper detection and bypass, obfuscation, patching. ]</p>
 
