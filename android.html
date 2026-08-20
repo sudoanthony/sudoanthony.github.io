@@ -366,7 +366,7 @@
         when the platform handed it a hardware-backed safe for free.
       </div>
       <div class="note">
-        <span class="lbl">the interview line</span>
+        <span class="lbl">in short</span>
         SharedPreferences stores plaintext key/value XML in the app sandbox; the sandbox only stops other
         apps at runtime, not root or a backup. The fix is the Android Keystore - hardware-backed keys the
         app cannot export - usually via EncryptedSharedPreferences, so the file on disk is ciphertext and
@@ -407,8 +407,8 @@ adb emu kill                        # cleanly stop the emulator</code></pre>
       <h2>jadx vs apktool</h2>
       <div class="concept-sub">
         <span class="sub-lbl">why this matters</span>
-        <p>These two static tools are easy to confuse, and articulating the difference is a common
-        interview question. They do different jobs.</p>
+        <p>These two static tools are easy to confuse, but knowing which one to reach for matters. They do
+        different jobs.</p>
       </div>
       <div class="concept-sub">
         <span class="sub-lbl">jadx</span>
