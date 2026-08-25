@@ -33,7 +33,7 @@ const WRITEUPS = [
     icon:       "images/icons/allsafe.png",
     date:       "2026-07-31",
     summary:    "Featuring AllSafe, with help from InsecureBankv2 and AndroGoat. A mobile penetration testing methodology that works all three Android targets to demonstrate each risk of the OWASP Mobile Top 10 (2024) - worked examples with screenshots, plus a severity-rated report for every vulnerability found.",
-    tags:       ["hardcoded-secret", "insecure-logging", "exported-component", "insecure-storage"]
+    tags:       ["hardcoded-secret", "insecure-logging", "exported-component", "insecure-storage", "broken-crypto"]
   },
   {
     title:      "Abducted",
@@ -110,6 +110,18 @@ const VULNS = [
     deepdive: "",
     uses: [
       { writeup: "OWASP Mobile Top 10: Android", url: "writeup-allsafe.html", ctx: "credentials written to shared_prefs/user.xml in plaintext - no encryption, no Keystore; sandbox swept and /sdcard empty" }
+    ]
+  },
+  {
+    id:    "broken-crypto",
+    name:  "Weak / improperly implemented cryptography",
+    cat:   "crypto",
+    sev:   "med",
+    ext:   "CWE-327 · CWE-916 · MASVS-CRYPTO · M10",
+    blurb: "Crypto that looks encrypted but isn't sound: fast unsalted hashes for secrets (MD5/SHA-1), hardcoded keys, ECB mode, static IVs, home-rolled schemes. If the key sits next to the ciphertext it's obfuscation, not encryption - read the code, take the key, decrypt offline. Severity tracks what the recovered plaintext authorizes.",
+    deepdive: "",
+    uses: [
+      { writeup: "OWASP Mobile Top 10: Android", url: "writeup-allsafe.html", ctx: "AndroGoat hashes the access-control PIN with unsalted MD5 into shared_prefs - recovered offline via a rainbow table / brute force" }
     ]
   },
   {

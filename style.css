@@ -296,7 +296,14 @@ main h1[id], main h2[id], main h3[id] { scroll-margin-top: 76px; }
 /* small MASVS / Top-10 kicker under each section heading */
 .secmeta { font-family: var(--mono); font-size: 12px; color: var(--text-4); margin: -6px 0 16px; letter-spacing: .3px; }
 /* gold section headers, opt-in per page: add class="writeup-gold" to <main> */
-.writeup-gold h2 { color: var(--gold); }
+/* filled near-black-violet block behind each section header so sections stand out on scroll */
+.writeup-gold h2 {
+  color: var(--gold);
+  background: rgba(167, 139, 250, 0.07);
+  border: 1px solid rgba(167, 139, 250, 0.15);
+  border-radius: 8px;
+  padding: 12px 16px;
+}
 
 /* ---------- tools page (distinct terminal-ish card style) ---------- */
 .toolgrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(290px, 1fr)); gap: 14px; margin: 8px 0 10px; }

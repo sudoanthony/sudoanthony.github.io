@@ -783,19 +783,119 @@ OkHttpClient okHttpClient = new OkHttpClient.Builder()
   <h2><span class="num">04</span>Broken Cryptography</h2>
   <p class="secmeta">MASVS: CRYPTO &nbsp;&middot;&nbsp; Mobile Top 10: <a href="android.html#m10" class="risk">M10</a></p>
 
-  <p>[ Weak algorithms, hardcoded keys/IVs, ECB, custom crypto: what breaks and why. ]</p>
+  <p>In the previous section, we covered how we found some files in plaintext off disk. Now we are going to
+  focus on files that are encrypted. Developers reach for a crypto API, accidentally configure it
+  incorrectly or miss a vulnerability, and ship something that looks encrypted, but when we look closely we
+  realize it isn't. We will essentially just read the code, find the key, and decrypt the "encrypted" blob
+  offline. Let's use AndroGoat for this section, which focuses on MASVS-CRYPTO, OWASP Mobile Top 10 M10 -
+  Insufficient Cryptography. Along with AndroGoat we will open up <a href="tools.html#jadx">jadx</a> and have
+  <a href="tools.html#objection">objection</a> ready.</p>
 
-  <div class="shot-todo">SCREENSHOT - decrypted output / key material</div>
+  <p>We have to keep in mind: if the key sits next to the ciphertext, then it isn't encryption. It's just
+  obfuscation with some ribbons. Let's find the key from the decompiled code, the same way we did in the
+  Recon &amp; Static Analysis section.</p>
 
+  <p>Below are the things we usually look for in regards to Broken Cryptography:</p>
+  <table class="reftable">
+    <thead>
+      <tr><th>Mistake</th><th>Why it's broken</th></tr>
+    </thead>
+    <tbody>
+      <tr><td>Hardcoded key</td><td>The key is baked into the binary as a string or byte array. Anyone who decompiles the app gets it. The "secret" is shipped to every attacker.</td></tr>
+      <tr><td>ECB mode</td><td>Each block is encrypted independently, so identical plaintext blocks produce identical ciphertext blocks. Structure leaks straight through - patterns survive encryption.</td></tr>
+      <tr><td>Static / null IV</td><td>A fixed initialization vector (often all-zero bytes) reused for every encryption. Removes the randomness CBC/CTR rely on; identical plaintexts encrypt identically and the scheme becomes deterministic.</td></tr>
+      <tr><td>Weak algorithms</td><td>DES / 3DES (56-bit), RC4, MD5, SHA-1. Broken or far too small. MD5/SHA-1 for password hashing or "integrity" is a finding on its own.</td></tr>
+      <tr><td>Home-rolled crypto</td><td>XOR with a repeating key, custom byte-shuffles, "encryption" someone invented. Always breakable; never trust a scheme that isn't a vetted standard.</td></tr>
+      <tr><td>Base64 &ne; encryption</td><td>Base64 is encoding, not encryption. <code>dGVzdA==</code> is reversible by anyone. Surprisingly common as a fake "encrypt this token" step.</td></tr>
+      <tr><td>Predictable salt / no salt</td><td>A constant salt (or none) lets attackers precompute and reuse rainbow tables across all users.</td></tr>
+      <tr><td>Bad randomness</td><td><code>java.util.Random</code> is <em>not</em> cryptographically secure - its output is predictable from a few samples. Keys, IVs, salts, and tokens must come from <code>SecureRandom</code> (Android) or <code>SecRandomCopyBytes</code> (iOS).</td></tr>
+    </tbody>
+  </table>
+
+  <h3>Finding the crypto in jadx</h3>
+  <p>Let's open <code>AndroGoat.apk</code> in <a href="tools.html#jadx">jadx</a>. There are a few telltale
+  crypto APIs we can use for our searching:</p>
+  <pre><code>jadx -d androgoat-src androgoat.apk                    # dump decompiled sources to a folder
+findstr /s /i "Cipher.getInstance"   androgoat-src\*   # mode + padding live here
+findstr /s /i "SecretKeySpec"        androgoat-src\*   # the key bytes
+findstr /s /i "IvParameterSpec"      androgoat-src\*   # the IV (watch for constants)
+findstr /s /i "MessageDigest"        androgoat-src\*   # MD5 / SHA-1 usage
+findstr /s /i "DES RC4 ECB MD5 SHA1" androgoat-src\*   # weak primitives
+findstr /s /i "java.util.Random"     androgoat-src\*   # insecure randomness</code></pre>
+  <p>Let's use jadx first, and then we can compare it to searching in PowerShell.</p>
+  <figure><img src="images/AllSafe/AndroGoatA.png" alt="jadx search for Cipher.getInstance with no first-party hits"><figcaption>Searching for <code>Cipher.getInstance</code>.</figcaption></figure>
+  <p>Nothing is showing for <code>Cipher.getInstance</code>, so let's look for any SecretKeys.</p>
+  <figure><img src="images/AllSafe/AndroGoatB.png" alt="jadx search for SecretKeySpec"><figcaption>Searching for <code>SecretKeySpec</code>.</figcaption></figure>
+  <p>While we did find something, this is a <strong>credential</strong>, which would fall under M1 -
+  Improper Credential Usage. We will cover this later, so stay tuned!</p>
+  <figure><img src="images/AllSafe/AndroGoatC.png" alt="a hardcoded credential found in the code"><figcaption>A hardcoded credential - an M1 finding for later, not M10.</figcaption></figure>
+  <p><code>IvParameterSpec</code> showed nothing either, so let's continue.</p>
+  <figure><img src="images/AllSafe/AndroGoatD1.png" alt="MessageDigest search, second hit shows hashPIN and MD5"><figcaption>The <code>MessageDigest</code> search - the second hit mentions <code>hashPIN</code> and <code>MD5</code>.</figcaption></figure>
+  <p>Ok this is interesting. Notice in the second finding we see some keywords like <code>hashPIN</code> and
+  <code>MD5</code>. Let's go look at this code closer.</p>
+  <figure><img src="images/AllSafe/AndroGoatD2.png" alt="the hashPIN function using MD5"><figcaption>The <code>hashPIN</code> function.</figcaption></figure>
+  <p>We see in the code <code>hashPIN</code>, which is a function. So let's find its <strong>caller</strong>.
+  This is where <code>hashPIN</code> runs and what its result gets compared against. That comparison target
+  is the hash we want to crack!</p>
+  <div class="note">
+    <span class="lbl">tip</span>
+    We can right-click <code>hashPIN</code> and select <strong>Find Usage</strong> to see exactly where it's
+    being called.
+  </div>
+  <figure><img src="images/AllSafe/AndroGoatD3.png" alt="Find Usage on hashPIN showing the callers"><figcaption>Finding where <code>hashPIN</code> is called.</figcaption></figure>
+  <p>Scrolling up a bit, we see this bit of code and an interesting part mentioning
+  <a href="android.html#storage">SharedPreferences</a>. Within SharedPreferences is <code>"pinDetails"</code>.</p>
+  <ul>
+    <li><code>createPIN</code> - hashes the PIN and stores it.</li>
+    <li><code>isPinCorrect</code> - hashes the entered PIN and compares it to the stored one.</li>
+  </ul>
+  <p><code>isPinCorrect</code> is the important one for our exploit, because this is where the
+  <strong>comparison happens</strong>. Where does it compare from? It compares against <code>storedPin</code>,
+  which came from <a href="android.html#storage">SharedPreferences</a>.</p>
+
+  <h3>Running the exploit</h3>
+  <p>By the way, you may have noticed that in AndroGoat there isn't a challenge called Cryptography or
+  something like that, so how do we know which one to use? Well, since we found the name of the activity in
+  the code, we can just run it and it will open on our virtual smartphone:</p>
+  <pre><code>adb shell am start -n owasp.sat.agoat/.AccessControlIssue1Activity</code></pre>
+  <figure><img src="images/AllSafe/AndroGoatD4.png" alt="the AccessControl activity launched directly via am start"><figcaption>Launching the activity directly with <code>am start</code>.</figcaption></figure>
+  <p><strong>Step 1:</strong> We need to make the app store a hash, so let's enter a PIN. And funny enough, I
+  believe I accidentally set a PIN in the app while I was navigating between the app's pages, so I actually
+  do NOT know the PIN. So we're now in a perfect scenario, as if we were an attacker: we have the hash, but
+  we don't know the PIN!</p>
+  <p><strong>Step 2:</strong> Let's remember that jadx is only reading STATIC code. Since we entered a PIN, it
+  was updated live, so we need to use our PowerShell (or equivalent) to read within <code>pinDetails.xml</code>,
+  which - from what we saw in the code - is where our PIN is stored.</p>
+  <figure><img src="images/AllSafe/AndroGoatD5.png" alt="reading pinDetails.xml with the stored MD5 hash"><figcaption>Reading the stored hash out of <code>pinDetails.xml</code>.</figcaption></figure>
+  <p>And we got something - we have a string!</p>
+  <p><code>d41d8cd98f00b204e9800998ecf8427e</code></p>
+  <p>And want to know the funny thing? This is the MD5 hash for the string of <code>""</code>. Yup, I
+  accidentally set the PIN as... nothing. So upon entering nothing, we're "logged" into a page where we can
+  "Download Invoice".</p>
+  <figure><img src="images/AllSafe/AndroGoatD6.png" alt="logged in with an empty PIN, showing the Download Invoice page"><figcaption>Logged in with an empty PIN.</figcaption></figure>
+  <p>While funny, it is a bit disappointing. So for the purpose of learning, let's reset the app and set a
+  new PIN as <code>1337</code>.</p>
+  <figure><img src="images/AllSafe/AndroGoatD7.png" alt="setting a new PIN of 1337"><figcaption>Setting a real PIN this time.</figcaption></figure>
+  <p>Now, we look it up in <code>pinDetails.xml</code> again.</p>
+  <figure><img src="images/AllSafe/AndroGoatD8.png" alt="the new MD5 hash in pinDetails.xml"><figcaption>The new hash in <code>pinDetails.xml</code>.</figcaption></figure>
+  <p><code>e48e13207341b6bffb7fb1622282247b</code></p>
+  <p>Now that we have our string, let's decode it.</p>
+  <figure><img src="images/AllSafe/AndroGoatD9.png" alt="cracking the MD5 hash back to the PIN 1337"><figcaption>The hash cracked back to the PIN.</figcaption></figure>
+  <p>I used an online hash cracker for this, but of course, if this were an actual job for a client, then we
+  would preferably crack this offline with our own software or program, since it is sensitive information.</p>
+
+  <h3>So what did we find in Broken Cryptography?</h3>
+  <p>One finding, written up as a report entry. The severity is calibrated to what the weak hashing actually
+  exposes.</p>
   <table class="finding">
-    <tr><th>Title</th><td>[ finding name ]</td></tr>
-    <tr><th>Severity</th><td>[ ... ]</td></tr>
-    <tr><th>Description</th><td>[ ... ]</td></tr>
-    <tr><th>Impact</th><td>[ ... ]</td></tr>
-    <tr><th>Evidence</th><td>[ ... ]</td></tr>
-    <tr><th>MASTG</th><td>[ ... ]</td></tr>
-    <tr><th>Mobile Top 10</th><td>[ ... ]</td></tr>
-    <tr><th>Remediation</th><td>[ ... ]</td></tr>
+    <tr><th>Title</th><td>Weak, unsalted hashing of the access-control PIN (AndroGoat)</td></tr>
+    <tr><th>Severity</th><td><strong>Medium</strong>. The PIN is protected only by fast, unsalted MD5 over a tiny numeric keyspace, so anyone who obtains the stored hash recovers the PIN offline in seconds - either from a public rainbow table or by brute-forcing the whole keyspace. Reading the hash needs access to the app sandbox (root, a backup, or forensic access), so it isn't remotely exploitable on its own, but the cryptographic control provides effectively no protection once that hash is in hand.</td></tr>
+    <tr><th>Description</th><td>The access-control PIN is hashed with <code>MD5</code> - a fast, broken hash - with no salt, and stored in <code>shared_prefs/pinDetails.xml</code>. Verification is also performed client-side: <code>isPinCorrect()</code> compares the entered PIN's MD5 against the stored value.</td></tr>
+    <tr><th>Impact</th><td>An attacker who reads the stored hash recovers the PIN offline almost instantly, defeating the PIN gate protecting the invoice screen. Because the check is client-side, a rooted attacker could also bypass it directly by editing the stored value or hooking the comparison.</td></tr>
+    <tr><th>Evidence</th><td><code>hashPIN()</code> in <code>owasp.sat.agoat.AccessControlIssue1Activity</code> calls <code>MessageDigest.getInstance("MD5")</code> with no salt and stores the digest in <code>pinDetails.xml</code>. A pulled hash resolved back to the set PIN offline in seconds.</td></tr>
+    <tr><th>MASVS / MASTG</th><td>MASVS-CRYPTO-1 &middot; MASTG weak-hashing / algorithm-configuration tests &middot; CWE-916 (weak password hash) &middot; CWE-759 (one-way hash without salt) &middot; CWE-327 (broken/risky crypto algorithm)</td></tr>
+    <tr><th>Mobile Top 10</th><td>M10 - Insufficient Cryptography</td></tr>
+    <tr><th>Remediation</th><td>Don't protect a low-entropy secret like a PIN with a fast, unsalted hash. Use a slow, salted password KDF (PBKDF2, scrypt, or Argon2) with a random per-user salt; better still, store the secret in the <a href="android.html#keystore">Android Keystore</a> behind user authentication. Drop MD5/SHA-1 entirely, and enforce the check server-side rather than relying on a client-side comparison.</td></tr>
   </table>
 
   <hr>
