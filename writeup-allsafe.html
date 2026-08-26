@@ -7,24 +7,24 @@
 <meta name="description" content="A hands-on Android mobile penetration testing methodology walked through the OWASP Mobile Top 10 (2024) and MASVS/MASTG, using the intentionally vulnerable apps AllSafe and InsecureBankv2 as live examples: static analysis, traffic and cert pinning, storage, crypto, auth, platform IPC, injection, and reverse engineering.">
 <link rel="stylesheet" href="style.css">
 <style>
-  /* Sub-section headers (Concept, Case 1/2/3, Report...): violet + a divider so
+  /* Sub-section headers (Concept, Case 1/2/3, Report...): frost blue + a divider so
      sections are easy to tell apart. Scoped to this page only. */
   .writeup-gold h3 {
-    color: var(--mobile);
+    color: var(--accent);
     font-size: 20px;
     margin-top: 40px;
     padding-top: 13px;
     border-top: 1px solid var(--border);
   }
-  /* Bypass Option sub-headers: a lighter purple than the Case headers, no divider. */
+  /* Bypass Option sub-headers: a lighter frost blue than the Case headers, no divider. */
   .writeup-gold h4.bypass {
-    color: #c7b8fb;
+    color: #b3dbe6;
     font-size: 17px;
     font-weight: 600;
     margin: 28px 0 6px;
   }
-  /* OWASP Mobile Top 10 risk IDs and MASVS/MASTG tags in a soft pink. */
-  .risk { color: #ff9aae; font-weight: 600; }
+  /* OWASP Mobile Top 10 risk IDs and MASVS/MASTG tags in severity coral. */
+  .risk { color: #bf616a; font-weight: 600; }
   /* Multi-column reference table (the "check every time" storage checklist). */
   .reftable { width: 100%; border-collapse: separate; border-spacing: 0; font-size: 13.5px; margin: 18px 0 30px; border: 1px solid var(--border-2); border-radius: 10px; overflow: hidden; }
   .reftable th, .reftable td { border-bottom: 1px solid var(--border); vertical-align: top; padding: 9px 12px; text-align: left; }
@@ -1007,16 +1007,16 @@ findstr /s /i "java.util.Random"     androgoat-src\*   # insecure randomness</co
   <pre><code>adb emu finger touch 1</code></pre>
   <p>This makes the device think finger <code>1</code> is enrolled. (We will bypass this anyway, but the app
   needs an enrolled print to reach the prompt.)</p>
+  <figure><img src="images/AllSafe/auth1.png" alt="AndroGoat Biometric Authentication challenge"></figure>
 
   <p><strong>Identifying the exploit.</strong> Let's open AndroGoat's Biometric Authentication challenge.</p>
-  <figure><img src="images/AllSafe/auth1.png" alt="AndroGoat Biometric Authentication challenge"><figcaption>The Biometric Authentication challenge, working through the legitimate path.</figcaption></figure>
   <p>So we confirm the app works using the legitimate path. Now let's try to reach the same screen
   <strong>without</strong> a valid fingerprint. To see if we can, let's use <a href="tools.html#jadx">jadx</a>
   and open AndroGoat's code again. Android / AndroidX use <code>BiometricPrompt</code> and
   <code>onAuthenticationSucceeded</code> for biometric authentication; the platform calls these for the app
   to use. Searching <code>BiometricPrompt</code> in the app leads us to the <code>BioMetricAuthActivity</code>
   code for the challenge.</p>
-  <figure><img src="images/AllSafe/AndroGoatAuth1.png" alt="onAuthenticationSucceeded showing only cosmetic UI"><figcaption>What happens on successful authentication.</figcaption></figure>
+  <figure><img src="images/AllSafe/AndroGoatAuth1.png" alt="onAuthenticationSucceeded showing only cosmetic UI"></figure>
   <p>We see in this screenshot what happens on successful authentication:</p>
   <ul>
     <li><code>setMessage("Authentication succeeded!")</code></li>
@@ -1039,7 +1039,7 @@ findstr /s /i "java.util.Random"     androgoat-src\*   # insecure randomness</co
     <li>class <code>owasp.sat.agoat.BioMetricAuthActivity$onCreate$1</code></li>
     <li>methods <code>onAuthenticationSucceeded</code>, <code>onAuthenticationFailed</code>, <code>onAuthenticationError</code></li>
   </ul>
-  <figure><img src="images/AllSafe/AndroGoatAuth2.png" alt="the callback class and its three methods in jadx"><figcaption>The callback class and the three methods we care about.</figcaption></figure>
+  <figure><img src="images/AllSafe/AndroGoatAuth2.png" alt="the callback class and its three methods in jadx"></figure>
   <div class="note">
     <span class="lbl">reading a fully-qualified class name</span>
     A fully-qualified class name is the complete address of a class: package + outer class + nested class.
@@ -1047,16 +1047,16 @@ findstr /s /i "java.util.Random"     androgoat-src\*   # insecure randomness</co
 &lt;-- package --&gt;   &lt;-- outer class --&gt;  &lt;- nested -&gt;</code></pre>
     Every class in that file lives under this package (it's also the folder path the class sits under in jadx).
   </div>
-  <figure><img src="images/AllSafe/AndroGoatAuth3.png" alt="the package declaration in jadx"><figcaption>The package.</figcaption></figure>
+  <figure><img src="images/AllSafe/AndroGoatAuth3.png" alt="the package declaration in jadx"></figure>
   <pre><code>public final class BioMetricAuthActivity extends AppCompatActivity {</code></pre>
   <p>This is the outer class - the top-level declaration.</p>
-  <figure><img src="images/AllSafe/AndroGoatAuth4.png" alt="the outer class declaration"><figcaption>The outer class.</figcaption></figure>
+  <figure><img src="images/AllSafe/AndroGoatAuth4.png" alt="the outer class declaration"></figure>
   <p>And finally we have the inner class. jadx relabelled it to <code>AnonymousClass1</code>, but the real
   runtime name is in the <code>renamed from:</code> comment: <code>...BioMetricAuthActivity$onCreate$1</code>.
   The <code>$onCreate$1</code> means "the 1st anonymous class declared inside the <code>onCreate</code>
   method" - that's the name the compiler generated and the name the JVM actually uses. So Frida needs the
   <strong>real</strong> name when we hook.</p>
-  <figure><img src="images/AllSafe/AndroGoatAuth5.png" alt="inner class renamed-from comment and the three methods inside its braces"><figcaption>The inner class, with the three callback methods sitting inside its braces.</figcaption></figure>
+  <figure><img src="images/AllSafe/AndroGoatAuth5.png" alt="inner class renamed-from comment and the three methods inside its braces"></figure>
   <p>As for the methods, we found those because they sit within the <strong>inner class's braces</strong>
   (the braces are highlighted, and the methods are highlighted in yellow).</p>
   <p><strong>Step 2 - decide the reroute.</strong> We make <code>onAuthenticationFailed</code> and
@@ -1095,18 +1095,18 @@ findstr /s /i "java.util.Random"     androgoat-src\*   # insecure randomness</co
   <p><strong>Step 5 - make sure the app is running and on the target screen.</strong> Open AndroGoat's
   Biometric Authentication challenge and tap <strong>Biometric Authentication</strong>, which brings up the
   fingerprint prompt (and loads the class we need to hook).</p>
-  <figure><img src="images/AllSafe/AndroGoatAuth6.png" alt="the fingerprint prompt on screen"><figcaption>The fingerprint prompt - the class is now loaded.</figcaption></figure>
+  <figure><img src="images/AllSafe/AndroGoatAuth6.png" alt="the fingerprint prompt on screen"></figure>
   <p><strong>Step 6 - find the process ID:</strong></p>
   <pre><code>frida-ps -U | findstr /i "andro"</code></pre>
-  <figure><img src="images/AllSafe/AndroGoatAuth7.png" alt="frida-ps output showing the AndroGoat PID"><figcaption>Finding the running process.</figcaption></figure>
+  <figure><img src="images/AllSafe/AndroGoatAuth7.png" alt="frida-ps output showing the AndroGoat PID"></figure>
   <p><strong>Step 7 - attach with the script we made earlier:</strong></p>
   <pre><code>frida -U &lt;PID&gt; -l $env:USERPROFILE\biometric-bypass.js</code></pre>
   <p><code>-U</code> = the USB/emulator device; <code>-l</code> = load and inject our script. We attach to the
   <em>running</em> process rather than spawning a fresh one, because the callback class only loads once the
   biometric screen is open.</p>
-  <figure><img src="images/AllSafe/AndroGoatAuth9.png" alt="frida attaching with the bypass script loaded"><figcaption>Attaching with the hook loaded.</figcaption></figure>
+  <figure><img src="images/AllSafe/AndroGoatAuth9.png" alt="frida attaching with the bypass script loaded"></figure>
   <p><strong>Step 8 - trigger it.</strong> Hit Cancel on the fingerprint screen and...</p>
-  <figure><img src="images/AllSafe/AndroGoatAuth8.png" alt="Authentication succeeded dialog after tapping Cancel"><figcaption>We hit Cancel, but the app still authenticated successfully.</figcaption></figure>
+  <figure><img src="images/AllSafe/AndroGoatAuth8.png" alt="Authentication succeeded dialog after tapping Cancel"></figure>
   <p>Success! We hit Cancel, but the app still authenticated. The gate was a suggestion.</p>
 
   <h3>M1 - Improper Credential Usage (InsecureBankv2)</h3>
@@ -1133,10 +1133,10 @@ findstr /s /i "java.util.Random"     androgoat-src\*   # insecure randomness</co
   <a href="android.html#storage">shared_prefs</a>, because that's the number-one place credentials go when
   they're cached for future logins. Since we logged in previously with <code>dinesh</code> /
   <code>Dinesh@123$</code> back in Chapter 3, if cached, they should still be there.</p>
-  <figure><img src="images/AllSafe/inban1.png" alt="mySharedPreferences.xml with two stored credential strings"><figcaption>The two stored strings in <code>mySharedPreferences.xml</code>.</figcaption></figure>
+  <figure><img src="images/AllSafe/inban1.png" alt="mySharedPreferences.xml with two stored credential strings"></figure>
   <p>We see two strings, <code>superSecurePassword</code> and <code>EncryptedUsername</code>. We'll be the
   judge of how "encrypted" and "super secure" these are. Let's decode them both from Base64.</p>
-  <figure><img src="images/AllSafe/inban2.png" alt="decoding both values from Base64"><figcaption>Decoding both values.</figcaption></figure>
+  <figure><img src="images/AllSafe/inban2.png" alt="decoding both values from Base64"></figure>
   <p>The username decoded to a readable word - <code>dinesh</code>. So it was only Base64; no key was
   needed. The password decoded into 16 random bytes, so it IS actually encrypted (AES ciphertext). The
   decode alone failed, which means we need to find a key, similar to what we did in the Broken Cryptography
@@ -1144,9 +1144,9 @@ findstr /s /i "java.util.Random"     androgoat-src\*   # insecure randomness</co
   <p><strong>Check storage &rarr; Decode &rarr; Escalate to key recovery.</strong></p>
   <p>So let's pull the APK, open <a href="tools.html#jadx">jadx</a>, search for <code>Crypto</code> /
   <code>Cipher.getInstance</code>, and use our skills to find the key.</p>
-  <figure><img src="images/AllSafe/inban3.png" alt="searching for the crypto class in jadx"><figcaption>Searching for the crypto.</figcaption></figure>
+  <figure><img src="images/AllSafe/inban3.png" alt="searching for the crypto class in jadx"></figure>
   <p>Looks like we found something. Let's take a closer peek.</p>
-  <figure><img src="images/AllSafe/inban4.png" alt="the CryptoClass with hardcoded key and zero IV"><figcaption>The <code>CryptoClass</code>.</figcaption></figure>
+  <figure><img src="images/AllSafe/inban4.png" alt="the CryptoClass with hardcoded key and zero IV"></figure>
   <p>A "super secret key" for a "super secure password," eh? Everything needed to reverse it is right there:</p>
   <ul>
     <li><strong>Algorithm:</strong> <code>Cipher.getInstance("AES/CBC/PKCS5Padding")</code> - AES-256, CBC mode.</li>
@@ -1162,7 +1162,7 @@ findstr /s /i "java.util.Random"     androgoat-src\*   # insecure randomness</co
   <p><strong>Exploiting it.</strong> We have our Base64 string (<code>DTrW2VXjSoFdg0e61fHxJg==</code>) pulled
   from shared_prefs, and we want the plaintext password. We look at the methods in the code and find which
   one is most applicable given our input (the string) and desired output (the plaintext password).</p>
-  <figure><img src="images/AllSafe/inban5.png" alt="the CryptoClass methods, aesDeccryptedString highlighted"><figcaption>Matching our input and output to the right method.</figcaption></figure>
+  <figure><img src="images/AllSafe/inban5.png" alt="the CryptoClass methods, aesDeccryptedString highlighted"></figure>
   <table class="reftable">
     <thead>
       <tr><th>Method</th><th>Takes</th><th>Returns</th><th>Fits our problem?</th></tr>
@@ -1188,7 +1188,7 @@ $aes.Padding = [System.Security.Cryptography.PaddingMode]::PKCS7
 
 $pt = $aes.CreateDecryptor().TransformFinalBlock($ct, 0, $ct.Length)
 [System.Text.Encoding]::UTF8.GetString($pt)</code></pre>
-  <figure><img src="images/AllSafe/inban6.png" alt="the decrypted password output in PowerShell"><figcaption>The recovered password.</figcaption></figure>
+  <figure><img src="images/AllSafe/inban6.png" alt="the decrypted password output in PowerShell"></figure>
   <p>And we got it! Using the recipe found in the code, we rewrote the AES decryption in PowerShell, ran it,
   and got the password of <code>Dinesh@123$</code>.</p>
 
@@ -1197,7 +1197,7 @@ $pt = $aes.CreateDecryptor().TransformFinalBlock($ct, 0, $ct.Length)
   the one we just did. In AndroGoat's <code>HardCodeActivity</code> we saw:</p>
   <pre><code>private final String aws_secret_access_key = "OviCwsFN...OABCw";</code></pre>
   <p>A cloud credential hardcoded into the app's source.</p>
-  <figure><img src="images/AllSafe/inban7.png" alt="the hardcoded AWS secret access key in HardCodeActivity"><figcaption>The hardcoded AWS key in <code>HardCodeActivity</code>.</figcaption></figure>
+  <figure><img src="images/AllSafe/inban7.png" alt="the hardcoded AWS secret access key in HardCodeActivity"></figure>
   <p>So how does this differ from InsecureBankv2? Both are M1 (Improper Credential Usage), but they fail at
   different points in the credential's lifecycle:</p>
   <ul>
