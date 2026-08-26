@@ -147,6 +147,16 @@
   <h2><span class="num">01</span>Recon &amp; Static Analysis</h2>
   <p class="secmeta">MASVS: CODE, PRIVACY &nbsp;&middot;&nbsp; Mobile Top 10: <a href="android.html#m2" class="risk">M2</a>, <a href="android.html#m6" class="risk">M6</a>, <a href="android.html#m8" class="risk">M8</a></p>
 
+  <h3>Concept</h3>
+  <p>Recon and static analysis is the first pass over an app, before any dynamic testing. We read the
+  package itself - the manifest, the resources, and the decompiled code - to map the attack surface and
+  catch the flaws that are visible without running anything. It is less a single vulnerability and more the
+  phase that surfaces several: secrets and keys baked into the binary, sensitive data leaked to the logs,
+  and components or flags left misconfigured. In OWASP terms that spans M2 (Inadequate Supply Chain
+  Security), M6 (Inadequate Privacy Controls), and M8 (Security Misconfiguration). Our tools are
+  <a href="tools.html#jadx">jadx</a> (decompile to readable Java/Kotlin) and
+  <a href="tools.html#apktool">apktool</a> (decode the manifest and resources).</p>
+
   <p>AllSafe is a stand-in for real apps we would check in the real world. In a real engagement,
   usually we will get:</p>
   <ul>
@@ -355,6 +365,21 @@
     explain methodology for mobile penetration testing, and if I was to go over every vulnerability
     that would take a while.
   </div>
+
+  <h3>Remediation</h3>
+  <p>The fixes for what recon turned up, then the general controls for the categories it touches.</p>
+  <p><strong>For the flaws in this section:</strong></p>
+  <ul>
+    <li><strong>Hardcoded secret in resources (M8/M2):</strong> don't ship secrets in <code>strings.xml</code> or other resources - anyone who unzips the APK reads them. Keep secrets on the server and fetch them at runtime; if a value gates something, enforce that gate server-side, not with a shipped constant.</li>
+    <li><strong>Insecure logging (M6):</strong> strip sensitive data (URIs with query strings, tokens, PII) from log calls, and remove or disable debug logging in release builds. Never <code>Log.d</code> a full deep-link <code>Uri</code>.</li>
+    <li><strong>Exported component / BROWSABLE deep link (M8):</strong> set <code>android:exported="false"</code> unless the component genuinely must be reachable from outside, and treat everything a deep link carries as untrusted - validate and authorize it before acting.</li>
+  </ul>
+  <p><strong>General controls, most important first:</strong></p>
+  <ul>
+    <li><span class="risk">Most applicable here:</span> ship safe defaults (M8) - <code>android:exported="false"</code>, <code>debuggable="false"</code>, <code>allowBackup="false"</code>, and least-privilege permissions.</li>
+    <li>Keep PII out of the logs and out of other apps' reach (M6); scrub debug logging from release builds.</li>
+    <li>Vet third-party SDKs and pin your dependencies (M2); secrets belong on the server, never compiled into the shipped package.</li>
+  </ul>
 
   <hr>
 
@@ -682,12 +707,29 @@ OkHttpClient okHttpClient = new OkHttpClient.Builder()
     <tr><th>Remediation</th><td>Keep pinning as defense-in-depth, but layer additional protections (root/tamper detection, attestation). Do not rely on client-side pinning alone as a security boundary.</td></tr>
   </table>
 
+  <h3>Remediation</h3>
+  <p>The fixes for what we found on the wire, then the general controls for M5.</p>
+  <p><strong>For the flaws in this section:</strong></p>
+  <ul>
+    <li><strong>Cleartext credentials (InsecureBankv2):</strong> serve every endpoint over TLS and never transmit credentials in the clear. On Android, set <code>cleartextTrafficPermitted="false"</code> in the Network Security Config so the platform refuses plain HTTP.</li>
+    <li><strong>Server trusts client-supplied transfer parameters:</strong> validate and authorize every parameter server-side, and bind the source account to the authenticated session. Never trust a client-supplied amount or account number.</li>
+    <li><strong>Ineffective, runtime-derived pinning (AllSafe):</strong> pin to a fixed, build-time value (the real server's leaf or CA public-key hash) with backup pins for rotation. Never derive the pin from the live connection.</li>
+    <li><strong>Pinning bypassable on a rooted device (AndroGoat):</strong> keep pinning as defense-in-depth, but layer additional protections (root/tamper detection, attestation). Don't rely on client-side pinning alone as a security boundary.</li>
+  </ul>
+  <p><strong>General M5 (Insecure Communication) controls, most important first:</strong></p>
+  <ul>
+    <li><span class="risk">Most applicable here:</span> enforce TLS on every endpoint and set <code>cleartextTrafficPermitted="false"</code>; never send credentials or tokens in cleartext.</li>
+    <li>Pin to a fixed public-key hash with backup pins, and treat pinning as one layer rather than the boundary.</li>
+    <li>Validate and authorize all requests server-side; the client is attacker-controlled, so nothing it sends can be trusted.</li>
+  </ul>
+
   <hr>
 
   <!-- ==================== 03 - Insecure Data Storage ==================== -->
   <h2><span class="num">03</span>Insecure Data Storage</h2>
   <p class="secmeta">MASVS: STORAGE &nbsp;&middot;&nbsp; Mobile Top 10: <a href="android.html#m9" class="risk">M9</a></p>
 
+  <h3>Concept</h3>
   <p>As we know, each app runs as its own user within its own private directory, and other apps cannot read
   its files. A lot of developers believe that, due to the nature of the
   <a href="android.html#sandbox">sandbox</a>, they can just store their token in a file. While the sandbox
@@ -777,12 +819,26 @@ OkHttpClient okHttpClient = new OkHttpClient.Builder()
     <tr><th>Remediation</th><td>Avoid storing credentials on the device where possible; if you must, use EncryptedSharedPreferences backed by an Android Keystore master key, so the file on disk is ciphertext and the key never leaves secure hardware.</td></tr>
   </table>
 
+  <h3>Remediation</h3>
+  <p>The fix for what we found on disk, then the general controls for M9.</p>
+  <p><strong>For the flaw in this section:</strong></p>
+  <ul>
+    <li><strong>Plaintext credentials in SharedPreferences (AllSafe):</strong> don't store credentials on the device if you can avoid it. If you must, use EncryptedSharedPreferences backed by an <a href="android.html#keystore">Android Keystore</a> master key so the file on disk is ciphertext and the key never leaves secure hardware. Keep sensitive data off external storage, and set <code>allowBackup="false"</code> so it can't be pulled from a backup.</li>
+  </ul>
+  <p><strong>General M9 (Insecure Data Storage) controls, most important first:</strong></p>
+  <ul>
+    <li><span class="risk">Most applicable here:</span> store sensitive data only in the OS-backed vault (Keystore-backed EncryptedSharedPreferences on Android, Keychain on iOS), never as plaintext in <code>shared_prefs</code>.</li>
+    <li>Keep sensitive data off external storage (<code>/sdcard/</code>) - it is world-reachable, survives uninstall, and needs no root to read.</li>
+    <li>Disable backups for apps holding sensitive data, and scrub caches and the Recents screenshot (<code>FLAG_SECURE</code>) where secrets could linger.</li>
+  </ul>
+
   <hr>
 
   <!-- ==================== 04 - Broken Cryptography ==================== -->
   <h2><span class="num">04</span>Broken Cryptography</h2>
   <p class="secmeta">MASVS: CRYPTO &nbsp;&middot;&nbsp; Mobile Top 10: <a href="android.html#m10" class="risk">M10</a></p>
 
+  <h3>Concept</h3>
   <p>In the previous section, we covered how we found some files in plaintext off disk. Now we are going to
   focus on files that are encrypted. Developers reach for a crypto API, accidentally configure it
   incorrectly or miss a vulnerability, and ship something that looks encrypted, but when we look closely we
@@ -898,26 +954,317 @@ findstr /s /i "java.util.Random"     androgoat-src\*   # insecure randomness</co
     <tr><th>Remediation</th><td>Don't protect a low-entropy secret like a PIN with a fast, unsalted hash. Use a slow, salted password KDF (PBKDF2, scrypt, or Argon2) with a random per-user salt; better still, store the secret in the <a href="android.html#keystore">Android Keystore</a> behind user authentication. Drop MD5/SHA-1 entirely, and enforce the check server-side rather than relying on a client-side comparison.</td></tr>
   </table>
 
+  <h3>Remediation</h3>
+  <p>The fix for the weak hashing we found, then the general controls for M10.</p>
+  <p><strong>For the flaw in this section:</strong></p>
+  <ul>
+    <li><strong>Unsalted MD5 hashing of the PIN (AndroGoat):</strong> don't protect a low-entropy secret with a fast, unsalted hash. Use a slow, salted password KDF (PBKDF2, scrypt, or Argon2) with a random per-user salt; better still, store the secret in the <a href="android.html#keystore">Android Keystore</a> behind user authentication. Drop MD5/SHA-1 entirely, and enforce the check server-side rather than trusting a client-side comparison.</li>
+  </ul>
+  <p><strong>General M10 (Insufficient Cryptography) controls, most important first:</strong></p>
+  <ul>
+    <li><span class="risk">Most applicable here:</span> use vetted algorithms correctly - a proper salted KDF (Argon2/scrypt/PBKDF2) for secrets, SHA-256 or better for hashing, and AES-GCM (never ECB) with a random IV per operation. Never MD5/SHA-1 for anything security-relevant.</li>
+    <li>No hardcoded keys - generate and keep keys in the Keystore/Keychain so the raw key never exists in the binary or address space.</li>
+    <li>Use <code>SecureRandom</code> for keys, IVs, salts, and tokens; never <code>java.util.Random</code>.</li>
+  </ul>
+
   <hr>
 
   <!-- ==================== 05 - Authentication & Session ==================== -->
   <h2><span class="num">05</span>Authentication &amp; Session</h2>
   <p class="secmeta">MASVS: AUTH &nbsp;&middot;&nbsp; Mobile Top 10: <a href="android.html#m1" class="risk">M1</a>, <a href="android.html#m3" class="risk">M3</a></p>
 
-  <p>[ Local auth bypass, biometric handling, session/token storage and reuse. ]</p>
+  <h3>Concept</h3>
+  <p>An app asks itself, "is this user allowed?". It then has a PIN screen, a fingerprint gate, an
+  <code>isLoggedIn</code> boolean, and using those things it trusts its own answer. But on a device WE
+  control, every one of those checks is just code we can rewrite at runtime. In this section we will force
+  those checks to lie, then look at the other half of the problem: the tokens that <strong>do</strong> reach
+  the server, and whether they're minted, stored, rotated, and expired correctly.</p>
+  <p>This section focuses on <strong>MASVS-AUTH</strong> (Authentication and Session Management) and the
+  OWASP Mobile Top 10 categories M1 - Improper Credential Usage and M3 - Insecure
+  Authentication/Authorization. Our targets:</p>
+  <ul>
+    <li><strong>AndroGoat</strong> - for the biometric authentication challenge (M3).</li>
+    <li><strong>InsecureBankv2</strong> - for insecurely stored and hardcoded credentials (M1).</li>
+  </ul>
+  <p>We will also use <a href="tools.html#frida">Frida</a> and <a href="tools.html#objection">objection</a>.</p>
+  <div class="note insight">
+    <span class="lbl">two families of auth finding</span>
+    Authentication findings split into two families with very different severities, and it helps to know
+    which you're writing: the difference is "the attacker needs a rooted device in their hand" versus "the
+    attacker needs only your token." <strong>Family A - Client-Side Authentication Bypass</strong>: a check
+    (PIN, biometric, logged-in flag) enforced on the device, defeated by rewriting it at runtime.
+    Device-bound, so usually Medium. <strong>Family B - Weak Session Management / JWT</strong>: token-level
+    flaws (<code>alg:none</code>, a weak signing secret, no expiry, no server-side revocation on logout).
+    Remotely exploitable, so usually higher. This section demonstrates Family A (the biometric bypass)
+    alongside the M1 credential-handling failures.
+  </div>
 
-  <div class="shot-todo">SCREENSHOT - auth bypass in action</div>
+  <h3>M3 - Insecure Authentication/Authorization (AndroGoat)</h3>
 
-  <table class="finding">
-    <tr><th>Title</th><td>[ finding name ]</td></tr>
-    <tr><th>Severity</th><td>[ ... ]</td></tr>
-    <tr><th>Description</th><td>[ ... ]</td></tr>
-    <tr><th>Impact</th><td>[ ... ]</td></tr>
-    <tr><th>Evidence</th><td>[ ... ]</td></tr>
-    <tr><th>MASTG</th><td>[ ... ]</td></tr>
-    <tr><th>Mobile Top 10</th><td>[ ... ]</td></tr>
-    <tr><th>Remediation</th><td>[ ... ]</td></tr>
+  <p><strong>Enrolling a fingerprint.</strong> For the Biometric Auth challenge we first need to enroll a
+  fingerprint on the emulator. Since we obviously can't use a real fingerprint, we run this command from our
+  host about six times to get it to confirm in the Android settings:</p>
+  <pre><code>adb emu finger touch 1</code></pre>
+  <p>This makes the device think finger <code>1</code> is enrolled. (We will bypass this anyway, but the app
+  needs an enrolled print to reach the prompt.)</p>
+
+  <p><strong>Identifying the exploit.</strong> Let's open AndroGoat's Biometric Authentication challenge.</p>
+  <figure><img src="images/AllSafe/auth1.png" alt="AndroGoat Biometric Authentication challenge"><figcaption>The Biometric Authentication challenge, working through the legitimate path.</figcaption></figure>
+  <p>So we confirm the app works using the legitimate path. Now let's try to reach the same screen
+  <strong>without</strong> a valid fingerprint. To see if we can, let's use <a href="tools.html#jadx">jadx</a>
+  and open AndroGoat's code again. Android / AndroidX use <code>BiometricPrompt</code> and
+  <code>onAuthenticationSucceeded</code> for biometric authentication; the platform calls these for the app
+  to use. Searching <code>BiometricPrompt</code> in the app leads us to the <code>BioMetricAuthActivity</code>
+  code for the challenge.</p>
+  <figure><img src="images/AllSafe/AndroGoatAuth1.png" alt="onAuthenticationSucceeded showing only cosmetic UI"><figcaption>What happens on successful authentication.</figcaption></figure>
+  <p>We see in this screenshot what happens on successful authentication:</p>
+  <ul>
+    <li><code>setMessage("Authentication succeeded!")</code></li>
+    <li><code>Toast.makeText(..., "Authentication succeeded! ")</code></li>
+    <li><code>setPositiveButton("OK", ... dismiss)</code></li>
+    <li><code>AlertDialog dialog = builder.create(); dialog.show();</code></li>
+  </ul>
+  <p>Notice something? This is all cosmetic. There is no <code>result.getCryptoObject()</code>, no
+  <code>Cipher</code>, no <a href="android.html#keystore">Keystore</a> key in that success path. It builds a
+  Toast and an AlertDialog and stops. It essentially says, "on success, generate a good-job pop-up!"</p>
+  <p>However, Android calls that on a real fingerprint, so we can't trigger it directly. But the app also
+  wrote <code>onAuthenticationFailed</code> (which happens on a wrong fingerprint) and
+  <code>onAuthenticationError</code> (which happens if we tap "Cancel"). These two we CAN trigger ourselves.
+  So when the app tries to run the "failed" or "cancel" code, we hijack it with Frida and make it run the
+  "success" code instead.</p>
+
+  <p><strong>Exploiting the vulnerability.</strong></p>
+  <p><strong>Step 1 - identify the exact targets we'll hook</strong>, from jadx:</p>
+  <ul>
+    <li>class <code>owasp.sat.agoat.BioMetricAuthActivity$onCreate$1</code></li>
+    <li>methods <code>onAuthenticationSucceeded</code>, <code>onAuthenticationFailed</code>, <code>onAuthenticationError</code></li>
+  </ul>
+  <figure><img src="images/AllSafe/AndroGoatAuth2.png" alt="the callback class and its three methods in jadx"><figcaption>The callback class and the three methods we care about.</figcaption></figure>
+  <div class="note">
+    <span class="lbl">reading a fully-qualified class name</span>
+    A fully-qualified class name is the complete address of a class: package + outer class + nested class.
+<pre><code>owasp.sat.agoat . BioMetricAuthActivity $ onCreate $ 1
+&lt;-- package --&gt;   &lt;-- outer class --&gt;  &lt;- nested -&gt;</code></pre>
+    Every class in that file lives under this package (it's also the folder path the class sits under in jadx).
+  </div>
+  <figure><img src="images/AllSafe/AndroGoatAuth3.png" alt="the package declaration in jadx"><figcaption>The package.</figcaption></figure>
+  <pre><code>public final class BioMetricAuthActivity extends AppCompatActivity {</code></pre>
+  <p>This is the outer class - the top-level declaration.</p>
+  <figure><img src="images/AllSafe/AndroGoatAuth4.png" alt="the outer class declaration"><figcaption>The outer class.</figcaption></figure>
+  <p>And finally we have the inner class. jadx relabelled it to <code>AnonymousClass1</code>, but the real
+  runtime name is in the <code>renamed from:</code> comment: <code>...BioMetricAuthActivity$onCreate$1</code>.
+  The <code>$onCreate$1</code> means "the 1st anonymous class declared inside the <code>onCreate</code>
+  method" - that's the name the compiler generated and the name the JVM actually uses. So Frida needs the
+  <strong>real</strong> name when we hook.</p>
+  <figure><img src="images/AllSafe/AndroGoatAuth5.png" alt="inner class renamed-from comment and the three methods inside its braces"><figcaption>The inner class, with the three callback methods sitting inside its braces.</figcaption></figure>
+  <p>As for the methods, we found those because they sit within the <strong>inner class's braces</strong>
+  (the braces are highlighted, and the methods are highlighted in yellow).</p>
+  <p><strong>Step 2 - decide the reroute.</strong> We make <code>onAuthenticationFailed</code> and
+  <code>onAuthenticationError</code> call <code>onAuthenticationSucceeded</code>. We hijack the two paths we
+  control and point them at the success code.</p>
+  <p><strong>Step 3 - write the hook:</strong></p>
+  <pre><code>Java.perform(function () {
+
+    // (A) neutralize Kotlin's null-check so we can pass null
+    Java.use('kotlin.jvm.internal.Intrinsics')
+        .checkNotNullParameter.overload('java.lang.Object', 'java.lang.String')
+        .implementation = function (obj, name) {};
+
+    // (B) handle to the callback class
+    var Callback = Java.use('owasp.sat.agoat.BioMetricAuthActivity$onCreate$1');
+
+    // (C) reroute the paths WE can trigger into the success path
+    Callback.onAuthenticationFailed.implementation = function () {
+        console.log('[+] failed -> forcing success');
+        this.onAuthenticationSucceeded(null);
+    };
+    Callback.onAuthenticationError.implementation = function (code, msg) {
+        console.log('[+] error/cancel -> forcing success');
+        this.onAuthenticationSucceeded(null);
+    };
+});</code></pre>
+  <p>What and why for each piece:</p>
+  <ul>
+    <li><code>Java.perform(function(){ ... })</code> - run our code once the Android Java runtime is up. The app is Java/Kotlin on a VM, so Frida has to wait for that VM before it can touch classes.</li>
+    <li><code>Java.use('...class...')</code> - get a handle to a class. We need a reference before we can rewrite its methods.</li>
+    <li><code>Method.implementation = function(){ ... }</code> - replace what the method does. This is the actual override; our code runs instead of the app's.</li>
+    <li><code>this.onAuthenticationSucceeded(null)</code> inside the failed/error hooks - run the success path. That's the reroute; <code>null</code> because we have no real result and the method never uses it anyway.</li>
+    <li>The <code>Intrinsics.checkNotNullParameter</code> no-op - Kotlin auto-inserts a runtime null-check on <code>result</code>; passing <code>null</code> would throw, so we blank that one check out. A pure Kotlin gotcha, not the concept.</li>
+  </ul>
+  <p><strong>Step 4 - save the script to a file</strong>, because <code>frida -l</code> loads a script from a path on disk.</p>
+  <p><strong>Step 5 - make sure the app is running and on the target screen.</strong> Open AndroGoat's
+  Biometric Authentication challenge and tap <strong>Biometric Authentication</strong>, which brings up the
+  fingerprint prompt (and loads the class we need to hook).</p>
+  <figure><img src="images/AllSafe/AndroGoatAuth6.png" alt="the fingerprint prompt on screen"><figcaption>The fingerprint prompt - the class is now loaded.</figcaption></figure>
+  <p><strong>Step 6 - find the process ID:</strong></p>
+  <pre><code>frida-ps -U | findstr /i "andro"</code></pre>
+  <figure><img src="images/AllSafe/AndroGoatAuth7.png" alt="frida-ps output showing the AndroGoat PID"><figcaption>Finding the running process.</figcaption></figure>
+  <p><strong>Step 7 - attach with the script we made earlier:</strong></p>
+  <pre><code>frida -U &lt;PID&gt; -l $env:USERPROFILE\biometric-bypass.js</code></pre>
+  <p><code>-U</code> = the USB/emulator device; <code>-l</code> = load and inject our script. We attach to the
+  <em>running</em> process rather than spawning a fresh one, because the callback class only loads once the
+  biometric screen is open.</p>
+  <figure><img src="images/AllSafe/AndroGoatAuth9.png" alt="frida attaching with the bypass script loaded"><figcaption>Attaching with the hook loaded.</figcaption></figure>
+  <p><strong>Step 8 - trigger it.</strong> Hit Cancel on the fingerprint screen and...</p>
+  <figure><img src="images/AllSafe/AndroGoatAuth8.png" alt="Authentication succeeded dialog after tapping Cancel"><figcaption>We hit Cancel, but the app still authenticated successfully.</figcaption></figure>
+  <p>Success! We hit Cancel, but the app still authenticated. The gate was a suggestion.</p>
+
+  <h3>M1 - Improper Credential Usage (InsecureBankv2)</h3>
+  <p>This is about credentials specifically - the things that prove our identity: passwords, API keys,
+  session tokens, and secrets. A credential can be mishandled anywhere it lives:</p>
+  <ul>
+    <li>Stored insecurely on the device (InsecureBankv2's cached login, which we cover first).</li>
+    <li>Hardcoded into the binary (like the AWS key we found earlier, which we cover shortly).</li>
+    <li>Transmitted insecurely (cleartext over the wire, such as what we saw in Chapter 3 / M5).</li>
+    <li>Validated weakly, or reused and never rotated.</li>
+  </ul>
+  <p>A lot of the time, the thing that authenticates is handled carelessly wherever it lives.</p>
+  <div class="note insight">
+    <span class="lbl">how is this different from M9 - Insecure Data Storage?</span>
+    A password in <a href="android.html#storage">shared_prefs</a> is genuinely both. Through the <strong>M9
+    lens</strong> it's sensitive data stored in the clear; through the <strong>M1 lens</strong> it's a
+    credential mishandled. We decide how to file it based on root cause and impact: if it's a credential (a
+    thing used to authenticate access), we file it under M1; if it's medical records, transaction lists, and
+    so on, we file it under M9. It wouldn't be wrong to label a credential-in-storage as both.
+  </div>
+
+  <p><strong>Identifying the vulnerability.</strong> InsecureBankv2 is purposefully vulnerable for learning.
+  It has a login and a "remember me" style credential cache. We first check
+  <a href="android.html#storage">shared_prefs</a>, because that's the number-one place credentials go when
+  they're cached for future logins. Since we logged in previously with <code>dinesh</code> /
+  <code>Dinesh@123$</code> back in Chapter 3, if cached, they should still be there.</p>
+  <figure><img src="images/AllSafe/inban1.png" alt="mySharedPreferences.xml with two stored credential strings"><figcaption>The two stored strings in <code>mySharedPreferences.xml</code>.</figcaption></figure>
+  <p>We see two strings, <code>superSecurePassword</code> and <code>EncryptedUsername</code>. We'll be the
+  judge of how "encrypted" and "super secure" these are. Let's decode them both from Base64.</p>
+  <figure><img src="images/AllSafe/inban2.png" alt="decoding both values from Base64"><figcaption>Decoding both values.</figcaption></figure>
+  <p>The username decoded to a readable word - <code>dinesh</code>. So it was only Base64; no key was
+  needed. The password decoded into 16 random bytes, so it IS actually encrypted (AES ciphertext). The
+  decode alone failed, which means we need to find a key, similar to what we did in the Broken Cryptography
+  section. It's always good to try the cheapest attack first before chasing rabbits:</p>
+  <p><strong>Check storage &rarr; Decode &rarr; Escalate to key recovery.</strong></p>
+  <p>So let's pull the APK, open <a href="tools.html#jadx">jadx</a>, search for <code>Crypto</code> /
+  <code>Cipher.getInstance</code>, and use our skills to find the key.</p>
+  <figure><img src="images/AllSafe/inban3.png" alt="searching for the crypto class in jadx"><figcaption>Searching for the crypto.</figcaption></figure>
+  <p>Looks like we found something. Let's take a closer peek.</p>
+  <figure><img src="images/AllSafe/inban4.png" alt="the CryptoClass with hardcoded key and zero IV"><figcaption>The <code>CryptoClass</code>.</figcaption></figure>
+  <p>A "super secret key" for a "super secure password," eh? Everything needed to reverse it is right there:</p>
+  <ul>
+    <li><strong>Algorithm:</strong> <code>Cipher.getInstance("AES/CBC/PKCS5Padding")</code> - AES-256, CBC mode.</li>
+    <li><strong>Key:</strong> <code>"This is the super secret key 123"</code> - 32 characters, which is 256 bits, confirming AES-256.</li>
+    <li><strong>IV:</strong> <code>ivBytes = {0,0,0,...}</code> - 16 zero bytes, a static all-zero IV.</li>
+  </ul>
+  <p>This reveals a lot of important information:</p>
+  <ul>
+    <li>There is a <strong>hardcoded key</strong> baked into the APK (M10 hardcoded key). It ships to every attacker.</li>
+    <li>A <strong>static / all-zero IV</strong> (M10 static IV) - the exact "Static / null IV" scenario we noted in the Chapter 5 table.</li>
+    <li>So the "superSecurePassword" AES layer provides <strong>no real protection</strong> - the key that "protects" it is inside the very app we pulled.</li>
+  </ul>
+  <p><strong>Exploiting it.</strong> We have our Base64 string (<code>DTrW2VXjSoFdg0e61fHxJg==</code>) pulled
+  from shared_prefs, and we want the plaintext password. We look at the methods in the code and find which
+  one is most applicable given our input (the string) and desired output (the plaintext password).</p>
+  <figure><img src="images/AllSafe/inban5.png" alt="the CryptoClass methods, aesDeccryptedString highlighted"><figcaption>Matching our input and output to the right method.</figcaption></figure>
+  <table class="reftable">
+    <thead>
+      <tr><th>Method</th><th>Takes</th><th>Returns</th><th>Fits our problem?</th></tr>
+    </thead>
+    <tbody>
+      <tr><td><code>aes256encrypt(...)</code></td><td>raw bytes</td><td>ciphertext bytes</td><td>No. It encrypts.</td></tr>
+      <tr><td><code>aes256decrypt(...)</code></td><td>raw bytes</td><td>plaintext bytes</td><td>Partly - decrypts, but wants raw bytes, not a Base64 string.</td></tr>
+      <tr><td><code>aesEncryptedString(String)</code></td><td>plaintext</td><td>Base64 ciphertext</td><td>No. It encrypts.</td></tr>
+      <tr><td><code>aesDeccryptedString(String)</code></td><td>a String</td><td>plaintext String</td><td>Yes. Takes a string, returns the password.</td></tr>
+    </tbody>
   </table>
+  <p>So we take the recipe from <code>aesDeccryptedString</code> and rewrite it in PowerShell (locally, so no
+  sensitive data leaves our machine):</p>
+  <pre><code>$key = [System.Text.Encoding]::UTF8.GetBytes("This is the super secret key 123")
+$iv  = New-Object byte[] 16
+$ct  = [System.Convert]::FromBase64String("DTrW2VXjSoFdg0e61fHxJg==")
+
+$aes = [System.Security.Cryptography.Aes]::Create()
+$aes.Key     = $key
+$aes.IV      = $iv
+$aes.Mode    = [System.Security.Cryptography.CipherMode]::CBC
+$aes.Padding = [System.Security.Cryptography.PaddingMode]::PKCS7
+
+$pt = $aes.CreateDecryptor().TransformFinalBlock($ct, 0, $ct.Length)
+[System.Text.Encoding]::UTF8.GetString($pt)</code></pre>
+  <figure><img src="images/AllSafe/inban6.png" alt="the decrypted password output in PowerShell"><figcaption>The recovered password.</figcaption></figure>
+  <p>And we got it! Using the recipe found in the code, we rewrote the AES decryption in PowerShell, ran it,
+  and got the password of <code>Dinesh@123$</code>.</p>
+
+  <p><strong>The AWS key we found in Chapter 5.</strong> I've mentioned a few times that we'd address the
+  little key we found by accident in the Broken Cryptography chapter. Here we are - it's a similar example to
+  the one we just did. In AndroGoat's <code>HardCodeActivity</code> we saw:</p>
+  <pre><code>private final String aws_secret_access_key = "OviCwsFN...OABCw";</code></pre>
+  <p>A cloud credential hardcoded into the app's source.</p>
+  <figure><img src="images/AllSafe/inban7.png" alt="the hardcoded AWS secret access key in HardCodeActivity"><figcaption>The hardcoded AWS key in <code>HardCodeActivity</code>.</figcaption></figure>
+  <p>So how does this differ from InsecureBankv2? Both are M1 (Improper Credential Usage), but they fail at
+  different points in the credential's lifecycle:</p>
+  <ul>
+    <li><strong>InsecureBankv2</strong> = a credential <strong>stored</strong> insecurely at runtime (cached to shared_prefs, "protected" by Base64 and a hardcoded-key AES). A storage failure.</li>
+    <li><strong>AWS key</strong> = a credential <strong>embedded</strong> into the binary at build time. A hardcoding failure - the secret ships inside the APK to every single user and attacker.</li>
+  </ul>
+  <p>A hardcoded secret is exposed the instant we decompile. We just had to search <code>SecretKeySpec</code>
+  (or something similar) in jadx to find it.</p>
+
+  <h3>So what did we find in Authentication &amp; Session?</h3>
+  <p>The findings, written up as report entries. As a rule, if the same weakness reproduced on both Android
+  and iOS you'd write it up as <strong>two</strong> findings, since the evidence, code paths, and remediation
+  differ per platform. Severities are calibrated to what each issue actually authorizes and how hard it is to
+  reach.</p>
+  <table class="finding">
+    <tr><th>Title</th><td>Client-side biometric authentication bypass (AndroGoat)</td></tr>
+    <tr><th>Severity</th><td><strong>Medium</strong>. The biometric gate is enforced entirely on the device with no cryptographic binding, so a Frida hook that reroutes the failure/cancel callbacks into the success path reaches the protected screen with no valid fingerprint. It requires attacker control of the device (root plus a running Frida), so it isn't remotely exploitable; it rises if the unlocked screen exposes data the server should re-gate, and falls toward Informational if that content is useless without a server-validated session.</td></tr>
+    <tr><th>Description</th><td><code>BioMetricAuthActivity</code> uses <code>BiometricPrompt</code>, but <code>onAuthenticationSucceeded</code> only shows a Toast and dialog - no <code>CryptoObject</code>, no Keystore key - and <code>authenticate(promptInfo)</code> is called with no crypto object. Success is a cosmetic UI action, not a cryptographic unlock.</td></tr>
+    <tr><th>Impact</th><td>On a device the attacker controls, the biometric gate provides no protection; the protected screen opens after a cancelled or failed biometric.</td></tr>
+    <tr><th>Evidence</th><td>A Frida hook rerouting <code>onAuthenticationFailed</code> / <code>onAuthenticationError</code> to <code>onAuthenticationSucceeded</code> produced the "Authentication succeeded!" screen after tapping Cancel.</td></tr>
+    <tr><th>MASVS / MASTG</th><td>MASVS-AUTH-2 &middot; MASTG local-authentication / biometric test cases &middot; CWE-287 (improper authentication)</td></tr>
+    <tr><th>Mobile Top 10</th><td>M3 - Insecure Authentication/Authorization (Family A - client-side bypass)</td></tr>
+    <tr><th>Remediation</th><td>Bind the gate to a Keystore-backed key requiring user authentication (a <code>BiometricPrompt</code> with a <code>CryptoObject</code>), so success releases a secret an attacker can't fabricate; enforce authorization server-side. See the Remediation section below.</td></tr>
+  </table>
+  <table class="finding">
+    <tr><th>Title</th><td>Login credentials stored recoverably on the device (InsecureBankv2)</td></tr>
+    <tr><th>Severity</th><td><strong>Medium</strong>. The cached username and password are recoverable by anyone with access to the app sandbox (root, a backup, or forensic access): the username is only Base64-encoded, and the password is AES-encrypted with a key and IV hardcoded in the app, so both reverse offline to the real login. Not remotely exploitable on its own, but it yields working account credentials.</td></tr>
+    <tr><th>Description</th><td>On login, InsecureBankv2 caches the credentials in <code>shared_prefs/mySharedPreferences.xml</code>. <code>EncryptedUsername</code> is plain Base64; <code>superSecurePassword</code> is AES-256-CBC using a hardcoded key (<code>"This is the super secret key 123"</code>) and an all-zero IV, both found in <code>CryptoClass</code>.</td></tr>
+    <tr><th>Impact</th><td>An attacker with device access recovers the victim's real banking username and password with no server compromise.</td></tr>
+    <tr><th>Evidence</th><td><code>EncryptedUsername=ZGluZXNo</code> decoded to <code>dinesh</code>; <code>superSecurePassword</code> decrypted with the hardcoded key and zero IV back to the real password.</td></tr>
+    <tr><th>MASVS / MASTG</th><td>MASVS-STORAGE-1 &middot; MASVS-AUTH &middot; CWE-522 (insufficiently protected credentials) &middot; CWE-321 (hardcoded crypto key) &middot; CWE-329 (static IV). Overlaps M9 (storage) and M10 (crypto).</td></tr>
+    <tr><th>Mobile Top 10</th><td>M1 - Improper Credential Usage</td></tr>
+    <tr><th>Remediation</th><td>Don't cache the password on the device; if you must, use EncryptedSharedPreferences with a Keystore-backed key - never a hardcoded key, never an all-zero IV, and never Base64 dressed up as "encryption." See the Remediation section below.</td></tr>
+  </table>
+  <table class="finding">
+    <tr><th>Title</th><td>Hardcoded cloud credential in the app binary (AndroGoat)</td></tr>
+    <tr><th>Severity</th><td><strong>Low</strong> in this lab (the key is a dummy value in a public training app), but the pattern is <strong>Critical</strong>: a live AWS secret access key embedded in a shipped app grants anyone who decompiles it programmatic access to whatever the key's IAM identity allows - remotely, with no device access.</td></tr>
+    <tr><th>Description</th><td><code>HardCodeActivity</code> contains a hardcoded <code>aws_secret_access_key</code> string literal, recoverable by decompiling the APK.</td></tr>
+    <tr><th>Impact</th><td>Anyone with the APK extracts the key with a single static search. A live key would mean full cloud-account compromise (data exfiltration, resource abuse, billing).</td></tr>
+    <tr><th>Evidence</th><td><code>aws_secret_access_key = "OviCwsFN..."</code> found in <code>owasp.sat.agoat.HardCodeActivity</code> via a keyword search in jadx.</td></tr>
+    <tr><th>MASVS / MASTG</th><td>MASVS-STORAGE &middot; MASVS-CODE &middot; CWE-798 (use of hardcoded credentials)</td></tr>
+    <tr><th>Mobile Top 10</th><td>M1 - Improper Credential Usage</td></tr>
+    <tr><th>Remediation</th><td>Never embed credentials in the binary; fetch short-lived, scoped credentials at runtime from a backend, and rotate any key that has shipped. See the Remediation section below.</td></tr>
+  </table>
+
+  <h3>Remediation</h3>
+  <p>The specific fixes for what we found, then the general controls every app should apply for M1 and M3.</p>
+  <p><strong>For the flaws in this section:</strong></p>
+  <ul>
+    <li><strong>Biometric bypass (M3):</strong> bind the gate to the hardware. Use <code>BiometricPrompt</code> with a <code>CryptoObject</code> wrapping an <a href="android.html#keystore">Android Keystore</a> key created with <code>setUserAuthenticationRequired(true)</code>, so a successful prompt releases a key an attacker can't fabricate and a faked callback yields nothing. Never gate on a bare boolean or a UI callback, and enforce the real authorization on the server.</li>
+    <li><strong>Stored credentials (M1):</strong> don't cache the password at all if you can avoid it. If you must, use EncryptedSharedPreferences backed by a Keystore master key - never a hardcoded AES key, never an all-zero IV, and never Base64 dressed up as "encryption." Prefer a short-lived, server-issued token over the raw password.</li>
+    <li><strong>Hardcoded AWS key (M1):</strong> never embed a credential in the binary. Fetch short-lived, least-privilege credentials at runtime from your backend, and rotate any secret that has ever shipped in an APK.</li>
+  </ul>
+  <p><strong>General M1 (Improper Credential Usage) controls, most important first:</strong></p>
+  <ul>
+    <li><span class="risk">Most applicable here:</span> store secrets only in the OS-backed vault (Android Keystore / iOS Keychain), never in plain <code>shared_prefs</code>, and never hardcode keys or credentials in the app.</li>
+    <li>Encoding is not encryption - never treat Base64 (or a hardcoded-key cipher) as protection.</li>
+    <li>Transmit credentials only over TLS, never in cleartext (ties back to M5).</li>
+    <li>Prefer short-lived, scoped, rotatable tokens over long-lived passwords held on the device.</li>
+  </ul>
+  <p><strong>General M3 (Insecure Authentication/Authorization) controls, most important first:</strong></p>
+  <ul>
+    <li><span class="risk">Most applicable here:</span> treat every client-side check as UI convenience, not a security boundary - enforce authorization server-side, and bind biometric/PIN gates to a Keystore/Keychain key requiring user presence so "success" releases a secret rather than a boolean.</li>
+    <li>Rotate session tokens at every privilege transition (login, password change) to prevent fixation.</li>
+    <li>Set short token expiry and enforce server-side revocation, so logout actually invalidates the session.</li>
+    <li>Reject <code>alg:none</code> and pin the expected JWT algorithm; sign with a long random secret or asymmetric keys.</li>
+  </ul>
 
   <hr>
 

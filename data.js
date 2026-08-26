@@ -33,7 +33,7 @@ const WRITEUPS = [
     icon:       "images/icons/allsafe.png",
     date:       "2026-07-31",
     summary:    "Featuring AllSafe, with help from InsecureBankv2 and AndroGoat. A mobile penetration testing methodology that works all three Android targets to demonstrate each risk of the OWASP Mobile Top 10 (2024) - worked examples with screenshots, plus a severity-rated report for every vulnerability found.",
-    tags:       ["hardcoded-secret", "insecure-logging", "exported-component", "insecure-storage", "broken-crypto"]
+    tags:       ["hardcoded-secret", "insecure-logging", "exported-component", "insecure-storage", "broken-crypto", "auth-bypass", "credential-usage"]
   },
   {
     title:      "Abducted",
@@ -122,6 +122,30 @@ const VULNS = [
     deepdive: "",
     uses: [
       { writeup: "OWASP Mobile Top 10: Android", url: "writeup-allsafe.html", ctx: "AndroGoat hashes the access-control PIN with unsalted MD5 into shared_prefs - recovered offline via a rainbow table / brute force" }
+    ]
+  },
+  {
+    id:    "auth-bypass",
+    name:  "Client-side authentication bypass",
+    cat:   "auth",
+    sev:   "med",
+    ext:   "CWE-287 · MASVS-AUTH · M3",
+    blurb: "A login / PIN / biometric gate enforced on the device and trusted by the app itself. On a device the attacker controls it's just code - hook the deciding method (or reroute the failure callback into success) and the protected screen opens with no valid credential. Real only when the gate is cosmetic; a Keystore-bound gate that releases a key on success defeats it.",
+    deepdive: "",
+    uses: [
+      { writeup: "OWASP Mobile Top 10: Android", url: "writeup-allsafe.html", ctx: "AndroGoat's biometric gate is cosmetic (no CryptoObject) - Frida reroutes onAuthenticationFailed/Error into onAuthenticationSucceeded, no fingerprint needed" }
+    ]
+  },
+  {
+    id:    "credential-usage",
+    name:  "Improper credential usage",
+    cat:   "auth",
+    sev:   "med",
+    ext:   "CWE-522 · CWE-798 · MASVS-AUTH · M1",
+    blurb: "Credentials mishandled anywhere in their lifecycle: cached to disk recoverably, hardcoded into the binary, sent in cleartext, or never rotated. Base64 and hardcoded-key ciphers are not protection. Severity tracks what the credential authorizes - a live cloud key is critical, a lab value is not.",
+    deepdive: "",
+    uses: [
+      { writeup: "OWASP Mobile Top 10: Android", url: "writeup-allsafe.html", ctx: "InsecureBankv2 caches creds in shared_prefs (Base64 username + hardcoded-key AES password); AndroGoat ships a hardcoded AWS secret access key" }
     ]
   },
   {
