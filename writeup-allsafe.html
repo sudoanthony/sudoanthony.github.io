@@ -1272,20 +1272,360 @@ $pt = $aes.CreateDecryptor().TransformFinalBlock($ct, 0, $ct.Length)
   <h2><span class="num">06</span>Platform Interaction (IPC, Deep Links, WebViews)</h2>
   <p class="secmeta">MASVS: PLATFORM &nbsp;&middot;&nbsp; Mobile Top 10: <a href="android.html#m4" class="risk">M4</a>, <a href="android.html#m8" class="risk">M8</a></p>
 
-  <p>[ Exported components, deep links, intents, WebView settings and JS bridges. ]</p>
+  <h3>Concept</h3>
+  <p>As we know, apps live in their own <a href="android.html#sandbox">sandbox</a> and can't directly touch
+  another app's files. So how do they cooperate? Through IPC (Inter-Process Communication). The OS provides
+  controlled channels, and the app's manifest declares which of its components can be reached through them.</p>
+  <p>Chapter 6 was about crypto, data at rest, and who is allowed in. M4 is about the app trusting input it
+  shouldn't, or emitting output unsafely. On the web, input usually means form fields, headers, and cookies.
+  On mobile, the most interesting input arrives through Intents, deep links, exported components,
+  content-provider queries, and content loaded into a WebView. An exported component is basically a public
+  function that any other app (or a web page, if it's <code>BROWSABLE</code>) can call. If that entry point
+  lets in attacker-controlled input without validation, we get injection. That is essentially what M4 is
+  about.</p>
 
-  <div class="shot-todo">SCREENSHOT - adb intent / deep link trigger</div>
+  <p><strong>Android - four component types and the export flag.</strong> An Android app is built from four
+  kinds of components, all declared in <code>AndroidManifest.xml</code> (we read this back in Chapter 2):</p>
+  <ul>
+    <li><strong>Activities</strong> - screens.</li>
+    <li><strong>Services</strong> - background work.</li>
+    <li><strong>Broadcast Receivers</strong> - listeners for system or app events.</li>
+    <li><strong><a href="android.html#content-provider">Content Providers</a></strong> - structured data exposed over a <code>content://</code> URI, usually backed by a database.</li>
+  </ul>
+  <p>Each component is either exported or not. The flag is set two ways:</p>
+  <ul>
+    <li>Explicitly: <code>android:exported="true"</code> or <code>"false"</code>.</li>
+    <li>Implicitly: a component with an <code>&lt;intent-filter&gt;</code> defaults to exported on older targets. (Since API 31 / Android 12, <code>android:exported</code> is mandatory when a filter is present, but plenty of apps still target older SDKs or set it incorrectly.)</li>
+  </ul>
+  <p>An exported component with no permission guard is an open entry point. If an Activity that shows your
+  account details is exported, a malicious app can launch it. If a Content Provider backing the notes database
+  is exported, any app can read (and sometimes write) that database.</p>
 
+  <p><strong>iOS - URL schemes and the absence of "components".</strong> While this writeup is Android
+  focused, iOS is worth a mention. iOS has no exported-Activity equivalent; there is no general way for one
+  app to launch the screen of another. The classic IPC surface is the custom URL scheme. An app registers a
+  scheme like <code>ovaa://</code> in its <code>Info.plist</code> under <code>CFBundleURLTypes</code> &rarr;
+  <code>CFBundleURLSchemes</code>. Any app, or web page, can then open <code>ovaa://do/something?param=value</code>,
+  and the target app's URL handler is invoked with that input, which it frequently trusts. The modern, safer
+  version is the Universal Link (Android's equivalent is the App Link): an <code>https://</code> URL that the
+  OS routes into the app only after verifying a signed association file hosted on the domain. Custom schemes
+  have no ownership check, which is why any app can register <code>fb://</code> and hijack it.</p>
+
+  <p><strong>Deep links and WebViews.</strong> Two surfaces span both platforms and carry attacker-controlled
+  data straight into the app:</p>
+  <ul>
+    <li><strong>Deep links</strong> (custom scheme or App/Universal Link) - the path and query parameters are attacker-controlled. If the app uses them to pick an action, navigate, or build a request without validation, we get unintended-action triggering, parameter injection, or an open redirect.</li>
+    <li><strong><a href="android.html#webview">WebViews</a></strong> - an embedded browser (<code>WebView</code> on Android, <code>WKWebView</code> / legacy <code>UIWebView</code> on iOS). If it loads attacker-influenced URLs, or bridges page JavaScript to native code, the page becomes a foothold inside the app's sandbox.</li>
+  </ul>
+  <p>This section focuses on <strong>MASVS-PLATFORM</strong> and the OWASP Mobile Top 10 categories
+  <a href="android.html#m4" class="risk">M4</a> - Insufficient Input/Output Validation and
+  <a href="android.html#m8" class="risk">M8</a> - Security Misconfiguration. Our targets:</p>
+  <ul>
+    <li><strong>InsecureBankv2</strong> - exported Activities, an exported Content Provider, and an exported Broadcast Receiver.</li>
+    <li><strong>AllSafe</strong> - an externally reachable deep link and an unsafe WebView.</li>
+  </ul>
+
+  <h3>1. Exported Activity (InsecureBankv2)</h3>
+  <p>We read the decoded <a href="android.html#adb">manifest</a> for <code>android:exported="true"</code>
+  activities, then jump straight to a post-login screen without logging in.</p>
+  <figure><img src="images/AllSafe/ch7a.png" alt="InsecureBankv2 manifest with exported activities highlighted"></figure>
+  <p>Let's break down the contents of <code>AndroidManifest.xml</code> quickly. Green is the activities we
+  will exploit, yellow is the name of each activity, and blue is <code>android:exported="true"</code>. (Note:
+  there are two other M8-interesting findings in this screenshot we address in the report: <code>android:debuggable="true"</code>
+  and <code>android:allowBackup="true"</code>.) For example, we see <code>com.android.insecurebankv2/.PostLogin</code>
+  as one of the activities marked <code>android:exported="true"</code>.</p>
+  <pre><code>adb shell am start -n com.android.insecurebankv2/.PostLogin</code></pre>
+  <figure><img src="images/AllSafe/ch71.png" alt="PostLogin screen reached with no authentication"></figure>
+  <p>Nice. After running the command we land on the <code>PostLogin</code> screen with no authentication.</p>
+  <p><strong>How did that work?</strong> The key idea is that an app is not one big locked building, it is a
+  row of separate rooms. Each screen in an Android app is an Activity, an independent thing the system can
+  start on its own. Normally we walk in the front door, <code>LoginActivity</code>, which we can see is the
+  <code>MAIN</code> / <code>LAUNCHER</code> in its <code>intent-filter</code>. Once login works, the app sends
+  us to <code>PostLogin</code>. As a reminder, <code>android:exported="true"</code> means any app (or
+  <code>adb</code>) can start that Activity directly; <code>exported="false"</code> (or absent with no
+  intent-filter) means only the app's own code can open it. A sensitive screen trusts that it's only reachable
+  after auth, but if it's left exported, it isn't. Breaking the command down:</p>
+  <ul>
+    <li><code>adb shell</code> = run a command on the phone.</li>
+    <li><code>am</code> = Activity Manager, the OS service whose job is starting components.</li>
+    <li><code>start</code> = tell it to start an activity.</li>
+    <li><code>-n</code> = "I'm naming the exact component" (<code>package/class</code>).</li>
+  </ul>
+  <p>The whole thing means: "OS, start the PostLogin screen of InsecureBankv2 for me." The OS checks whether
+  it's exported, sees <code>true</code>, and opens it. If it were <code>exported="false"</code>, we'd get a
+  permission denial.</p>
+  <div class="note">
+    <span class="lbl">why the manifest flag is the real evidence</span>
+    <code>adb shell</code> runs as the special <code>shell</code> user (UID 2000), which Android grants
+    elevated privileges a normal third-party app never gets, so <code>am start</code> from adb can open a
+    component marked <code>exported="false"</code> that an attacker's app would be denied (even more so under
+    <code>adb root</code>, which we use here). That means "it opened from adb" proves nothing on its own. The
+    <code>exported="true"</code> line in the manifest is what proves an unprivileged app could do it too, so
+    that line is our evidence, not the successful command.
+  </div>
+  <p><strong>A stronger find.</strong> We strengthen the finding by reaching a screen that lets us <em>do</em>
+  something, rather than just show a menu (though that menu is already a solid find).</p>
+  <pre><code>adb shell am start -n com.android.insecurebankv2/.DoTransfer</code></pre>
+  <figure><img src="images/AllSafe/ch71a.png" alt="DoTransfer screen reached directly with no authentication"></figure>
+  <p>From PowerShell we launched a screen that should have required authentication. When we write the report we
+  confirm the class names, since they vary between builds.</p>
+
+  <h3>2. Exported Content Provider (InsecureBankv2)</h3>
+  <p>The process is: Exported &rarr; Dump &rarr; Error-proof &rarr; Tautology.</p>
+  <p><strong>Step 1 - confirm the provider is exported.</strong> In <code>AndroidManifest.xml</code> we see it
+  exported as <code>true</code>.</p>
+  <figure><img src="images/AllSafe/ch73.png" alt="TrackUserContentProvider exported true in the manifest"></figure>
+  <p>Since it's exported, let's dump the provider with no auth.</p>
+  <pre><code>adb shell content query --uri content://com.android.insecurebankv2.TrackUserContentProvider/trackerusers</code></pre>
+  <p><code>content query</code> is a command-line tool built into Android that talks to a Content Provider
+  directly, the same way an app would through the <code>ContentResolver</code> API. Now, how did we know to add
+  <code>trackerusers</code>? It's not in the manifest. The key concept is that a <code>content://</code> URI has
+  two parts:</p>
+<pre><code>content://com.android.insecurebankv2.TrackUserContentProvider / trackerusers
+          &lt;----------- authority -----------&gt;   &lt;-- path --&gt;</code></pre>
+  <p>The authority, <code>com.android.insecurebankv2.TrackUserContentProvider</code>, is in the manifest (the
+  <code>android:authorities=</code> line in a previous screenshot). Paths are defined in the provider's code,
+  which we get from opening the provider class in <a href="tools.html#jadx">jadx</a>.</p>
+  <figure><img src="images/AllSafe/ch7tracker.png" alt="jadx showing the UriMatcher addURI trackerusers and FROM names"></figure>
+  <p>By double-clicking <code>com.android.insecurebankv2.TrackUserContentProvider</code> we go straight to the
+  decompiled class. Searching for <code>addURI</code> shows it declares the <code>trackerusers</code> path, and
+  the query reads from a table named <code>names</code>.</p>
+  <p><strong>Step 2 - dump the provider with no auth.</strong></p>
+  <figure><img src="images/AllSafe/ch72.png" alt="content query returning rows with no authentication"></figure>
+  <p>This shows <code>dinesh</code>, which means any app can read this with no login required. We know these
+  credentials from earlier sections, so now let's prove injection.</p>
+  <p><strong>Step 3 - error-based injection proof.</strong></p>
+  <figure><img src="images/AllSafe/ch74.png" alt="SQLite error leaking the concatenated query"></figure>
+  <p>This error leaks the raw query, <code>SELECT * FROM names WHERE (name=dinesh)...</code>, because the
+  shell strips the quotes and SQLite reads <code>dinesh</code> as a column. The error is proof that the query
+  is concatenated. A properly parameterized provider would bind our input as a value and simply return nothing,
+  so it could never throw this error.</p>
+  <p><strong>Step 4 - confirm the tautology.</strong> A tautology is a statement that is always true.</p>
+  <figure><img src="images/AllSafe/ch75.png" alt="tautology returning every row"></figure>
+  <p>We went inside the device shell and, without typing <code>dinesh</code>, wrote
+  <code>name='x' or '1'='1'</code>. How did <code>dinesh</code> show up when we didn't write it? The whole
+  condition reads "the name is x OR something that's always true." Because <code>1=1</code> is always true, the
+  entire <code>WHERE</code> clause is always true for every row, so the filter becomes meaningless and the
+  database hands back everything. This is the classic SQLi tautology; <code>' OR '1'='1</code> is the most
+  famous string in web security for exactly this reason. The error proved our input reaches the SQL compiler
+  and is treated as SQL rather than data; the tautology proves we can control the query's logic and pull rows
+  we shouldn't get. (Weaponizing this into a full extraction of the credential table with <code>UNION SELECT</code>
+  is a code-injection job, so we cover it in the next section.)</p>
+
+  <h3>3. Exported Broadcast Receiver (InsecureBankv2)</h3>
+  <p><strong>Step 1 - confirm the receiver in the manifest.</strong> (Noticing a pattern with the manifest and
+  what we look for yet?)</p>
+  <figure><img src="images/AllSafe/ch7b1.png" alt="MyBroadCastReceiver exported true with no permission"></figure>
+  <p>It is exported as <code>true</code> with no permission guard, which means any app can broadcast to it.</p>
+  <p><strong>Step 2 - read <code>onReceive()</code> in jadx to learn the inputs.</strong> Double-click
+  <code>com.android.insecurebankv2.MyBroadCastReceiver</code> and see what happens in <code>onReceive()</code>.</p>
+  <figure><img src="images/AllSafe/ch7b2.png" alt="onReceive reading phonenumber and newpass extras"></figure>
+  <ul>
+    <li><code>intent.getStringExtra("...")</code> calls read the extra keys <code>phonenumber</code> and <code>newpass</code>.</li>
+    <li>It then changes the account password and calls <code>SmsManager</code> / <code>sendTextMessage(...)</code> to text the new password to that phone number.</li>
+  </ul>
+  <p>It performs a sensitive action (password change plus SMSing the credential out) based on broadcast extras
+  whose sender it never validates.</p>
+  <p><strong>Step 3 - set up to watch the effect, then Step 4 - fire the broadcast</strong> with
+  attacker-chosen parameters.</p>
+  <pre><code>adb logcat -c
+adb shell am broadcast -n com.android.insecurebankv2/.MyBroadCastReceiver --es phonenumber 5556 --es newpass attackerpass
+adb logcat -d | findstr /i "insecure broadcast password sms updated changed"</code></pre>
+  <figure><img src="images/AllSafe/ch7b3.png" alt="broadcast fired and logcat dump showing the password change"></figure>
+  <p><strong>Step 5 - confirm the side effect.</strong></p>
+<pre><code>System.out: For the changepassword - phonenumber: 5556 password is: Updated Password from: Dinesh@... to: attackerpass</code></pre>
+  <p>InsecureBankv2 exports <code>MyBroadCastReceiver</code> with no permission guard. It changes the account
+  password and SMSes the new credential to a phone number, both taken from unvalidated broadcast extras, so any
+  app can trigger it and send the credential to an attacker-controlled number. A separate vulnerability is also
+  shown here: the old password is leaked to the log (insecure logging, the M9 pattern from earlier).</p>
+
+  <h3>4. Deep Links and App Links (AllSafe)</h3>
+  <p><strong>Step 1 - confirm the scheme in AllSafe's manifest.</strong> We want the activity carrying
+  <code>&lt;action android:name="android.intent.action.VIEW"&gt;</code> plus <code>&lt;category ... BROWSABLE&gt;</code>
+  plus <code>&lt;data android:scheme="..."&gt;</code>.</p>
+  <figure><img src="images/AllSafe/ch7allsafe.png" alt="AllSafe DeepLinkTask VIEW BROWSABLE intent-filter"></figure>
+  <p>We note the exact URI shape we will fire: scheme <code>allsafe</code>, host <code>infosecadventures</code>,
+  path <code>/congrats</code>.</p>
+  <p><strong>Step 2 - read the handler in jadx.</strong> Double-clicking <code>DeepLinkTask</code> brings us to
+  the challenge's code.</p>
+  <figure><img src="images/AllSafe/ch7allsafe2.png" alt="DeepLinkTask reading the key query parameter and logging the URI"></figure>
+  <p>The handler reads the <code>key</code> query parameter and compares it to <code>getString(R.string.key)</code>,
+  which we found back in our Recon section. On a match it reveals a hidden container and pops "Good job, you did
+  it!" It also <code>Log.d</code>'s the full URI (<code>Action: _ Data: _</code>), which is our insecure-logging
+  cross-reference, right there.</p>
+  <p><strong>Step 3 - fire the deep link from outside the app.</strong> The <code>key</code> value is a
+  hardcoded string in <code>strings.xml</code> (recovered in Recon), so we reuse it.</p>
+  <pre><code>adb shell am start -W -a android.intent.action.VIEW -d "allsafe://infosecadventures/congrats?key=REDACTED-UUID"</code></pre>
+  <p><strong>Step 4 - observe.</strong></p>
+  <figure><img src="images/AllSafe/ch7allsafe3.png" alt="AllSafe congratulations screen from an externally fired deep link"></figure>
+  <p>We get the congratulations screen, meaning we fired the deep link successfully from outside the app.</p>
+  <figure><img src="images/AllSafe/ch7allsafe4.png" alt="logcat showing the full deep-link URI including the key"></figure>
+  <p>We also confirm it <code>Log.d</code>'s the full URI. The app wrote the entire deep-link URI, including the
+  secret key, to logcat, where any app with log access (or anyone doing what we just did) can read it.</p>
+  <p><strong>How it worked.</strong> The app "authorizes" us by checking our input against a secret, but the
+  secret is a hardcoded string baked into the APK's resources, which anyone can read, and the check runs
+  client-side on a device we control. So the gate is theater: an attacker reads <code>R.string.key</code> from
+  the binary, then fires <code>allsafe://infosecadventures/congrats?key=&lt;that key&gt;</code> from any web page
+  a victim taps, because the component is exported and <code>BROWSABLE</code>. Three risks converge on this one
+  component: <a href="android.html#m4" class="risk">M4</a> (input drives a gated action validated against a
+  non-secret), <a href="android.html#m8" class="risk">M8</a> (exported/BROWSABLE, reachable externally), and
+  insecure logging of the full URI (<a href="android.html#m9" class="risk">M9</a>, from Recon).</p>
+
+  <h3>5. WebView Misconfiguration (AllSafe)</h3>
+  <p>This is a big one, so let's focus. AllSafe's <code>VulnerableWebView</code> is the file-disclosure and XSS
+  variant.</p>
+  <p><strong>Step 1 - find the WebView code in AllSafe.</strong> In jadx: Source code &rarr;
+  <code>infosecadventures.allsafe</code> &rarr; <code>challenges</code> &rarr; <code>VulnerableWebView</code>.</p>
+  <p><strong>Step 2 - read the settings that decide the exploit.</strong></p>
+  <figure><img src="images/AllSafe/ch7webview1.png" alt="VulnerableWebView settings and loadUrl / loadData logic"></figure>
+  <p>In yellow we see <code>settings.setJavaScriptEnabled(true)</code> and <code>settings.setAllowFileAccess(true)</code>,
+  which enable JavaScript and file access. In blue we see how the URL is loaded: <code>lambda$onCreateView$0</code>
+  reads the on-screen payload box, and if <code>URLUtil.isValidUrl(input)</code> it calls
+  <code>webView.loadUrl(input)</code>, otherwise <code>webView.loadData(input, "text/html", "UTF-8")</code>. This
+  means we fully control the content, either a URL it fetches or raw HTML it renders directly. There is no
+  <code>addJavascriptInterface</code> here, so this challenge is the file-read and XSS variant, not a native
+  bridge.</p>
+  <p><strong>Step 3 - prove arbitrary JS (XSS).</strong> In the payload box, type something that isn't a valid
+  URL so it hits <code>loadData</code> and renders as live HTML:</p>
+  <pre><code>&lt;script&gt;alert("XSS in AllSafe's WebView")&lt;/script&gt;</code></pre>
+  <figure><img src="images/AllSafe/ch7webview2.png" alt="the WebView executing our injected script"></figure>
+  <p>The WebView runs our script.</p>
+  <p><strong>Step 4 - prove local file read.</strong> Because <code>setAllowFileAccess(true)</code> is set, a
+  <code>file://</code> URL is a valid URL, so it hits <code>loadUrl</code> and renders a local file.</p>
+  <figure><img src="images/AllSafe/ch7webview3.png" alt="the WebView reading a local file, proving file access"></figure>
+  <p>File access works. Now let's escalate into AllSafe's own sandbox. After checking
+  <a href="android.html#storage">shared_prefs</a> we find a file called <code>user.xml</code>, so let's see if
+  the WebView can read it.</p>
+  <pre><code>file:///data/data/infosecadventures.allsafe/shared_prefs/user.xml</code></pre>
+  <figure><img src="images/AllSafe/ch7webview4.png" alt="the WebView rendering the app's private user.xml credentials"></figure>
+<pre><code>&lt;string name="password"&gt;REDACTED&lt;/string&gt;
+&lt;string name="username"&gt;REDACTED&lt;/string&gt;</code></pre>
+  <p>The WebView loaded <code>file:///data/data/infosecadventures.allsafe/shared_prefs/user.xml</code> and
+  rendered the app's private credentials in plaintext. That doubles as an M9 storage finding, since the
+  credentials sit in cleartext to begin with.</p>
+  <div class="note">
+    <span class="lbl">a note on the JavaScript bridge</span>
+    The most dangerous WebView setting is <code>addJavascriptInterface</code>, which hands a native object to
+    the page's JavaScript so a loaded page can call app code directly. None of my three targets (AllSafe,
+    InsecureBankv2, AndroGoat) ship one, so I could not reproduce it in this lab. I am documenting the pattern
+    for completeness: when a WebView calls <code>addJavascriptInterface(obj, "Android")</code> with JavaScript
+    enabled and loads attacker-controlled content, the page can run that object's methods, historically full
+    RCE on older devices. The finding I actually landed on AllSafe is the file-access and XSS variant above,
+    where <code>setAllowFileAccess(true)</code> let a <code>file://</code> payload read the app's private
+    <code>user.xml</code>.
+  </div>
+  <div class="note insight">
+    <span class="lbl">deferred to the next section</span>
+    AllSafe also ships an <code>ArbitraryCodeExecution</code> class that loads a DEX from
+    <code>/sdcard/Download/allsafe_updater.apk</code> with <code>DexClassLoader</code> and executes it. Because
+    external storage is world-accessible, an attacker who drops a crafted APK there gets code running in
+    AllSafe's process. That is genuine arbitrary code execution, but weaponizing it is a code-level exercise, so
+    we cover it in the next section.
+  </div>
+
+  <h3>So what did we find on the platform surface?</h3>
+  <p>The findings written up as report entries. Severities are calibrated to what each issue actually
+  authorizes and how hard it is to reach, not to how scary the label sounds.</p>
   <table class="finding">
-    <tr><th>Title</th><td>[ finding name ]</td></tr>
-    <tr><th>Severity</th><td>[ ... ]</td></tr>
-    <tr><th>Description</th><td>[ ... ]</td></tr>
-    <tr><th>Impact</th><td>[ ... ]</td></tr>
-    <tr><th>Evidence</th><td>[ ... ]</td></tr>
-    <tr><th>MASTG</th><td>[ ... ]</td></tr>
-    <tr><th>Mobile Top 10</th><td>[ ... ]</td></tr>
-    <tr><th>Remediation</th><td>[ ... ]</td></tr>
+    <tr><th>Title</th><td>Improper export of authenticated Activities (InsecureBankv2)</td></tr>
+    <tr><th>Severity</th><td><strong>Medium</strong>. Post-authentication screens (<code>PostLogin</code>, <code>DoTransfer</code>, <code>ViewStatement</code>) are exported with no permission guard, so any installed app can launch them directly with <code>am start</code>, skipping the login flow. Device-local rather than remote, and it rises if a launched action screen operates without a valid session.</td></tr>
+    <tr><th>Description</th><td>The manifest marks the post-login activities <code>android:exported="true"</code> with no <code>android:permission</code>. The screens assume they are only reached after the app's own login flow.</td></tr>
+    <tr><th>Impact</th><td>Any app deep-jumps a user to the authenticated dashboard and its sensitive action screens with no credentials.</td></tr>
+    <tr><th>Evidence</th><td><code>adb shell am start -n com.android.insecurebankv2/.PostLogin</code> rendered the dashboard with no login; the manifest shows <code>exported="true"</code> for those activities.</td></tr>
+    <tr><th>MASVS / MASTG</th><td>MASVS-PLATFORM &middot; MASTG exported-Activity test cases &middot; CWE-926 (improper export of components)</td></tr>
+    <tr><th>Mobile Top 10</th><td><a href="android.html#m8" class="risk">M8</a> - Security Misconfiguration (with <a href="android.html#m4" class="risk">M4</a>)</td></tr>
+    <tr><th>Remediation</th><td>Set <code>exported="false"</code> unless the screen is deliberately public; guard any that must be exported with a <code>signature</code>-level permission; re-check authentication inside each sensitive Activity. See the Remediation section below.</td></tr>
   </table>
+  <table class="finding">
+    <tr><th>Title</th><td>Exported Content Provider: data disclosure and SQL injection (InsecureBankv2)</td></tr>
+    <tr><th>Severity</th><td><strong>Medium</strong>, rising to <strong>High</strong> once the injection is weaponized to extract the credential table (covered next section). The provider is exported with no read permission and builds its query by string concatenation, so any app reads it and can inject SQL.</td></tr>
+    <tr><th>Description</th><td><code>TrackUserContentProvider</code> is <code>exported="true"</code> with no permission and concatenates the selection into a raw query against the backing <code>names</code> table instead of using bound parameters.</td></tr>
+    <tr><th>Impact</th><td>Any app reads the provider without authentication; the injectable selection allows reads beyond the intended row, and ultimately of other tables.</td></tr>
+    <tr><th>Evidence</th><td><code>content query</code> dumped rows with no auth; a selection of <code>name='dinesh'</code> produced a SQLite error leaking <code>SELECT * FROM names WHERE (name=dinesh)</code>; a tautology <code>name='x' or '1'='1'</code> returned every row.</td></tr>
+    <tr><th>MASVS / MASTG</th><td>MASVS-PLATFORM &middot; MASTG exported-provider and SQL-injection test cases &middot; CWE-89 (SQL injection) &middot; CWE-926</td></tr>
+    <tr><th>Mobile Top 10</th><td><a href="android.html#m8" class="risk">M8</a> (disclosure) with <a href="android.html#m4" class="risk">M4</a> (injection)</td></tr>
+    <tr><th>Remediation</th><td>Set <code>exported="false"</code> or guard with a permission; parameterize every query with <code>selectionArgs</code> and never concatenate input into SQL. See the Remediation section below.</td></tr>
+  </table>
+  <table class="finding">
+    <tr><th>Title</th><td>Exported Broadcast Receiver: unauthenticated password change and credential exfiltration (InsecureBankv2)</td></tr>
+    <tr><th>Severity</th><td><strong>High</strong>. <code>MyBroadCastReceiver</code> is exported with no permission and performs a state-changing action (password reset) plus SMSes the credential, all from unvalidated extras, so any installed app can seize the account and exfiltrate to an attacker-chosen number.</td></tr>
+    <tr><th>Description</th><td><code>onReceive()</code> reads <code>phonenumber</code> and <code>newpass</code> extras, changes the account password, and sends an SMS via <code>SmsManager</code>, without authenticating the sender of the broadcast.</td></tr>
+    <tr><th>Impact</th><td>Any app silently resets the victim's password to an attacker-known value and sends it out of band. The old password is additionally leaked to logcat.</td></tr>
+    <tr><th>Evidence</th><td><code>adb shell am broadcast -n .../.MyBroadCastReceiver --es phonenumber 5556 --es newpass attackerpass</code> produced the logcat line <code>Updated Password from: &lt;old&gt; to: attackerpass</code>, and the SMS path engaged.</td></tr>
+    <tr><th>MASVS / MASTG</th><td>MASVS-PLATFORM &middot; MASTG exported-receiver test cases &middot; CWE-925 / CWE-926 (improper receiver export) &middot; CWE-532 (log leak)</td></tr>
+    <tr><th>Mobile Top 10</th><td><a href="android.html#m8" class="risk">M8</a> with <a href="android.html#m4" class="risk">M4</a> (and <a href="android.html#m9" class="risk">M9</a> for the logged credential)</td></tr>
+    <tr><th>Remediation</th><td>Set <code>exported="false"</code> or require a <code>signature</code> permission; authenticate the request and never take a destination number or new password from untrusted extras; strip credential logging. See the Remediation section below.</td></tr>
+  </table>
+  <table class="finding">
+    <tr><th>Title</th><td>Externally reachable deep link bypasses a client-side gate and logs its secret (AllSafe)</td></tr>
+    <tr><th>Severity</th><td><strong>Medium</strong>. <code>DeepLinkTask</code> is exported and <code>BROWSABLE</code> and validates the <code>key</code> parameter against a hardcoded resource string, so any web page can pass the gate; what it unlocks here is a lab congrats screen, but the pattern would be Critical guarding a real action.</td></tr>
+    <tr><th>Description</th><td>The handler compares the <code>key</code> query parameter to <code>getString(R.string.key)</code>, a value baked into the APK's resources, and the check runs client-side. It also logs the full incoming URI.</td></tr>
+    <tr><th>Impact</th><td>An attacker reads the key from the binary and fires the deep link from any web page a victim taps, defeating the gate with no device access; the secret is additionally disclosed to logcat.</td></tr>
+    <tr><th>Evidence</th><td><code>adb shell am start -W -a android.intent.action.VIEW -d "allsafe://infosecadventures/congrats?key=&lt;recovered&gt;"</code> produced the success state; logcat showed <code>D ALLSAFE Action: ... Data: allsafe://...?key=...</code>.</td></tr>
+    <tr><th>MASVS / MASTG</th><td>MASVS-PLATFORM &middot; MASTG deep-link test cases &middot; CWE-939 (improper URL handling) &middot; CWE-798 (hardcoded credential) &middot; CWE-532 (log leak)</td></tr>
+    <tr><th>Mobile Top 10</th><td><a href="android.html#m4" class="risk">M4</a> with <a href="android.html#m8" class="risk">M8</a> (and <a href="android.html#m9" class="risk">M9</a> for the logged URI)</td></tr>
+    <tr><th>Remediation</th><td>Do not gate on a client-side secret; validate and authorize deep-link input server-side; do not log request URIs; export the component only if it must be public. See the Remediation section below.</td></tr>
+  </table>
+  <table class="finding">
+    <tr><th>Title</th><td>Unsafe WebView: local file disclosure and arbitrary script execution (AllSafe)</td></tr>
+    <tr><th>Severity</th><td><strong>Medium</strong> (top of range). <code>VulnerableWebView</code> renders attacker-supplied content with JavaScript enabled and <code>setAllowFileAccess(true)</code>, so a <code>file://</code> payload reads the app's private credential file and raw HTML executes script. Delivery is manual here, and it rises if the loaded URL can be driven from outside via an intent or deep link.</td></tr>
+    <tr><th>Description</th><td>The challenge loads the on-screen payload with <code>loadUrl</code> (valid URL) or <code>loadData</code> (raw HTML), with <code>setJavaScriptEnabled(true)</code> and <code>setAllowFileAccess(true)</code> and no allow-listing of the loaded content.</td></tr>
+    <tr><th>Impact</th><td>A supplied <code>file://</code> URL reads sandbox files (we recovered plaintext credentials from <code>user.xml</code>); arbitrary JavaScript runs inside the app's WebView.</td></tr>
+    <tr><th>Evidence</th><td><code>&lt;script&gt;alert(...)&lt;/script&gt;</code> executed in the WebView; <code>file:///data/data/infosecadventures.allsafe/shared_prefs/user.xml</code> rendered the stored username and password.</td></tr>
+    <tr><th>MASVS / MASTG</th><td>MASVS-PLATFORM &middot; MASTG WebView test cases (file access, untrusted content) &middot; CWE-749 (exposed dangerous method/file) &middot; CWE-79 (XSS)</td></tr>
+    <tr><th>Mobile Top 10</th><td><a href="android.html#m4" class="risk">M4</a> with <a href="android.html#m8" class="risk">M8</a> (and <a href="android.html#m9" class="risk">M9</a> for the cleartext credentials read)</td></tr>
+    <tr><th>Remediation</th><td>Set <code>setAllowFileAccess(false)</code>, never render untrusted input, allow-list any loaded URL, and remove <code>addJavascriptInterface</code> or restrict it to trusted, app-bundled content. See the Remediation section below.</td></tr>
+  </table>
+  <table class="finding">
+    <tr><th>Title</th><td>Debuggable and backup-enabled build (InsecureBankv2)</td></tr>
+    <tr><th>Severity</th><td><strong>Low</strong>. The manifest sets <code>android:debuggable="true"</code> and <code>android:allowBackup="true"</code>, so a debugger can attach to the app and its private data can be pulled off the device with <code>adb backup</code>.</td></tr>
+    <tr><th>Description</th><td>Release-inappropriate flags left on in the manifest, expanding the attack surface around every other finding above.</td></tr>
+    <tr><th>Impact</th><td>Easier runtime tampering (debugger attach) and offline data extraction (backup) on devices without root.</td></tr>
+    <tr><th>Evidence</th><td>Both flags visible on the <code>&lt;application&gt;</code> element in <code>AndroidManifest.xml</code>.</td></tr>
+    <tr><th>MASVS / MASTG</th><td>MASVS-PLATFORM / MASVS-RESILIENCE &middot; CWE-489 (active debug code) &middot; CWE-530 (exposed backup)</td></tr>
+    <tr><th>Mobile Top 10</th><td><a href="android.html#m8" class="risk">M8</a> - Security Misconfiguration</td></tr>
+    <tr><th>Remediation</th><td>Ship release builds with <code>debuggable="false"</code>; set <code>allowBackup="false"</code> or exclude sensitive data via backup rules. See the Remediation section below.</td></tr>
+  </table>
+
+  <h3>Remediation</h3>
+  <p>The specific fixes for what we found, then the general controls every app should apply for M4 and M8.</p>
+  <p><strong>For the flaws in this section:</strong></p>
+  <ul>
+    <li><strong>Exported activities (M8):</strong> set <code>exported="false"</code> on every screen that isn't deliberately public, guard the rest with a <code>signature</code>-level permission, and re-check the session inside each sensitive Activity instead of trusting the navigation flow.</li>
+    <li><strong>Exported content provider (M8/M4):</strong> don't export the provider unless another app genuinely needs it, and parameterize every query with bound <code>selectionArgs</code> so input can never be compiled as SQL.</li>
+    <li><strong>Exported broadcast receiver (M8/M4):</strong> stop exporting it or require a <code>signature</code> permission, authenticate the request, and never take a destination phone number or new password from untrusted extras. Remove the credential from the log entirely.</li>
+    <li><strong>Deep link gate (M4):</strong> never authorize against a client-side secret; validate and allow-list the parameters and enforce the real check server-side, and stop logging request URIs.</li>
+    <li><strong>Unsafe WebView (M4):</strong> disable file access (<code>setAllowFileAccess(false)</code> and the file-URL variants), never render caller-supplied content, allow-list any URL you load, and remove <code>addJavascriptInterface</code> or expose only a minimal annotated interface to trusted content.</li>
+    <li><strong>Debuggable / backup (M8):</strong> ship with <code>debuggable="false"</code> and <code>allowBackup="false"</code> (or explicit backup rules that exclude sensitive data).</li>
+  </ul>
+  <p><strong>General M4 (Insufficient Input/Output Validation) controls, most important first:</strong></p>
+  <ul>
+    <li><span class="risk">Most applicable here:</span> treat every Intent, deep-link parameter, and WebView-loaded URL as attacker-controlled input; validate and allow-list it at the boundary, and keep the sink unreachable from outside unless it must be.</li>
+    <li>Use parameterized queries everywhere; never concatenate input into SQL, file paths, or shell strings.</li>
+    <li>In WebViews, disable JavaScript and file access unless required, and only ever load trusted, app-bundled content.</li>
+    <li>Enforce the real authorization on the server; a client-side check is UI convenience, not a security boundary.</li>
+  </ul>
+  <p><strong>General M8 (Security Misconfiguration) controls, most important first:</strong></p>
+  <ul>
+    <li><span class="risk">Most applicable here:</span> export nothing by default; set <code>android:exported="false"</code> on every component that other apps don't need, and guard the ones that must be public with a <code>signature</code>-level permission.</li>
+    <li>Strip debug configuration from release builds (<code>debuggable="false"</code>, no verbose logging).</li>
+    <li>Disable backup of sensitive data (<code>allowBackup="false"</code> or backup rules).</li>
+    <li>Prefer App/Universal Links (verified domain association) over raw custom schemes for anything sensitive.</li>
+  </ul>
+
+  <h3>Chapter Summary</h3>
+  <p>We showed five ways to walk through the doors an app opens to the rest of the device, all on our own lab
+  targets in place of the handbook's DIVA and OVAA:</p>
+  <ul>
+    <li><strong>Exported Activity</strong> (InsecureBankv2) - launched the authenticated dashboard and a transfer screen with <code>am start</code>, no login.</li>
+    <li><strong>Exported Content Provider</strong> (InsecureBankv2) - dumped a table with no auth via <code>content query</code>, then proved SQL injection with an error leak and a tautology.</li>
+    <li><strong>Exported Broadcast Receiver</strong> (InsecureBankv2) - reset the account password and exfiltrated the credential over SMS with a single <code>am broadcast</code>.</li>
+    <li><strong>Deep Link</strong> (AllSafe) - passed a client-side gate from outside the app using a hardcoded key, and confirmed the secret URI is logged.</li>
+    <li><strong>Unsafe WebView</strong> (AllSafe) - read the app's private <code>user.xml</code> credentials with a <code>file://</code> payload and executed arbitrary JavaScript.</li>
+  </ul>
+  <p>The throughline: an exported component with no permission guard, or a WebView that trusts what it loads, is
+  an open door. The manifest is where you find the doors, and the code is where you learn what walking through
+  each one does.</p>
 
   <hr>
 

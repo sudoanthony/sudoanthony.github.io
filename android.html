@@ -33,6 +33,8 @@
       <a href="#dex" data-toc>.dex files</a>
       <a href="#manifest" data-toc>The manifest</a>
       <a href="#intent-filter" data-toc>Intent-Filter</a>
+      <a href="#content-provider" data-toc>Content providers</a>
+      <a href="#webview" data-toc>WebView</a>
       <a href="#logcat" data-toc>logcat</a>
       <a href="#storage" data-toc>App storage</a>
       <a href="#keystore" data-toc>The Keystore</a>
@@ -266,6 +268,77 @@
       </div>
     </section>
 
+    <!-- ============ Content providers ============ -->
+    <section id="content-provider" class="concept-block">
+      <p class="kicker">Android IPC &middot; structured data over content://</p>
+      <h2>Content providers</h2>
+      <div class="concept-sub">
+        <span class="sub-lbl">what it is</span>
+        <p>A content provider is a component that exposes structured data (usually a SQLite table) to other
+        apps over a <code>content://</code> URI. Apps read and write it through the <code>ContentResolver</code>
+        API. If the provider is exported with no permission guard, any app on the device can query it.</p>
+      </div>
+      <div class="concept-sub">
+        <span class="sub-lbl">authority vs path</span>
+        <p>A content URI has two parts, and only one of them is in the manifest:</p>
+<pre><code>content://com.example.MyProvider / users
+          &lt;----- authority -----&gt;   &lt;- path -&gt;</code></pre>
+        <p>The <strong>authority</strong> is declared in the manifest (<code>android:authorities</code>). The
+        <strong>path</strong> is defined in the provider's code, in its <code>UriMatcher.addURI(...)</code>
+        calls, so you read the class in <a href="tools.html#jadx">jadx</a> to learn the valid paths and the
+        backing table name.</p>
+      </div>
+      <div class="concept-sub">
+        <span class="sub-lbl">why it's a finding</span>
+        <ul>
+          <li><strong>Disclosure</strong> - an exported, unguarded provider hands its rows to any app with no authentication.</li>
+          <li><strong>SQL injection</strong> - if the provider builds its query by concatenating your input (the selection, a path segment, the projection) instead of binding it, you can inject SQL: a tautology like <code>1=1</code> returns every row, and <code>UNION SELECT</code> reaches other tables.</li>
+        </ul>
+        <p>You talk to one straight from the shell with <a href="#adb"><code>adb shell content query</code></a>,
+        the command-line equivalent of the <code>ContentResolver</code> an app would use.</p>
+      </div>
+      <div class="seen-in">
+        <span class="lbl">seen in</span>
+        <a href="writeup-allsafe.html">AllSafe</a> - InsecureBankv2's exported <code>TrackUserContentProvider</code>,
+        dumped with no auth and proved SQL-injectable.
+      </div>
+    </section>
+
+    <!-- ============ WebView ============ -->
+    <section id="webview" class="concept-block">
+      <p class="kicker">Embedded browser &middot; untrusted content meets native code</p>
+      <h2>WebView</h2>
+      <div class="concept-sub">
+        <span class="sub-lbl">what it is</span>
+        <p>A <code>WebView</code> is an embedded Chromium browser an app drops inside one of its screens to
+        render HTML. It turns dangerous based on the settings the developer flips on and where the content
+        comes from. If it loads attacker-influenced content, the page becomes a foothold inside the app's
+        sandbox.</p>
+      </div>
+      <div class="concept-sub">
+        <span class="sub-lbl">the settings to hunt (in jadx)</span>
+        <ul>
+          <li><code>setJavaScriptEnabled(true)</code> - JavaScript runs in the WebView. Required for the rest to matter.</li>
+          <li><code>addJavascriptInterface(obj, "Name")</code> - bridges a native object into page JavaScript, so <code>Name.method()</code> in JS calls app code. With attacker-controlled content this is the road to native code execution (historically full RCE via reflection before API 17, where the <code>@JavascriptInterface</code> annotation became mandatory).</li>
+          <li><code>setAllowFileAccess(true)</code> - the WebView can load <code>file://</code> URLs, so a page can read the app's private files out of the sandbox.</li>
+          <li><code>setAllowUniversalAccessFromFileURLs(true)</code> - a <code>file://</code> page can then make cross-origin requests to any server, exfiltrating those local files.</li>
+          <li><code>loadUrl(&lt;caller-supplied&gt;)</code> - if the loaded URL arrives from an intent or deep link, the attacker chooses what page runs.</li>
+        </ul>
+      </div>
+      <div class="concept-sub">
+        <span class="sub-lbl">the kill chain</span>
+        <p>A deep link puts an attacker URL into a JS-enabled WebView that has a JavaScript interface and file
+        access. The page calls the exposed native method and/or reads <code>file:///data/data/&lt;pkg&gt;/...</code>
+        and posts it out. Severity tracks how the page gets in: an attacker-controllable URL plus a bridge is
+        Critical; a fixed page with file access is lower.</p>
+      </div>
+      <div class="seen-in">
+        <span class="lbl">seen in</span>
+        <a href="writeup-allsafe.html">AllSafe</a> - <code>VulnerableWebView</code> with JavaScript and file
+        access on, used to read the app's private <code>user.xml</code> credentials and run arbitrary script.
+      </div>
+    </section>
+
     <!-- ============ logcat ============ -->
     <section id="logcat" class="concept-block">
       <p class="kicker">Android logging · data leakage</p>
@@ -392,7 +465,18 @@ adb shell pm path &lt;package&gt;         # find the installed APK path
 adb pull &lt;path&gt; pulled.apk          # pull a file off the device
 adb logcat -s TAG                   # read the log buffer for a tag
 adb shell am start -W -a android.intent.action.VIEW -d "scheme://..."   # fire a deep link
+adb shell am start -n &lt;pkg&gt;/&lt;activity&gt;    # launch an exported activity directly
+adb shell am broadcast -n &lt;pkg&gt;/&lt;receiver&gt; --es key value  # fire an exported receiver
+adb shell content query --uri content://&lt;authority&gt;/&lt;path&gt;   # query a content provider
 adb emu kill                        # cleanly stop the emulator</code></pre>
+      <div class="note">
+        <span class="lbl">am and content</span>
+        <code>am</code> (Activity Manager) starts components: <code>am start</code> launches an activity,
+        <code>am broadcast</code> fires a receiver, both with attacker-chosen extras (<code>--es</code> string,
+        <code>--ei</code> int, <code>--ez</code> bool). <code>content query</code> talks to a
+        <a href="#content-provider">content provider</a> the way an app's <code>ContentResolver</code> would.
+        These are the primitives for driving another app's exported components straight from the shell.
+      </div>
       <div class="note">
         <span class="lbl">Windows note</span>
         There is no <code>grep</code> on Windows. Filter with <code>findstr /i allsafe</code> or
