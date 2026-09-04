@@ -35,6 +35,10 @@
       <a href="#intent-filter" data-toc>Intent-Filter</a>
       <a href="#content-provider" data-toc>Content providers</a>
       <a href="#webview" data-toc>WebView</a>
+      <a href="#sql-injection" data-toc>SQL injection</a>
+      <a href="#path-traversal" data-toc>Path traversal</a>
+      <a href="#deserialization" data-toc>Insecure deserialization</a>
+      <a href="#selinux" data-toc>SELinux &amp; scoped storage</a>
       <a href="#logcat" data-toc>logcat</a>
       <a href="#storage" data-toc>App storage</a>
       <a href="#keystore" data-toc>The Keystore</a>
@@ -336,6 +340,158 @@
         <span class="lbl">seen in</span>
         <a href="writeup-allsafe.html">AllSafe</a> - <code>VulnerableWebView</code> with JavaScript and file
         access on, used to read the app's private <code>user.xml</code> credentials and run arbitrary script.
+      </div>
+    </section>
+
+    <!-- ============ SQL injection ============ -->
+    <section id="sql-injection" class="concept-block">
+      <p class="kicker">Injection &middot; input treated as query</p>
+      <h2>SQL injection</h2>
+      <div class="concept-sub">
+        <span class="sub-lbl">what it is</span>
+        <p>SQL injection happens when attacker-controlled input is placed into a SQL query and the database
+        executes it as part of the command rather than treating it as data. It follows the injection shape:
+        a source (the input), a sink (the query), and no validation in between. The database cannot tell where
+        the developer's SQL ends and the attacker's begins, so the input can change what the query does.</p>
+      </div>
+      <div class="concept-sub">
+        <span class="sub-lbl">how it's exploited</span>
+        <ul>
+          <li><strong>Tautology</strong> - a condition that is always true, like <code>' OR '1'='1</code>, makes a <code>WHERE</code> clause match every row and bypass filters or logins.</li>
+          <li><strong>Comment</strong> - <code>--</code> (or <code>#</code>) truncates the rest of the query, dropping conditions the app appended after your input.</li>
+          <li><strong>UNION</strong> - <code>UNION SELECT</code> appends a second result set, letting you read other tables. It needs a matching column count.</li>
+          <li><strong>Schema discovery</strong> - read the metadata table to map the database: <code>information_schema</code> on MySQL/Postgres, <code>sqlite_master</code> on SQLite.</li>
+          <li><strong>Error-based</strong> - a malformed payload that throws a database error often leaks the raw query or column info, confirming the input reaches the SQL engine.</li>
+        </ul>
+      </div>
+      <div class="concept-sub">
+        <span class="sub-lbl">why it works</span>
+        <p>The query is built by <strong>string concatenation</strong> instead of parameter binding. A safe
+        query sends the SQL and the data separately (bound <code>?</code> placeholders), so input can never
+        change the query's structure. Concatenation glues them into one string, so a quote or keyword in the
+        input becomes live SQL. The fix is always parameterized queries.</p>
+      </div>
+      <div class="concept-sub">
+        <span class="sub-lbl">on mobile</span>
+        <p>The database is a local SQLite file rather than a remote server, reached through <code>rawQuery</code>
+        / <code>execSQL</code> or an exported <a href="#content-provider">content provider</a>. The input can
+        arrive from a text field, an intent, or another app over IPC. The technique is identical to web SQLi.</p>
+      </div>
+      <div class="seen-in">
+        <span class="lbl">seen in</span>
+        <a href="writeup-allsafe.html">OWASP Mobile Top 10: Android</a> - a concatenated <code>rawQuery</code>
+        login, and a UNION-injectable exported content provider read via <code>sqlite_master</code>.
+      </div>
+    </section>
+
+    <!-- ============ Path traversal ============ -->
+    <section id="path-traversal" class="concept-block">
+      <p class="kicker">Injection &middot; input treated as a file path</p>
+      <h2>Path traversal</h2>
+      <div class="concept-sub">
+        <span class="sub-lbl">what it is</span>
+        <p>Path traversal (also called directory traversal or, on the web, Local File Inclusion) is when input
+        is used to build a file path with no validation, so a relative sequence like <code>../</code> climbs out
+        of the intended directory and reads or writes files elsewhere.</p>
+      </div>
+      <div class="concept-sub">
+        <span class="sub-lbl">how it's exploited</span>
+        <ul>
+          <li>Supply <code>../</code> segments to escape the base directory: <code>../../../../etc/hosts</code> reads a system file.</li>
+          <li>Pivot to secrets the process can reach: <code>../databases/app.db</code>, <code>../shared_prefs/prefs.xml</code>.</li>
+          <li>Bypass naive filters with encodings (<code>%2e%2e%2f</code>) or absolute paths where accepted.</li>
+        </ul>
+      </div>
+      <div class="concept-sub">
+        <span class="sub-lbl">why it works</span>
+        <p>The code concatenates input into a path and opens it without <strong>canonicalizing</strong>
+        (resolving <code>..</code> and symlinks) and confirming the result still sits inside an allowed base
+        directory. The fix is canonicalize then allow-list: resolve the final path and reject anything outside
+        the intended folder, and deny <code>..</code> and absolute paths.</p>
+      </div>
+      <div class="concept-sub">
+        <span class="sub-lbl">on mobile</span>
+        <p>The sink is a local file API (<code>FileInputStream</code>, <code>openFileInput</code>, a content
+        provider's <code>openFile</code>, or a <a href="#webview">WebView</a> loading <code>file://</code>), and
+        the input arrives from a field, an intent, or a deep link. Reach depends on the process UID: system
+        files and world-readable files always read; another app's private files need shared UID or a
+        world-readable target.</p>
+      </div>
+      <div class="seen-in">
+        <span class="lbl">seen in</span>
+        <a href="writeup-allsafe.html">OWASP Mobile Top 10: Android</a> - the same arbitrary-file-read primitive
+        via a WebView loading a <code>file://</code> path to the app's private prefs.
+      </div>
+    </section>
+
+    <!-- ============ Insecure deserialization ============ -->
+    <section id="deserialization" class="concept-block">
+      <p class="kicker">Injection &middot; trusting reconstructed objects</p>
+      <h2>Insecure deserialization</h2>
+      <div class="concept-sub">
+        <span class="sub-lbl">what it is</span>
+        <p><strong>Serialization</strong> flattens a live object into bytes to store or transmit;
+        <strong>deserialization</strong> rebuilds the object from those bytes. It becomes insecure when an app
+        deserializes data an attacker can modify and then trusts the result, whether that is a field value it
+        reads or the object types it instantiates.</p>
+      </div>
+      <div class="concept-sub">
+        <span class="sub-lbl">how it's exploited</span>
+        <ul>
+          <li><strong>Field tampering</strong> - edit a value in the serialized blob (for example a role or price) and the app trusts it on load. This is the same idea as editing a <code>role=user</code> cookie to <code>role=admin</code>.</li>
+          <li><strong>Object injection / gadget chains</strong> - supply bytes that instantiate attacker-chosen classes already on the classpath, which on some platforms escalates to code execution.</li>
+        </ul>
+      </div>
+      <div class="concept-sub">
+        <span class="sub-lbl">why it works</span>
+        <p>The app treats deserialized data as trusted, without validating or cryptographically verifying it,
+        and makes decisions (like authorization) from fields it does not control. The fix is to not deserialize
+        untrusted data at all, or to sign/validate it and enforce the real decision server-side.</p>
+      </div>
+      <div class="concept-sub">
+        <span class="sub-lbl">on mobile</span>
+        <p>The surface is Java/Kotlin <code>Serializable</code> / <code>Parcelable</code> in intent extras or
+        files, and <code>NSCoding</code> on iOS. The tells in code are <code>ObjectOutputStream.writeObject</code>
+        and <code>ObjectInputStream.readObject</code>, and a class marked <code>implements Serializable</code>.</p>
+      </div>
+      <div class="seen-in">
+        <span class="lbl">seen in</span>
+        <a href="writeup-allsafe.html">OWASP Mobile Top 10: Android</a> - a serialized <code>User</code> object
+        written to storage; editing its role field escalated privileges on load.
+      </div>
+    </section>
+
+    <!-- ============ SELinux & scoped storage ============ -->
+    <section id="selinux" class="concept-block">
+      <p class="kicker">Android internals &middot; a tampering gotcha</p>
+      <h2>SELinux &amp; scoped storage</h2>
+      <div class="concept-sub">
+        <span class="sub-lbl">what it is</span>
+        <p>On top of the <a href="#sandbox">sandbox</a>, Android enforces SELinux, a mandatory access control
+        layer that labels every process and file and only allows access its policy permits. Each app's
+        <code>Android/data/&lt;pkg&gt;</code> directory under scoped storage carries per-app SELinux
+        <strong>categories</strong> (you'll see them as <code>c174,c256,...</code>). A file the app itself
+        creates inherits those categories, so the app can read it.</p>
+      </div>
+      <div class="concept-sub">
+        <span class="sub-lbl">the tampering gotcha</span>
+        <p>When you <code>adb push</code> a file into an app's external data directory, the new file gets a
+        generic <code>storage_file</code> label <em>without</em> the app's categories, so SELinux blocks the app
+        from reading it (<code>EACCES</code>, with an <code>avc: denied</code> line in logcat). Overwriting a
+        file does not relabel it, so pushing over the top keeps the bad label.</p>
+      </div>
+      <div class="concept-sub">
+        <span class="sub-lbl">the fix pattern</span>
+        <p>Let the app create the file so it carries the right label, then change its contents in place without
+        replacing the inode. In practice: delete the pushed file, use the app to recreate it, push your edited
+        copy to a neutral location like <code>/data/local/tmp</code>, then <code>cat tmpfile &gt; appfile</code>
+        (redirecting into the existing file preserves its inode and label). Root can also relabel with
+        <code>restorecon</code> / <code>chcon</code>.</p>
+      </div>
+      <div class="seen-in">
+        <span class="lbl">seen in</span>
+        <a href="writeup-allsafe.html">OWASP Mobile Top 10: Android</a> - a pushed tamper file was denied until
+        it was recreated by the app and overwritten in place.
       </div>
     </section>
 

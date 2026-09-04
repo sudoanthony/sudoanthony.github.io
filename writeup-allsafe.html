@@ -1633,20 +1633,309 @@ adb logcat -d | findstr /i "insecure broadcast password sms updated changed"</co
   <h2><span class="num">07</span>Code-Level Bugs &amp; Injection</h2>
   <p class="secmeta">MASVS: CODE &nbsp;&middot;&nbsp; Mobile Top 10: <a href="android.html#m4" class="risk">M4</a></p>
 
-  <p>[ Input validation, SQL/command/path injection, unsafe deserialization. ]</p>
+  <h3>Concept</h3>
+  <p>When we talk about <a href="android.html#sql-injection">injection</a> bugs, they usually have the same
+  form:</p>
+  <ul>
+    <li>A <strong>source</strong> - where our input goes in.</li>
+    <li>A <strong>sink</strong> - where that input gets treated as a query, a path, or code.</li>
+    <li>The missing <strong>validation</strong> between those two.</li>
+  </ul>
+  <p>When an app pastes our raw input into that sink, we can break out of the spot we were given and change
+  what the entire operation does. On the web, the sink is usually a remote SQL server. On mobile, the sinks are
+  local and live inside the app itself: an SQLite database, a <a href="android.html#content-provider">content
+  provider</a>, a file-path builder, an Intent, and a <a href="android.html#webview">WebView</a>.</p>
+  <p>In the previous chapter we covered what happens when that "door" is left open (exported components). This
+  chapter covers what happens once we are through the door. The same <code>1=1</code> logic used in web SQLi,
+  aimed at a local database and a content provider, plus navigating the app's sandbox and eventually out of it
+  with <code>../</code> path traversal.</p>
+  <p class="secmeta">MASVS: CODE &nbsp;&middot;&nbsp; primary risk <a href="android.html#m4" class="risk">M4</a>
+  (with <a href="android.html#m8" class="risk">M8</a> and <a href="android.html#m10" class="risk">M10</a>
+  turning up along the way).</p>
 
-  <div class="shot-todo">SCREENSHOT - injection payload &amp; result</div>
+  <h3>1. Local SQL Injection (AllSafe)</h3>
+  <p>Let's navigate to AllSafe's SQL Injection challenge to practice our first exploit.</p>
+  <figure><img src="images/AllSafe/ch81.png" alt="AllSafe SQL Injection challenge"></figure>
+  <figure><img src="images/AllSafe/ch82.png" alt="AllSafe SQL Injection challenge login portal"></figure>
+  <p>AllSafe already tells us we don't need reverse engineering, so using the login portal in the challenge we
+  can attempt our SQL injection.</p>
+  <p><strong>Step 1 - open the challenge in jadx.</strong> We could just throw every trick we know at the box
+  from the start, but we save time (and get proof of the vulnerability) by reading the code first. We want a
+  <code>rawQuery</code> / <code>query(</code> built by string concatenation. <code>rawQuery</code> (and
+  <code>execSQL</code>) runs a raw SQL string we assemble ourselves. That is our dangerous sink.</p>
+  <figure><img src="images/AllSafe/ch83.png" alt="jadx showing the rawQuery in the SQL Injection challenge"></figure>
+  <p><strong>Step 2 - find the string and analyze how the app filters queries.</strong> Here is the useful
+  line:</p>
+  <pre><code>$db.rawQuery("select * from user where username = '" + $username.getText() + "' and password = '" + this$0.md5(...) + "'", null);</code></pre>
+  <p>We note the table name and whether our input sits inside single quotes. The important part:</p>
+  <pre><code>... username = '" + $username.getText() + "' ...</code></pre>
+  <p>This is our injection point. Our <code>$username.getText()</code> is pasted straight between single quotes
+  with no binding, so a <code>'</code> in our input breaks out of the string and the rest is read as pure SQL.</p>
+  <ul>
+    <li>The table is <code>user</code>, and it reads <code>getString(1)</code> as username and <code>getString(2)</code> as password. The columns are (<code>id</code>, <code>username</code>, <code>password</code>).</li>
+    <li>The password field is MD5-hashed <strong>before</strong> it is inserted (<code>this$0.md5()</code>), so we can't cleanly inject through password. That makes the username field our injectable one.</li>
+  </ul>
+  <p><strong>Step 3 - craft our payload based on that assessment.</strong> If we type <code>' OR '1'='1</code>,
+  the query becomes:</p>
+  <pre><code>... where username = '' OR '1'='1' and password = '&lt;hash&gt;'</code></pre>
+  <p><code>AND</code> binds tighter than <code>OR</code>, so that reads as "the username is empty, OR (1=1 AND
+  password matches)." We would only get rows whose password hash matches, so we have to kill the trailing
+  password condition with a comment. In the username box we enter:</p>
+  <pre><code>' OR '1'='1' -- </code></pre>
+  <p>(Note the space after <code>--</code>.) This makes the query:</p>
+  <pre><code>... where username = '' OR '1'='1' -- ' and password = '&lt;hash&gt;'</code></pre>
+  <p>The <code>--</code> comments out everything after it, so the password check is gone and the
+  <code>OR '1'='1'</code> returns every row in <code>user</code>. The password box can be anything.</p>
+  <p><strong>Step 4 - run the payload.</strong></p>
+  <figure><img src="images/AllSafe/ch84.png" alt="entering the SQL injection payload"></figure>
+  <figure><img src="images/AllSafe/ch85.png" alt="the app returning all user rows"></figure>
+  <p>Our query went through, and the message the app spat out has the credentials for an <code>admin</code> and
+  an unsalted MD5 hash that reverses back to <code>admin</code>. (We can log the unsalted MD5 hash as a bonus
+  <a href="android.html#m10" class="risk">M10</a> finding, a nod to our Broken Cryptography chapter.) We can
+  also confirm it by opening the database itself and reading the credentials directly.</p>
+  <figure><img src="images/AllSafe/ch87.png" alt="the user table read directly with sqlite3"></figure>
+  <p>This is a classic SQL Injection (<a href="android.html#m4" class="risk">M4</a>) finding. The root cause is
+  the username being concatenated into a <code>rawQuery</code>.</p>
 
+  <h3>2. Content-provider full extraction (InsecureBankv2)</h3>
+  <p>In Chapter 7 we identified that the provider is injectable. Now we exploit that into a full database
+  extraction.</p>
+  <p><strong>Step 0 - recall the query shape.</strong> From the previous chapter, the provider builds
+  <code>SELECT * FROM names WHERE (&lt;your input&gt;) ORDER BY name</code>. Two things shape every payload:</p>
+  <ul>
+    <li>The projection is <code>*</code> on <code>names</code>, which is 2 columns (<code>id</code>, <code>name</code>), so any <code>UNION SELECT</code> must also return 2 columns.</li>
+    <li>Our input sits inside parentheses with a trailing <code>ORDER BY</code>, so we close the parenthesis and comment the rest.</li>
+  </ul>
+  <p><strong>Step 1 - drop into the device shell.</strong></p>
+  <pre><code>adb shell</code></pre>
+  <p><strong>Step 2 - confirm the column count and the injection point</strong> with a dummy UNION. If it
+  returns a row showing <code>1</code> and <code>2</code>, we have confirmed 2 columns and that the break-out
+  works:</p>
+  <pre><code>content query --uri content://com.android.insecurebankv2.TrackUserContentProvider/trackerusers --where "1=0) UNION SELECT 1,2 --"</code></pre>
+  <p>(The <code>1=0</code> kills the real rows so we only see our injected row; the <code>)</code> closes the
+  wrapper paren; <code>--</code> comments the trailing <code>) ORDER BY name</code>.)</p>
+  <figure><img src="images/AllSafe/ch8ex1.png" alt="dummy UNION returning the injected row 1,2"></figure>
+  <p><code>Row: 0 id=1, name=2</code> confirms it: 2 columns, and our injected literals came back in the
+  <code>id</code>/<code>name</code> slots. The UNION break-out works and the column count matches.</p>
+  <p><strong>Step 3 - dump the entire schema</strong> using SQLite's metadata table (<code>sqlite_master</code>
+  is SQLite's version of web's <code>information_schema</code>). This lists every table and its <code>CREATE</code>
+  statement, proving we can read beyond the intended <code>names</code> table:</p>
+  <pre><code>content query --uri content://com.android.insecurebankv2.TrackUserContentProvider/trackerusers --where "1=0) UNION SELECT name, sql FROM sqlite_master --"</code></pre>
+  <figure><img src="images/AllSafe/ch8ex2.png" alt="sqlite_master schema dump via the injection"></figure>
+  <ul>
+    <li><code>android_metadata (locale TEXT)</code> - SQLite housekeeping, not app data.</li>
+    <li><code>names (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL)</code> - the one real app table.</li>
+    <li><code>sqlite_sequence(name,seq)</code> - SQLite's autoincrement bookkeeping, also internal.</li>
+  </ul>
+  <p>This proves we can read arbitrary tables, not just the one the provider intended to expose. (A full schema
+  dump naturally includes the SQLite internals above.)</p>
+  <p><strong>Step 4 - swap in the real column and table names</strong> from Step 3 (table <code>names</code>,
+  columns <code>id</code> and <code>name</code>):</p>
+  <pre><code>content query --uri content://com.android.insecurebankv2.TrackUserContentProvider/trackerusers --where "1=0) UNION SELECT id, name FROM names --"</code></pre>
+  <p>To make the arbitrary read obvious, we can concatenate our own text into the output:</p>
+  <pre><code>content query --uri content://com.android.insecurebankv2.TrackUserContentProvider/trackerusers --where "1=0) UNION SELECT id, 'table='||name FROM names --"</code></pre>
+  <figure><img src="images/AllSafe/ch8ex3.png" alt="targeted FROM names read and the concatenated output"></figure>
+  <p>SQLite uses <code>||</code> for concatenation. This prints <code>table=dinesh</code> rows, making it
+  obvious the second column is attacker-shaped output, not the provider's normal response.</p>
+
+  <h3>3. Insecure Deserialization (AllSafe)</h3>
+  <p><strong>First, what is <a href="android.html#deserialization">deserialization</a>?</strong> Serialization
+  is taking a live object (data in the app's memory, like a <code>User</code> with a role, password, and so on)
+  and flattening it into a stream of bytes we can save to a file. Deserialization is the reverse: turning those
+  bytes back into a live object.</p>
+  <p>AllSafe's challenge lets us prove insecure deserialization:</p>
+  <ul>
+    <li><strong>Save</strong> - a button that makes a <code>User</code> with <code>role = ROLE_AUTHOR</code>, serializes it, and writes it to <code>user.dat</code>.</li>
+    <li><strong>Load</strong> - a button that reads <code>user.dat</code> back into a <code>User</code>, then checks if our role is <code>EDITOR</code>. If it is, access is granted.</li>
+  </ul>
+  <p>The app trusts the role stored in the file, even though the file lives on external storage that we can read
+  and write. So we edit the file, change <code>AUTHOR</code> to <code>EDITOR</code>, and when the app
+  deserializes it, it thinks we're an editor. It never signs the file and never re-checks with a server. It just
+  trusts the bytes and reads them back believing whatever they say. Comparing it to a website, it's as if we
+  took a cookie with <code>role=user</code>, edited it to <code>role=admin</code>, and the server believed us.</p>
+
+  <p><strong>Analyze the code. Step 1 - find the class and confirm serialization.</strong> Open the source for
+  <code>ObjectSerialization</code> in jadx. Serialization sinks always show these tells:</p>
+  <ul>
+    <li>Writing: <code>ObjectOutputStream</code> + <code>writeObject(...)</code></li>
+    <li>Reading: <code>ObjectInputStream</code> + <code>readObject(...)</code></li>
+    <li>A class marked <code>implements Serializable</code></li>
+  </ul>
+  <figure><img src="images/AllSafe/ch8ex32a.png" alt="serialization imports and calls in jadx"></figure>
+  <figure><img src="images/AllSafe/ch8ex32b.png" alt="the User class implements Serializable"></figure>
+  <p>All of the above are present, confirming serialization.</p>
+  <p><strong>Step 2 - find where the file goes.</strong> Where the file lives decides exploitability. In
+  <code>onCreateView</code>, read the path line:</p>
+  <figure><img src="images/AllSafe/ch8ex32.png" alt="the getExternalFilesDir path line"></figure>
+  <pre><code>final String path = requireActivity().getExternalFilesDir(null) + "/user.dat";</code></pre>
+  <ul>
+    <li><code>getExternalFilesDir</code> - external storage. Anyone (or any app with storage access) can read or write it. If it were internal only (<code>getFilesDir</code>) the attack would be harder.</li>
+    <li><code>user.dat</code> is the file name (small detail, but useful to note).</li>
+  </ul>
+  <p><strong>Step 3 - read the Save handler</strong> (<code>lambda$onCreateView$0</code>).</p>
+  <figure><img src="images/AllSafe/ch8ex33.png" alt="the Save handler serializing the User"></figure>
+  <pre><code>User user = new User(username.getText()..., password.getText()...);
+... oos.writeObject(user);</code></pre>
+  <p>It builds the object and serializes it, but never signs, encrypts, or checksums it. Just raw bytes.</p>
+  <p><strong>Step 4 - open the <code>User</code> class.</strong></p>
+  <figure><img src="images/AllSafe/ch8ex34.png" alt="the User class showing role default ROLE_AUTHOR"></figure>
+  <ul>
+    <li>There is a <code>role</code> field, and it defaults to <code>ROLE_AUTHOR</code>.</li>
+    <li>The access decision is made entirely on the <code>role</code> field of the object deserialized from our file. No server check or signature anywhere.</li>
+    <li>The value it wants is <code>ROLE_EDITOR</code>. That is our target.</li>
+  </ul>
+
+  <p><strong>Prove insecure deserialization.</strong> From our assessment: the file is on storage we control, it
+  holds a <code>role</code>, and the app trusts that role on load. So we change <code>ROLE_AUTHOR</code> to
+  <code>ROLE_EDITOR</code> in <code>user.dat</code> and reload.</p>
+  <p><strong>Step 1 - save credentials through the app.</strong></p>
+  <figure><img src="images/AllSafe/ch8ex31.png" alt="saving credentials in the challenge"></figure>
+  <p>We enter <code>anthony</code> and <code>sudohi</code> and hit Save. This writes <code>user.dat</code> (role
+  <code>ROLE_AUTHOR</code>) to external storage.</p>
+  <p><strong>Step 2 - pull <code>user.dat</code> to the desktop.</strong></p>
+  <pre><code>adb pull /sdcard/Android/data/infosecadventures.allsafe/files/user.dat .</code></pre>
+  <p><strong>Step 3 - change AUTHOR to EDITOR.</strong> Python here, but any editor works (PowerShell, a hex
+  editor). Both strings are 11 characters, so the swap keeps the serialized length fields valid.</p>
+  <pre><code>python -c "d=open('user.dat','rb').read().replace(b'ROLE_AUTHOR',b'ROLE_EDITOR');open('user.dat','wb').write(d)"</code></pre>
+  <figure><img src="images/AllSafe/ch8ex36.png" alt="confirming the role changed to EDITOR"></figure>
+  <p>This confirms it was successfully changed to EDITOR.</p>
+  <p><strong>Step 4 - push it back.</strong></p>
+  <figure><img src="images/AllSafe/ch8ex37.png" alt="pushing the edited file back"></figure>
+  <p><strong>Step 5 - confirm it landed with the role intact.</strong></p>
+  <figure><img src="images/AllSafe/ch8ex38.png" alt="confirming the device file shows ROLE_EDITOR"></figure>
+  <p><strong>Step 6 - trigger it.</strong> We hit Load, expecting a "Good job!" and a Toast, and... nothing
+  happened. So something was wrong with our approach. Let's clear the log, hit Load again, and watch what the
+  app does:</p>
+  <pre><code>adb logcat -c
+adb logcat -d | findstr /i "allsafe Exception Serial ROLE"</code></pre>
+  <figure><img src="images/AllSafe/ch8bug1.png" alt="logcat showing EACCES permission denied and SELinux avc denial"></figure>
+  <p><code>EACCES (Permission denied)</code> plus a SELinux <code>avc: denied { read }</code>. Our push worked,
+  but the app can't read the file we pushed.</p>
+  <div class="note insight">
+    <span class="lbl">why the app can't read our file (<a href="android.html#selinux">SELinux</a>)</span>
+    On modern Android, every app's <code>Android/data/&lt;pkg&gt;</code> folder gets per-app SELinux categories
+    (<code>c174,c256,c512,c768</code>). A file the app creates inherits those categories, so the app can read
+    it. A file <code>adb push</code> creates gets a generic <code>storage_file</code> label without those
+    categories, so SELinux blocks the app from reading it. Our role edit was fine; the problem was the file's
+    label, because we created a new file instead of modifying the app's own.
+  </div>
+  <p><strong>The fix</strong> is to write our bytes into the file the app already owns so the label stays
+  preserved, instead of pushing a fresh file over the top.</p>
+  <p><strong>Fix Step 1 - remove the mislabeled file.</strong></p>
+  <pre><code>adb shell "rm /storage/emulated/0/Android/data/infosecadventures.allsafe/files/user.dat"</code></pre>
+  <p><strong>Fix Step 2 - Save again in the app</strong> (different creds this time, to confirm it's a new
+  file).</p>
+  <figure><img src="images/AllSafe/ch8bug2.png" alt="saving again to recreate a properly labeled file"></figure>
+  <p><strong>Fix Step 3 - confirm the correct labels are on the file.</strong></p>
+  <pre><code>adb shell "ls -Z /storage/emulated/0/Android/data/infosecadventures.allsafe/files/"</code></pre>
+  <figure><img src="images/AllSafe/ch8bug3.png" alt="ls -Z showing the app's SELinux categories"></figure>
+  <figure><img src="images/AllSafe/ch8bug4.png" alt="Load now returns a proper only-editors error, proving the app reads the file"></figure>
+  <p>The categories are there this time. When we hit Load we now get a proper error message, which means the
+  app is reading the file with the correct categories and denying us based on the <code>AUTHOR</code> role.
+  Good.</p>
+  <p><strong>Fix Step 4 - overwrite the contents in place and push.</strong> Because <code>cat &gt; existingfile</code>
+  writes into the file the app created (same inode, same label), the app can still read it.</p>
+  <pre><code>adb push "$env:USERPROFILE\Desktop\user.dat" /data/local/tmp/mod.dat
+adb shell "cat /data/local/tmp/mod.dat > /storage/emulated/0/Android/data/infosecadventures.allsafe/files/user.dat"</code></pre>
+  <p>(We overwrite with the edited file from earlier, so a successful load shows our original tampered
+  credentials.)</p>
+  <p><strong>Fix Step 5 - hit Load.</strong></p>
+  <figure><img src="images/AllSafe/ch8bug5.png" alt="Good job Toast showing role ROLE_EDITOR"></figure>
+  <p>Success. The Toast shows <code>role='ROLE_EDITOR'</code>, and note it shows our tampered
+  <code>anthony</code> identity, not the credentials we typed on the last Save. That is the vulnerability stated
+  by the app itself: the identity and role came entirely from the file we controlled, not from anything we
+  logged in as. Load reads the file, never the input boxes.</p>
+  <p>Making mistakes really does solidify these concepts. We saw that pushing a fresh <code>user.dat</code>
+  created a new file without the SELinux categories the app uses to read it, which is why the fix had to
+  recreate and overwrite in place. We would not have learned about those categories were it not for that little
+  mistake.</p>
+
+  <h3>A note on path traversal</h3>
+  <p>The handbook's DIVA lab has a screen that reads a file from a path we type with no checks, so
+  <code>../</code> climbs out of the app and reads arbitrary files. None of my three targets (AllSafe,
+  InsecureBankv2, AndroGoat) expose that sink. I searched their code for file reads built from user input and
+  found none, so I could not reproduce classic <a href="android.html#path-traversal">path traversal</a> here. I
+  am documenting the pattern for completeness. It is the mobile version of web LFI and directory traversal: the
+  same bug, but the sink is a local file API instead of a web server, and the input arrives from a text field,
+  an intent, or a deep link. A payload like <code>../../../../etc/hosts</code> would read a system file outside
+  the sandbox, and <code>../databases/x.db</code> or <code>../shared_prefs/y.xml</code> would pivot to the
+  app's own secrets. The fix is canonicalize then allowlist: resolve the final path and confirm it still sits
+  inside the intended directory. I did demonstrate the same underlying primitive, arbitrary file read from
+  unvalidated input, in the Platform chapter, where AllSafe's WebView loaded
+  <code>file:///data/data/infosecadventures.allsafe/shared_prefs/user.xml</code> and rendered the app's private
+  credentials.</p>
+
+  <h3>So what did we find in Code-Level Bugs?</h3>
+  <p>The findings written up as report entries, with severity calibrated to reach (local versus cross-app)
+  rather than to how alarming the label sounds.</p>
   <table class="finding">
-    <tr><th>Title</th><td>[ finding name ]</td></tr>
-    <tr><th>Severity</th><td>[ ... ]</td></tr>
-    <tr><th>Description</th><td>[ ... ]</td></tr>
-    <tr><th>Impact</th><td>[ ... ]</td></tr>
-    <tr><th>Evidence</th><td>[ ... ]</td></tr>
-    <tr><th>MASTG</th><td>[ ... ]</td></tr>
-    <tr><th>Mobile Top 10</th><td>[ ... ]</td></tr>
-    <tr><th>Remediation</th><td>[ ... ]</td></tr>
+    <tr><th>Title</th><td>SQL injection in the local login query (AllSafe)</td></tr>
+    <tr><th>Severity</th><td><strong>Medium</strong>. The login query is built by string concatenation, so a payload in the username field bypasses authentication and dumps every row of the <code>user</code> table. Local (the attacker must be at the screen), which keeps it out of High, but it fully defeats the login and discloses all stored credentials.</td></tr>
+    <tr><th>Description</th><td>The SQL Injection challenge runs <code>rawQuery("select * from user where username = '" + input + "' and password = '" + md5(...) + "'", null)</code>. The username is concatenated unescaped, so <code>' OR '1'='1' -- </code> comments out the password check and returns all rows.</td></tr>
+    <tr><th>Impact</th><td>Authentication bypass plus disclosure of every username and password hash in the table.</td></tr>
+    <tr><th>Evidence</th><td>The <code>rawQuery</code> line in jadx; the payload returning the <code>admin</code> row; and a direct <code>sqlite3</code> read of the <code>user</code> table confirming the full contents.</td></tr>
+    <tr><th>MASVS / MASTG</th><td>MASVS-CODE &middot; MASTG data-validation / SQL-injection tests &middot; CWE-89 (SQL injection)</td></tr>
+    <tr><th>Mobile Top 10</th><td><a href="android.html#m4" class="risk">M4</a> - Insufficient Input/Output Validation</td></tr>
+    <tr><th>Remediation</th><td>Use parameterized queries: <code>rawQuery("... WHERE username = ?", new String[]{input})</code>, never concatenation. See the Remediation section below.</td></tr>
   </table>
+  <table class="finding">
+    <tr><th>Title</th><td>Unsalted MD5 password hashing (AllSafe)</td></tr>
+    <tr><th>Severity</th><td><strong>Low</strong> on its own, but it compounds the SQLi above: passwords are stored as fast, unsalted MD5, so the hashes dumped by the injection crack instantly (this one is trivially <code>admin</code>).</td></tr>
+    <tr><th>Description</th><td>The challenge hashes the password with unsalted MD5 before storing/comparing it. MD5 is fast and unsalted, so recovered hashes fall to rainbow tables or brute force.</td></tr>
+    <tr><th>Impact</th><td>Any password hash recovered (for example via the SQLi) is recovered in plaintext almost immediately.</td></tr>
+    <tr><th>Evidence</th><td>The dumped hash <code>21232f...</code> is the well-known MD5 of <code>admin</code>.</td></tr>
+    <tr><th>MASVS / MASTG</th><td>MASVS-CRYPTO &middot; CWE-916 (weak password hash) &middot; CWE-759 (unsalted hash)</td></tr>
+    <tr><th>Mobile Top 10</th><td><a href="android.html#m10" class="risk">M10</a> - Insufficient Cryptography</td></tr>
+    <tr><th>Remediation</th><td>Never store passwords on the client; where hashing is needed, use a slow, salted KDF (PBKDF2, scrypt, Argon2). See the Remediation section below.</td></tr>
+  </table>
+  <table class="finding">
+    <tr><th>Title</th><td>SQL injection in an exported content provider (InsecureBankv2)</td></tr>
+    <tr><th>Severity</th><td><strong>High</strong> as a capability. The exported provider concatenates the selection into its query, so a UNION injection reads arbitrary tables in the database with no permission, cross-app. Concrete impact here is limited because the exposed database only holds a low-value <code>names</code> table, but the vulnerability itself is cross-app arbitrary read.</td></tr>
+    <tr><th>Description</th><td><code>TrackUserContentProvider</code> builds <code>SELECT * FROM names WHERE (&lt;selection&gt;) ORDER BY name</code> by concatenation. Closing the paren and appending a <code>UNION SELECT</code> against <code>sqlite_master</code> enumerates the whole schema; a UNION against any table reads it.</td></tr>
+    <tr><th>Impact</th><td>Any zero-permission app on the device can enumerate and read the provider's entire database, not just the intended table.</td></tr>
+    <tr><th>Evidence</th><td>The dummy UNION (<code>1=0) UNION SELECT 1,2 --</code>) confirming the break-out; the <code>sqlite_master</code> dump listing every table; and the targeted <code>FROM names</code> read.</td></tr>
+    <tr><th>MASVS / MASTG</th><td>MASVS-CODE / MASVS-PLATFORM &middot; MASTG provider-injection tests &middot; CWE-89 &middot; CWE-926 (improper export)</td></tr>
+    <tr><th>Mobile Top 10</th><td><a href="android.html#m4" class="risk">M4</a> with <a href="android.html#m8" class="risk">M8</a> (exported) and <a href="android.html#m6" class="risk">M6</a> (data exposure)</td></tr>
+    <tr><th>Remediation</th><td>Parameterize the provider query with bound arguments, allow-list the selection and projection, and don't export the provider unless required. See the Remediation section below.</td></tr>
+  </table>
+  <table class="finding">
+    <tr><th>Title</th><td>Insecure deserialization enabling privilege escalation (AllSafe)</td></tr>
+    <tr><th>Severity</th><td><strong>Medium</strong>. The app makes an authorization decision from the <code>role</code> field of an object it deserializes from a user-writable file, with no signing or server check. Tampering the file escalates author to editor. Local (needs storage access), and worse if the object drove a real privilege or a gadget chain.</td></tr>
+    <tr><th>Description</th><td><code>ObjectSerialization</code> writes a <code>User</code> object (role <code>ROLE_AUTHOR</code>) to <code>getExternalFilesDir()/user.dat</code>, then on Load deserializes it and grants access if <code>role.equals("ROLE_EDITOR")</code>. The role is trusted straight from the file.</td></tr>
+    <tr><th>Impact</th><td>An attacker who can write the file (external storage) sets any role and is trusted as that role on load, bypassing the intended author/editor control.</td></tr>
+    <tr><th>Evidence</th><td>Flipping <code>ROLE_AUTHOR</code> to <code>ROLE_EDITOR</code> in <code>user.dat</code> (overwriting the app-owned file in place to keep its SELinux label) produced "Good job!" and a Toast showing <code>role='ROLE_EDITOR'</code>.</td></tr>
+    <tr><th>MASVS / MASTG</th><td>MASVS-CODE / MASVS-STORAGE &middot; CWE-502 (deserialization of untrusted data) &middot; CWE-565 (reliance on untrusted inputs)</td></tr>
+    <tr><th>Mobile Top 10</th><td><a href="android.html#m4" class="risk">M4</a> with <a href="android.html#m8" class="risk">M8</a></td></tr>
+    <tr><th>Remediation</th><td>Never make trust decisions from client-controlled serialized data; validate and sign it, store role/authorization server-side, and keep sensitive objects off external storage. See the Remediation section below.</td></tr>
+  </table>
+
+  <h3>Remediation</h3>
+  <p>The specific fixes for what we found, then the general controls every app should apply for M4.</p>
+  <p><strong>For the flaws in this section:</strong></p>
+  <ul>
+    <li><strong>SQL injection, local and provider (M4):</strong> use parameterized queries everywhere. Bind input as <code>?</code> placeholders with <code>selectionArgs</code> and never concatenate it into the SQL string. For the provider, also allow-list the selection and projection and stop exporting it unless another app truly needs it.</li>
+    <li><strong>Unsalted MD5 (M10):</strong> don't store passwords on the client. Where a hash is genuinely needed, use a slow, salted password KDF (PBKDF2, scrypt, Argon2) with a random per-user salt, and drop MD5/SHA-1 entirely.</li>
+    <li><strong>Insecure deserialization (M4):</strong> never make an authorization decision from a client-controlled serialized object. Enforce role and access server-side; if you must persist state locally, sign or encrypt it with a Keystore-backed key and keep it off external storage.</li>
+  </ul>
+  <p><strong>General M4 (Insufficient Input/Output Validation) controls, most important first:</strong></p>
+  <ul>
+    <li><span class="risk">Most applicable here:</span> treat every input reaching a query, a path, or a deserializer as attacker-controlled, and bind or validate it at the boundary rather than concatenating it into the sink.</li>
+    <li>Use parameterized queries for all SQL; never build queries, file paths, or shell strings from raw input.</li>
+    <li>Canonicalize then allow-list any path built from input, and reject <code>..</code> and absolute paths.</li>
+    <li>Enforce real authorization on the server; a client-side check on client-controlled data is not a security boundary.</li>
+  </ul>
+
+  <h3>Chapter Summary</h3>
+  <p>We walked through the injection family, with the sinks living inside the app rather than on a remote
+  server:</p>
+  <ul>
+    <li><strong>Local SQL injection</strong> (AllSafe) - a concatenated <code>rawQuery</code> let <code>' OR '1'='1' -- </code> bypass the login and dump every user, with the passwords stored as crackable unsalted MD5.</li>
+    <li><strong>Content-provider extraction</strong> (InsecureBankv2) - a UNION against <code>sqlite_master</code> turned Chapter 7's "it's injectable" into a full, cross-app schema and table read.</li>
+    <li><strong>Insecure deserialization</strong> (AllSafe) - tampering a serialized <code>User</code> file on external storage escalated author to editor, because the app trusted a role it read straight from bytes we control.</li>
+    <li><strong>Path traversal</strong> - documented as the pattern, since none of our targets expose the sink; the same arbitrary-file-read primitive was shown via the WebView in the Platform chapter.</li>
+  </ul>
+  <p>The throughline is one sentence: the app took input and used it in a sensitive operation without validating
+  it. Name the source, the sink, and the missing validation, and the finding writes itself.</p>
 
   <hr>
 

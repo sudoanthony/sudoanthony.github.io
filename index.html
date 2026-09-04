@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Anthony - security writeups</title>
-<meta name="description" content="Penetration testing and CTF writeups - web exploitation, authentication flaws, and privilege escalation.">
+<meta name="description" content="Penetration testing and CTF writeups across TryHackMe, HackTheBox, and mobile - root cause, detection, and the fix, plus notes on tools, concepts, and vulnerabilities.">
 <link rel="stylesheet" href="style.css">
 </head>
 <body>
@@ -25,13 +25,17 @@
   <section class="hero">
     <h1>Anthony</h1>
 
-    <!-- POSITIONING LINE - the first thing an employer reads.
-         Keep it concrete. Say what you do + what you're after.
-         Edit the plain text; leave the <span class="k"> accents. -->
     <p class="pos">
-      I break web apps and Windows environments for practice, then write up
-      <span class="k">why</span> each bug exists - root cause, detection, and the fix -
-      not just the commands. Working toward a <span class="k">junior penetration testing</span> role.
+      Thanks for visiting my GitHub. Here you will find write-ups I've done across
+      <span class="k">TryHackMe</span>, <span class="k">HackTheBox</span>, and my own practice
+      write-ups on <span class="k">Mobile</span>. You can also find my summaries on cybersecurity
+      tools, concepts, and vulnerabilities. It is constantly being updated, so feel free to keep
+      checking to see how things progress.
+    </p>
+    <p class="pos" style="font-size:15px;color:var(--text-3)">
+      For clarity's sake, I use AI tools such as Claude to assist in coding this website. However,
+      all of the writing, screenshots, and walkthroughs are done by myself. I want to emphasize that
+      I want this website to be in as much of my own voice and writing style as possible.
     </p>
 
     <!-- CONTACT ROW - fill these in. Delete any line you don't want public. -->
@@ -53,17 +57,54 @@
     <button class="btn" id="randomBtn">surprise me</button>
   </div>
 
-  <!-- ABOUT - WRITE THIS YOURSELF. 3-4 sentences, career-changer angle.
-       Guidance (delete when done):
-         • Sentence 1: where you're coming from (previous field) + why security.
-         • Sentence 2: what you're focused on right now (web? AD? a cert in progress?).
-         • Sentence 3: what this site is - proof you do the work, not just talk about it.
-         • Sentence 4: what role you want.
-       Avoid "passionate about cybersecurity" - it reads as filler. Be specific. -->
   <h2>About</h2>
-  <p style="color:var(--text-3)">
-    <em>[ Your 3–4 sentence blurb goes here. See the comment in the page source for a
-    sentence-by-sentence guide. ]</em>
+  <p>Hello everyone. My name is Anthony Sciuto.</p>
+  <p>Since I was a child I grew a love for computers through video games. I am also a hobbyist
+  illustrator, animator, and game developer. As a professional, I spent seven and a half years in
+  the U.S. Navy in the medical field as a Hospital Corpsman. I was lucky enough to serve as a devil
+  doc alongside Marine units, and I found that the ability to keep a cool head while working in
+  time-critical, life-saving situations had a direct correlation to my pursuit of cybersecurity.</p>
+  <p>I now spend my time working in Japan, studying Japanese, and studying cybersecurity, mainly
+  penetration testing. That ranges from web applications, wifi, and cloud, to more recently mobile
+  penetration testing.</p>
+  <p>A common trend in all of the jobs I've worked and excelled in was the ability to help others.
+  Whether it was the teaching I did in the Navy as a TCCC/CLS instructor or the work I did at hotels,
+  I love helping others and find communication an invaluable skill in any field. Working in the
+  medical field gave me countless repetitions of customer interactions, from civilian babies to
+  seniors to military personnel. At the end of the day, the services we provide to others are
+  fundamentally about helping them. If we remember that when providing a service, the quality and
+  connection we give a client is something that can't really be expressed in a purely monetary
+  transaction. Anyone can spam boxes and study, but we also have to remember that human skills are
+  becoming more and more valuable as AI becomes a bigger part of everyone's lives.</p>
+  <p><strong>Speaking of AI.</strong> When it comes to AI and art, I do not use AI whatsoever in the
+  process or development of my art. While AI is a tool that I enjoy and continue to master, as an
+  artist I want to preserve the creativity and skill that I am able to express as it is. AI as a tool
+  should be used to level up and express our own skills, not to replace them. I am not saying I can't
+  see any valuable use of AI in art, but there are a lot of people using AI for art and calling
+  themselves an artist. That said, I do understand that in the professional world, if you're not
+  maximizing the tools given to you then you're putting yourself at a disadvantage against those who
+  are.</p>
+  <p>I've also noticed that one reason many people underutilize AI in their work is a lack of
+  creativity and planning when prompting it. I truly believe that having creative hobbies, or a mind
+  for solving problems, is essential to using AI effectively. You see many people even asking AI
+  itself how to use AI effectively. That isn't bad, but we have to remember that we are the one
+  prompting it, and if you can't do that part well, you won't have much better luck.</p>
+  <p>The use of AI can be compared to steroids. I love the gym, but I also love my health, and if
+  there were a medicine that could give steroid-like gains without the drawbacks, I'm pretty sure
+  everyone would take it, myself included. An untrained person on steroids who trains ineffectively
+  can still see dramatic gains compared to a natural lifter. But the true difference shows when a
+  professional who understands dieting, programming, and technique takes them. The difference is
+  monumental. Steroids aren't a perfect analogy for AI, but I think it's a pretty good one. In the
+  hands of a novice, AI can produce results sometimes even faster than a professional, but no company
+  wants only that. People who actually use AI well understand how it works and understand the work
+  required to produce a given result. Companies want professionals who understand their trade,
+  understand how AI works, and use it in tandem with their existing knowledge and skills. That is
+  where the value is, and that is still a person in demand.</p>
+  <p style="color:var(--text-4);font-size:14.5px;font-style:italic">
+    Note: thanks for reading. I'll add more to this section as time goes on, and I'll probably make a
+    separate blog for my own thoughts to keep this repo more professional. I do like the personal
+    touch though. People read tons of resumes and GitHubs every day, and the 100% professional angle
+    has to get boring, no?
   </p>
 
   <!-- OPTIONAL STAT COUNTERS - switch on once the numbers flatter you (~8+ writeups).

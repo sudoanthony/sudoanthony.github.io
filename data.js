@@ -33,7 +33,7 @@ const WRITEUPS = [
     icon:       "images/icons/allsafe.png",
     date:       "2026-07-31",
     summary:    "Featuring AllSafe, with help from InsecureBankv2 and AndroGoat. A mobile penetration testing methodology that works all three Android targets to demonstrate each risk of the OWASP Mobile Top 10 (2024) - worked examples with screenshots, plus a severity-rated report for every vulnerability found.",
-    tags:       ["hardcoded-secret", "insecure-logging", "exported-component", "insecure-storage", "broken-crypto", "auth-bypass", "credential-usage"]
+    tags:       ["hardcoded-secret", "insecure-logging", "exported-component", "insecure-storage", "broken-crypto", "auth-bypass", "credential-usage", "sql-injection", "insecure-deserialization"]
   },
   {
     title:      "Abducted",
@@ -146,6 +146,30 @@ const VULNS = [
     deepdive: "",
     uses: [
       { writeup: "OWASP Mobile Top 10: Android", url: "writeup-allsafe.html", ctx: "InsecureBankv2 caches creds in shared_prefs (Base64 username + hardcoded-key AES password); AndroGoat ships a hardcoded AWS secret access key" }
+    ]
+  },
+  {
+    id:    "sql-injection",
+    name:  "SQL injection",
+    cat:   "web",
+    sev:   "high",
+    ext:   "CWE-89 · MASVS-CODE · M4",
+    blurb: "Attacker input concatenated into a SQL query and run as code instead of data. Tautologies bypass filters and logins; UNION plus the metadata table (sqlite_master / information_schema) reads arbitrary tables. On mobile the sink is a local SQLite DB or an exported content provider. Fix is parameterized queries; severity tracks reach - a local search box is lower than a cross-app exported provider.",
+    deepdive: "",
+    uses: [
+      { writeup: "OWASP Mobile Top 10: Android", url: "writeup-allsafe.html", ctx: "AllSafe login rawQuery bypassed with a tautology and full user dump; InsecureBankv2's exported provider read via UNION on sqlite_master" }
+    ]
+  },
+  {
+    id:    "insecure-deserialization",
+    name:  "Insecure deserialization",
+    cat:   "web",
+    sev:   "med",
+    ext:   "CWE-502 · MASVS-CODE · M4",
+    blurb: "The app rebuilds an object from bytes an attacker can modify, then trusts the result. Tampering a stored or transmitted serialized object (like flipping a role field) bypasses checks; on some platforms crafted objects reach code execution via gadget chains. Fix is to not deserialize untrusted data, sign or validate it, and enforce authorization server-side.",
+    deepdive: "",
+    uses: [
+      { writeup: "OWASP Mobile Top 10: Android", url: "writeup-allsafe.html", ctx: "AllSafe serializes a User object to external storage; editing the role field to ROLE_EDITOR escalates privilege on load" }
     ]
   },
   {
