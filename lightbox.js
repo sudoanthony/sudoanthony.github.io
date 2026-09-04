@@ -53,3 +53,27 @@
     build();
   }
 })();
+
+/* ================================================================
+   Syntax highlighting - colorize every <pre><code> block.
+   Loads highlight.js from cdnjs and applies it site-wide. The color
+   theme lives in style.css (the .hljs-* rules), tuned to match the
+   site palette. Shell-looking blocks are hinted as bash so commands
+   colorize cleanly instead of being mis-detected.
+   ================================================================ */
+(function () {
+  function run() {
+    if (!window.hljs) return;
+    var shell = /^(adb|frida|sqlite3|python|pm |content query|am |jadx|apktool|keytool|openssl|nmap|curl|wget|sudo|cd |ls |cat |rm |grep|findstr|\$ |# |emulator|Get-|\[IO|\[System)/;
+    document.querySelectorAll('pre code').forEach(function (c) {
+      if (c.className && /language-|nohighlight|hljs/.test(c.className)) return;
+      var first = (c.textContent || '').trim().split('\n')[0];
+      if (shell.test(first)) c.classList.add('language-bash');
+    });
+    try { hljs.highlightAll(); } catch (e) {}
+  }
+  var s = document.createElement('script');
+  s.src = 'https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js';
+  s.onload = run;
+  document.head.appendChild(s);
+})();

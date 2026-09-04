@@ -83,15 +83,13 @@
   <strong>InsecureBankv2</strong> ships a real backend, which lets us show what AllSafe can't: cleartext
   credentials on the wire and a server that trusts client-supplied data (M5, M4).
   <strong>AndroGoat</strong> ships a correctly implemented certificate-pinning screen, so we can practice
-  the real pinning bypasses (objection, Frida) against a pin that actually fights back. AllSafe is the
-  spine; the other two fill the gaps where an example needs a live backend or a working control.</p>
+  the real pinning bypasses (objection, Frida) against a pin that actually fights back.</p>
 
   <!-- ==================== Objective ==================== -->
   <h2>Objective</h2>
-  <p>This write-up is a <strong>methodology guide</strong>: a repeatable process for testing an Android
-  app, walked through the <strong>OWASP Mobile Top 10 (2024)</strong> and mapped to the MASVS control
-  groups. AllSafe, InsecureBankv2, and AndroGoat are the live examples, but the aim is the <em>method</em>,
-  something I (and anyone starting mobile pentesting) can reuse on the next app.</p>
+  <p>This write-up intends to be a guide on how each of the 2024 MASVS can be shown in practice using our
+  target apps. The goal is that this can be followed or used as a way to understand why these are in the top
+  ten of mobile security issues, how they're exploited, and how we could remediate them.</p>
   <p>The standard is divided into various groups of controls, labeled MASVS-XXXXX, that represent the
   most critical areas of the mobile attack surface:</p>
   <ul>
@@ -104,11 +102,12 @@
     <li><strong>MASVS-RESILIENCE</strong>: Resilience to reverse engineering and tampering attempts.</li>
     <li><strong>MASVS-PRIVACY</strong>: Privacy controls to protect user privacy.</li>
   </ul>
-  <p>In this write-up, we will identify vulnerabilities that map to each of these and write a report as
-  if this were a professional job we were carrying out for a client. I will note the steps I took and
-  the things I found. I am using Windows for my write-up, but you can use anything that feels
-  comfortable for you. Just keep in mind, the commands are written for Windows PowerShell so you will
-  need to use their equivalents in their respective OS environments.</p>
+  <p>Another goal is that the methods on report writing and application testing can be used when working
+  with a real client or company on identifying flaws and recommending improvements in their requested
+  app.</p>
+  <p>This guide will be written with a Windows environment using PowerShell for most of the commands. In
+  the future, I plan on re-creating this write-up for Linux and perhaps with different targets, but with
+  the same goals in mind.</p>
 
   <!-- ==================== Methodology ==================== -->
   <h2>Methodology</h2>
@@ -1615,7 +1614,7 @@ adb logcat -d | findstr /i "insecure broadcast password sms updated changed"</co
 
   <h3>Chapter Summary</h3>
   <p>We showed five ways to walk through the doors an app opens to the rest of the device, all on our own lab
-  targets in place of the handbook's DIVA and OVAA:</p>
+  targets rather than the more commonly used DIVA and OVAA practice apps:</p>
   <ul>
     <li><strong>Exported Activity</strong> (InsecureBankv2) - launched the authenticated dashboard and a transfer screen with <code>am start</code>, no login.</li>
     <li><strong>Exported Content Provider</strong> (InsecureBankv2) - dumped a table with no auth via <code>content query</code>, then proved SQL injection with an error leak and a tautology.</li>
@@ -1851,7 +1850,7 @@ adb shell "cat /data/local/tmp/mod.dat > /storage/emulated/0/Android/data/infose
   mistake.</p>
 
   <h3>A note on path traversal</h3>
-  <p>The handbook's DIVA lab has a screen that reads a file from a path we type with no checks, so
+  <p>A classic path-traversal target is a screen that reads a file from a path we type with no checks, so
   <code>../</code> climbs out of the app and reads arbitrary files. None of my three targets (AllSafe,
   InsecureBankv2, AndroGoat) expose that sink. I searched their code for file reads built from user input and
   found none, so I could not reproduce classic <a href="android.html#path-traversal">path traversal</a> here. I
