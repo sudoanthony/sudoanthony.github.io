@@ -143,7 +143,7 @@
   <hr style="border:none; border-top:3px solid var(--gold); margin:46px 0 40px;">
 
   <!-- ==================== 01 - Recon & Static Analysis ==================== -->
-  <h2><span class="num">01</span>Recon &amp; Static Analysis</h2>
+  <h2 id="recon-static-analysis">Ch.1 - Recon &amp; Static Analysis</h2>
   <p class="secmeta">MASVS: CODE, PRIVACY &nbsp;&middot;&nbsp; Mobile Top 10: <a href="android.html#m2" class="risk">M2</a>, <a href="android.html#m6" class="risk">M6</a>, <a href="android.html#m8" class="risk">M8</a></p>
 
   <h3>Concept</h3>
@@ -383,7 +383,7 @@
   <hr>
 
   <!-- ==================== 02 - Traffic Interception & Cert Pinning ==================== -->
-  <h2><span class="num">02</span>Traffic Interception &amp; Cert Pinning</h2>
+  <h2 id="traffic-interception-cert-pinning">Ch.2 - Traffic Interception &amp; Cert Pinning</h2>
   <p class="secmeta">MASVS: NETWORK &nbsp;&middot;&nbsp; Mobile Top 10: <a href="android.html#m5" class="risk">M5</a></p>
 
   <p>For this section we focus on traffic interception and certificate pinning. While this guide is mainly
@@ -725,7 +725,7 @@ OkHttpClient okHttpClient = new OkHttpClient.Builder()
   <hr>
 
   <!-- ==================== 03 - Insecure Data Storage ==================== -->
-  <h2><span class="num">03</span>Insecure Data Storage</h2>
+  <h2 id="insecure-data-storage">Ch.3 - Insecure Data Storage</h2>
   <p class="secmeta">MASVS: STORAGE &nbsp;&middot;&nbsp; Mobile Top 10: <a href="android.html#m9" class="risk">M9</a></p>
 
   <h3>Concept</h3>
@@ -834,7 +834,7 @@ OkHttpClient okHttpClient = new OkHttpClient.Builder()
   <hr>
 
   <!-- ==================== 04 - Broken Cryptography ==================== -->
-  <h2><span class="num">04</span>Broken Cryptography</h2>
+  <h2 id="broken-cryptography">Ch.4 - Broken Cryptography</h2>
   <p class="secmeta">MASVS: CRYPTO &nbsp;&middot;&nbsp; Mobile Top 10: <a href="android.html#m10" class="risk">M10</a></p>
 
   <h3>Concept</h3>
@@ -969,7 +969,7 @@ findstr /s /i "java.util.Random"     androgoat-src\*   # insecure randomness</co
   <hr>
 
   <!-- ==================== 05 - Authentication & Session ==================== -->
-  <h2><span class="num">05</span>Authentication &amp; Session</h2>
+  <h2 id="authentication-session">Ch.5 - Authentication &amp; Session</h2>
   <p class="secmeta">MASVS: AUTH &nbsp;&middot;&nbsp; Mobile Top 10: <a href="android.html#m1" class="risk">M1</a>, <a href="android.html#m3" class="risk">M3</a></p>
 
   <h3>Concept</h3>
@@ -1114,7 +1114,7 @@ findstr /s /i "java.util.Random"     androgoat-src\*   # insecure randomness</co
   <ul>
     <li>Stored insecurely on the device (InsecureBankv2's cached login, which we cover first).</li>
     <li>Hardcoded into the binary (like the AWS key we found earlier, which we cover shortly).</li>
-    <li>Transmitted insecurely (cleartext over the wire, such as what we saw in Chapter 3 / M5).</li>
+    <li>Transmitted insecurely (cleartext over the wire, such as what we saw in Chapter 2 / M5).</li>
     <li>Validated weakly, or reused and never rotated.</li>
   </ul>
   <p>A lot of the time, the thing that authenticates is handled carelessly wherever it lives.</p>
@@ -1131,7 +1131,7 @@ findstr /s /i "java.util.Random"     androgoat-src\*   # insecure randomness</co
   It has a login and a "remember me" style credential cache. We first check
   <a href="android.html#storage">shared_prefs</a>, because that's the number-one place credentials go when
   they're cached for future logins. Since we logged in previously with <code>dinesh</code> /
-  <code>Dinesh@123$</code> back in Chapter 3, if cached, they should still be there.</p>
+  <code>Dinesh@123$</code> back in Chapter 2, if cached, they should still be there.</p>
   <figure><img src="images/AllSafe/inban1.png" alt="mySharedPreferences.xml with two stored credential strings"></figure>
   <p>We see two strings, <code>superSecurePassword</code> and <code>EncryptedUsername</code>. We'll be the
   judge of how "encrypted" and "super secure" these are. Let's decode them both from Base64.</p>
@@ -1155,7 +1155,7 @@ findstr /s /i "java.util.Random"     androgoat-src\*   # insecure randomness</co
   <p>This reveals a lot of important information:</p>
   <ul>
     <li>There is a <strong>hardcoded key</strong> baked into the APK (M10 hardcoded key). It ships to every attacker.</li>
-    <li>A <strong>static / all-zero IV</strong> (M10 static IV) - the exact "Static / null IV" scenario we noted in the Chapter 5 table.</li>
+    <li>A <strong>static / all-zero IV</strong> (M10 static IV) - the exact "Static / null IV" scenario we noted in the Chapter 4 table.</li>
     <li>So the "superSecurePassword" AES layer provides <strong>no real protection</strong> - the key that "protects" it is inside the very app we pulled.</li>
   </ul>
   <p><strong>Exploiting it.</strong> We have our Base64 string (<code>DTrW2VXjSoFdg0e61fHxJg==</code>) pulled
@@ -1191,7 +1191,7 @@ $pt = $aes.CreateDecryptor().TransformFinalBlock($ct, 0, $ct.Length)
   <p>And we got it! Using the recipe found in the code, we rewrote the AES decryption in PowerShell, ran it,
   and got the password of <code>Dinesh@123$</code>.</p>
 
-  <p><strong>The AWS key we found in Chapter 5.</strong> I've mentioned a few times that we'd address the
+  <p><strong>The AWS key we found in Chapter 4.</strong> I've mentioned a few times that we'd address the
   little key we found by accident in the Broken Cryptography chapter. Here we are - it's a similar example to
   the one we just did. In AndroGoat's <code>HardCodeActivity</code> we saw:</p>
   <pre><code>private final String aws_secret_access_key = "OviCwsFN...OABCw";</code></pre>
@@ -1268,14 +1268,14 @@ $pt = $aes.CreateDecryptor().TransformFinalBlock($ct, 0, $ct.Length)
   <hr>
 
   <!-- ==================== 06 - Platform Interaction (IPC, Deep Links, WebViews) ==================== -->
-  <h2><span class="num">06</span>Platform Interaction (IPC, Deep Links, WebViews)</h2>
+  <h2 id="platform-interaction-ipc-deep-links-webviews">Ch.6 - Platform Interaction (IPC, Deep Links, WebViews)</h2>
   <p class="secmeta">MASVS: PLATFORM &nbsp;&middot;&nbsp; Mobile Top 10: <a href="android.html#m4" class="risk">M4</a>, <a href="android.html#m8" class="risk">M8</a></p>
 
   <h3>Concept</h3>
   <p>As we know, apps live in their own <a href="android.html#sandbox">sandbox</a> and can't directly touch
   another app's files. So how do they cooperate? Through IPC (Inter-Process Communication). The OS provides
   controlled channels, and the app's manifest declares which of its components can be reached through them.</p>
-  <p>Chapter 6 was about crypto, data at rest, and who is allowed in. M4 is about the app trusting input it
+  <p>The earlier chapters were about crypto, data at rest, and who is allowed in. M4 is about the app trusting input it
   shouldn't, or emitting output unsafely. On the web, input usually means form fields, headers, and cookies.
   On mobile, the most interesting input arrives through Intents, deep links, exported components,
   content-provider queries, and content loaded into a WebView. An exported component is basically a public
@@ -1284,7 +1284,7 @@ $pt = $aes.CreateDecryptor().TransformFinalBlock($ct, 0, $ct.Length)
   about.</p>
 
   <p><strong>Android - four component types and the export flag.</strong> An Android app is built from four
-  kinds of components, all declared in <code>AndroidManifest.xml</code> (we read this back in Chapter 2):</p>
+  kinds of components, all declared in <code>AndroidManifest.xml</code> (we read this back in Chapter 1):</p>
   <ul>
     <li><strong>Activities</strong> - screens.</li>
     <li><strong>Services</strong> - background work.</li>
@@ -1629,7 +1629,7 @@ adb logcat -d | findstr /i "insecure broadcast password sms updated changed"</co
   <hr>
 
   <!-- ==================== 07 - Code-Level Bugs & Injection ==================== -->
-  <h2><span class="num">07</span>Code-Level Bugs &amp; Injection</h2>
+  <h2 id="code-level-bugs-injection">Ch.7 - Code-Level Bugs &amp; Injection</h2>
   <p class="secmeta">MASVS: CODE &nbsp;&middot;&nbsp; Mobile Top 10: <a href="android.html#m4" class="risk">M4</a></p>
 
   <h3>Concept</h3>
@@ -1697,7 +1697,7 @@ adb logcat -d | findstr /i "insecure broadcast password sms updated changed"</co
   the username being concatenated into a <code>rawQuery</code>.</p>
 
   <h3>2. Content-provider full extraction (InsecureBankv2)</h3>
-  <p>In Chapter 7 we identified that the provider is injectable. Now we exploit that into a full database
+  <p>In Chapter 6 we identified that the provider is injectable. Now we exploit that into a full database
   extraction.</p>
   <p><strong>Step 0 - recall the query shape.</strong> From the previous chapter, the provider builds
   <code>SELECT * FROM names WHERE (&lt;your input&gt;) ORDER BY name</code>. Two things shape every payload:</p>
@@ -1929,7 +1929,7 @@ adb shell "cat /data/local/tmp/mod.dat > /storage/emulated/0/Android/data/infose
   server:</p>
   <ul>
     <li><strong>Local SQL injection</strong> (AllSafe) - a concatenated <code>rawQuery</code> let <code>' OR '1'='1' -- </code> bypass the login and dump every user, with the passwords stored as crackable unsalted MD5.</li>
-    <li><strong>Content-provider extraction</strong> (InsecureBankv2) - a UNION against <code>sqlite_master</code> turned Chapter 7's "it's injectable" into a full, cross-app schema and table read.</li>
+    <li><strong>Content-provider extraction</strong> (InsecureBankv2) - a UNION against <code>sqlite_master</code> turned Chapter 6's "it's injectable" into a full, cross-app schema and table read.</li>
     <li><strong>Insecure deserialization</strong> (AllSafe) - tampering a serialized <code>User</code> file on external storage escalated author to editor, because the app trusted a role it read straight from bytes we control.</li>
     <li><strong>Path traversal</strong> - documented as the pattern, since none of our targets expose the sink; the same arbitrary-file-read primitive was shown via the WebView in the Platform chapter.</li>
   </ul>
@@ -1939,7 +1939,7 @@ adb shell "cat /data/local/tmp/mod.dat > /storage/emulated/0/Android/data/infose
   <hr>
 
   <!-- ==================== 08 - Reverse Engineering & Anti-Tamper ==================== -->
-  <h2><span class="num">08</span>Reverse Engineering &amp; Anti-Tamper</h2>
+  <h2 id="reverse-engineering-anti-tamper">Ch.8 - Reverse Engineering &amp; Anti-Tamper</h2>
   <p class="secmeta">MASVS: RESILIENCE &nbsp;&middot;&nbsp; Mobile Top 10: <a href="android.html#m7" class="risk">M7</a></p>
 
   <p>[ Frida instrumentation, root/tamper detection and bypass, obfuscation, patching. ]</p>
