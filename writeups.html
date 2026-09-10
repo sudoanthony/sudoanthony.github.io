@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Writeups - sudoanthony</title>
+<title>Write-ups - sudoanthony</title>
 <link rel="stylesheet" href="style.css">
 </head>
 <body>
@@ -11,7 +11,7 @@
 <nav class="nav"><div class="wrap">
   <a class="brand" href="index.html">~/sudoanthony</a>
   <div class="links">
-    <a href="writeups.html">writeups</a>
+    <a href="writeups.html">write-ups</a>
     <a href="vulns.html">vulns</a>
     <a href="concepts.html">concepts</a>
     <a href="tools.html">tools</a>
@@ -20,9 +20,13 @@
 </div></nav>
 
 <main class="wrap" style="padding-top:44px">
-  <h1>Writeups</h1>
-  <p style="color:var(--text-3)">Grouped by platform. Hover a box for its summary and vulnerabilities;
-  click to open the writeup. Techniques cross-link into the <a href="vulns.html">vulnerability index</a>.</p>
+  <h1>Write-ups</h1>
+  <p style="color:var(--text-3)">Here you can find boxes I have rooted and write-ups with detailed
+  step-by-step instructions and screenshots. Feel free to hover over a box to read a summary of the
+  write-up, then click it to be brought to the full write-up page.</p>
+  <p style="color:var(--text-3)">Mobile write-ups can also be read and followed along with to learn how
+  to find and exploit the OWASP 2024 Top 10 cybersecurity vulnerabilities in targets.</p>
+  <p style="color:var(--text-3)">Techniques cross-link into my <a href="vulns.html">vulnerability index</a>.</p>
 
   <div id="groups"></div>
 
@@ -100,10 +104,10 @@
             'onerror="this.style.display=\'none\';this.nextElementSibling.style.display=\'inline-flex\'">' +
           '<span class="plfallback" style="display:none;align-items:center;gap:10px">' +
             '<span class="dot ' + platClass(p) + '"></span><span class="name">' + esc(p) + '</span></span>' +
-          '<span class="count">' + items.length + (items.length===1?' writeup':' writeups') + '</span>' +
+          '<span class="count">' + items.length + (items.length===1?' write-up':' write-ups') + '</span>' +
         '</div>' +
         '<div class="grid">' + items.map(boxCard).join("") + '</div>';
-    }).join("") || '<p class="empty">No writeups yet.</p>';
+    }).join("") || '<p class="empty">No write-ups yet.</p>';
   }
 
   render();

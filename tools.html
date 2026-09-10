@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Tools - sudoanthony</title>
-<meta name="description" content="The pentesting toolkit I actually use, grouped by category: what each tool is for, how to install it on Windows and Linux, one key command, and the writeups it shows up in.">
+<meta name="description" content="The pentesting toolkit I actually use, grouped by category: what each tool is for, how to install it on Windows and Linux, one key command, and the write-ups it shows up in.">
 <link rel="stylesheet" href="style.css">
 </head>
 <body>
@@ -12,7 +12,7 @@
 <nav class="nav"><div class="wrap">
   <a class="brand" href="index.html">~/sudoanthony</a>
   <div class="links">
-    <a href="writeups.html">writeups</a>
+    <a href="writeups.html">write-ups</a>
     <a href="vulns.html">vulns</a>
     <a href="concepts.html">concepts</a>
     <a href="tools.html">tools</a>
@@ -27,10 +27,12 @@
   <aside class="concept-toc">
     <p class="toc-label">Tools</p>
     <nav id="tocNav">
+      <a href="#summary" data-toc>Categories</a>
       <a href="#recon" data-toc>Recon &amp; Scanning</a>
       <a href="#web" data-toc>Web &amp; Proxies</a>
       <a href="#mobile-static" data-toc>Mobile: Static</a>
       <a href="#mobile-runtime" data-toc>Mobile: Device &amp; Runtime</a>
+      <a href="#mobile-re" data-toc>Reverse Engineering &amp; Signing</a>
       <a href="#targets" data-toc>Targets</a>
       <a href="#utils" data-toc>Utilities</a>
     </nav>
@@ -42,10 +44,24 @@
     <p style="margin-bottom:4px"><a href="concepts.html" style="color:var(--text-3);font-size:13.5px">&larr; concepts</a></p>
     <h1>Tools</h1>
     <p class="concept-intro">
-      The toolkit I actually reach for, not an encyclopedia. Each card says what the tool is for, how
-      to install it on Windows and Linux, one command to get moving, and where it shows up in a
-      writeup. It grows one tool at a time as the writeups do.
+      Below are all of the tools used so far in my write-ups, from Linux, Windows, Mobile, and more.
+      Until a new write-up is added to my GitHub, I will only feature the tools used so far.
     </p>
+
+    <!-- ============ Summary ============ -->
+    <section id="summary" class="concept-block">
+      <p class="kicker">By the job it does</p>
+      <h2>Categories</h2>
+      <ul>
+        <li><strong>Recon &amp; scanning:</strong> <a href="#nmap">nmap</a>.</li>
+        <li><strong>Web &amp; proxies:</strong> <a href="#burp">Burp Suite</a>, <a href="#mitmproxy">mitmproxy</a>.</li>
+        <li><strong>Mobile static:</strong> <a href="#jadx">jadx</a>, <a href="#apktool">apktool</a>, <a href="#mobsf">MobSF</a>.</li>
+        <li><strong>Mobile device &amp; runtime:</strong> <a href="#android-studio">Android Studio</a>, <a href="#adb">adb</a> (with <code>am</code> and <code>content</code>), <a href="#frida">Frida</a>, <a href="#objection">objection</a>.</li>
+        <li><strong>Reverse engineering &amp; signing:</strong> <a href="#apksigner">apksigner</a>, <a href="#zipalign">zipalign</a>, <a href="#keytool">keytool</a>, <a href="#ghidra">Ghidra</a>, <a href="#radare2">radare2</a>.</li>
+        <li><strong>Utilities:</strong> <a href="#sqlite3">sqlite3</a>, <a href="#python">Python</a>, <a href="#wsl">WSL</a>, <a href="#cyberchef">CyberChef</a>.</li>
+        <li><strong>Targets:</strong> <a href="#allsafe">AllSafe</a>, <a href="#androgoat">AndroGoat</a>, <a href="#insecurebankv2">InsecureBankv2</a>.</li>
+      </ul>
+    </section>
 
     <!-- ============ Recon & Scanning ============ -->
     <section id="recon" class="concept-block">
@@ -76,7 +92,7 @@
           <p class="tc-what">Intercepting HTTP(S) proxy. Pause, read, and tamper with requests (Intercept), replay them (Repeater), and decode data. The Community edition is free.</p>
           <div class="tc-row"><span class="os">WIN / LINUX</span> installer from portswigger.net (bundled Java)</div>
           <div class="tc-row"><span class="os">USE</span> point the device/browser proxy at <code>127.0.0.1:8080</code>, then install Burp's CA</div>
-          <div class="tc-seen">seen in <a href="writeup-allsafe.html">AllSafe</a></div>
+          <div class="tc-seen">seen in <a href="writeup-allsafe.html">OWASP Mobile Top 10: Android</a></div>
         </div>
 
         <div class="toolcard cat-web" id="mitmproxy">
@@ -101,7 +117,7 @@
           <div class="tc-row"><span class="os">WIN</span> download the release zip, run <code>jadx-gui.bat</code></div>
           <div class="tc-row"><span class="os">LINUX</span> <code>sudo apt install jadx</code></div>
           <div class="tc-row"><span class="os">CMD</span> <code>jadx -d out app.apk</code></div>
-          <div class="tc-seen">seen in <a href="writeup-allsafe.html">AllSafe</a> &middot; concept: <a href="android.html#tools">jadx vs apktool</a></div>
+          <div class="tc-seen">seen in <a href="writeup-allsafe.html">OWASP Mobile Top 10: Android</a> &middot; concept: <a href="android.html#tools">jadx vs apktool</a></div>
         </div>
 
         <div class="toolcard cat-static" id="apktool">
@@ -110,7 +126,7 @@
           <div class="tc-row"><span class="os">WIN</span> jar + wrapper from apktool.org</div>
           <div class="tc-row"><span class="os">LINUX</span> <code>sudo apt install apktool</code></div>
           <div class="tc-row"><span class="os">CMD</span> <code>apktool d app.apk -o out</code></div>
-          <div class="tc-seen">seen in <a href="writeup-allsafe.html">AllSafe</a> &middot; concept: <a href="android.html#tools">jadx vs apktool</a></div>
+          <div class="tc-seen">seen in <a href="writeup-allsafe.html">OWASP Mobile Top 10: Android</a> &middot; concept: <a href="android.html#tools">jadx vs apktool</a></div>
         </div>
 
         <div class="toolcard cat-static" id="mobsf">
@@ -118,7 +134,7 @@
           <p class="tc-what">Mobile Security Framework. One-shot automated static analysis of an APK/IPA: manifest flags, secrets, trackers, and a score. A triage first pass, not the whole test.</p>
           <div class="tc-row"><span class="os">DOCKER</span> <code>docker run -it --rm -p 8000:8000 opensecurity/mobile-security-framework-mobsf</code></div>
           <div class="tc-row"><span class="os">HOSTED</span> <a href="https://mobsf.live">mobsf.live</a> (public/lab apps only, never a client binary)</div>
-          <div class="tc-seen">seen in <a href="writeup-allsafe.html">AllSafe</a></div>
+          <div class="tc-seen">seen in <a href="writeup-allsafe.html">OWASP Mobile Top 10: Android</a></div>
         </div>
 
       </div>
@@ -135,7 +151,7 @@
           <p class="tc-what">Ships the Android emulator and SDK. Create a Pixel virtual device on a <strong>Google APIs</strong> image (not Google Play) so you can get root.</p>
           <div class="tc-row"><span class="os">WIN / LINUX</span> installer from developer.android.com</div>
           <div class="tc-row"><span class="os">USE</span> Device Manager, new Pixel AVD, Google APIs image</div>
-          <div class="tc-seen">seen in <a href="writeup-allsafe.html">AllSafe</a> &middot; concept: <a href="android.html#sandbox">the sandbox</a></div>
+          <div class="tc-seen">seen in <a href="writeup-allsafe.html">OWASP Mobile Top 10: Android</a> &middot; concept: <a href="android.html#sandbox">the sandbox</a></div>
         </div>
 
         <div class="toolcard cat-runtime" id="adb">
@@ -144,7 +160,8 @@
           <div class="tc-row"><span class="os">WIN</span> Android SDK platform-tools (with Android Studio)</div>
           <div class="tc-row"><span class="os">LINUX</span> <code>sudo apt install android-tools-adb</code></div>
           <div class="tc-row"><span class="os">CMD</span> <code>adb devices</code> &middot; <code>adb pull</code> &middot; <code>adb logcat</code></div>
-          <div class="tc-seen">seen in <a href="writeup-allsafe.html">AllSafe</a> &middot; concept: <a href="android.html#adb">adb</a></div>
+          <div class="tc-row"><span class="os">IPC</span> <code>am start</code> / <code>am broadcast</code> launch components; <code>content query</code> reads a provider</div>
+          <div class="tc-seen">seen in <a href="writeup-allsafe.html">OWASP Mobile Top 10: Android</a> &middot; concept: <a href="android.html#adb">adb</a></div>
         </div>
 
         <div class="toolcard cat-runtime" id="frida">
@@ -152,7 +169,7 @@
           <p class="tc-what">Runtime instrumentation. Injects into a running app and hooks functions: read arguments, change return values, dump decrypted data, bypass root and pinning checks.</p>
           <div class="tc-row"><span class="os">WIN / LINUX</span> <code>pip install frida-tools</code> + matching frida-server on device</div>
           <div class="tc-row"><span class="os">CMD</span> <code>frida-ps -U</code></div>
-          <div class="tc-seen">seen in <a href="writeup-allsafe.html">AllSafe</a> &middot; concept: <a href="android.html#frida">Frida</a></div>
+          <div class="tc-seen">seen in <a href="writeup-allsafe.html">OWASP Mobile Top 10: Android</a> &middot; concept: <a href="android.html#frida">Frida</a></div>
         </div>
 
         <div class="toolcard cat-runtime" id="objection">
@@ -160,7 +177,57 @@
           <p class="tc-what">A Frida-powered toolkit with ready-made commands, so you can hook common things (pinning, root checks, storage) without writing scripts on day one.</p>
           <div class="tc-row"><span class="os">WIN / LINUX</span> <code>pip install objection</code></div>
           <div class="tc-row"><span class="os">CMD</span> <code>objection -g PACKAGE explore</code></div>
-          <div class="tc-seen">seen in <a href="writeup-allsafe.html">AllSafe</a></div>
+          <div class="tc-seen">seen in <a href="writeup-allsafe.html">OWASP Mobile Top 10: Android</a></div>
+        </div>
+
+      </div>
+    </section>
+
+    <!-- ============ Reverse Engineering & Signing ============ -->
+    <section id="mobile-re" class="concept-block">
+      <p class="kicker">Read native code, patch, and re-sign</p>
+      <h2>Reverse Engineering &amp; Signing</h2>
+      <div class="toolgrid">
+
+        <div class="toolcard cat-static" id="apksigner">
+          <div class="tc-head"><span class="tc-glyph">sig</span><span class="tc-name">apksigner</span><span class="tc-cat">signing</span></div>
+          <p class="tc-what">Signs an APK so Android will install it. After patching and rebuilding with apktool, you re-sign with your own key. Supports the modern v2/v3 signature schemes.</p>
+          <div class="tc-row"><span class="os">WIN / LINUX</span> Android SDK build-tools (add <code>build-tools\&lt;ver&gt;</code> to PATH)</div>
+          <div class="tc-row"><span class="os">CMD</span> <code>apksigner sign --ks lab.keystore app.apk</code> &middot; <code>apksigner verify --verbose app.apk</code></div>
+          <div class="tc-seen">Reverse Engineering chapter (in progress)</div>
+        </div>
+
+        <div class="toolcard cat-static" id="zipalign">
+          <div class="tc-head"><span class="tc-glyph">za</span><span class="tc-name">zipalign</span><span class="tc-cat">alignment</span></div>
+          <p class="tc-what">Aligns an APK's contents on 4-byte boundaries. Run it on a rebuilt APK before signing, so the v2 signature is valid and the app loads efficiently.</p>
+          <div class="tc-row"><span class="os">WIN / LINUX</span> Android SDK build-tools (same folder as apksigner)</div>
+          <div class="tc-row"><span class="os">CMD</span> <code>zipalign -p -f 4 in.apk out.apk</code></div>
+          <div class="tc-seen">Reverse Engineering chapter (in progress)</div>
+        </div>
+
+        <div class="toolcard cat-static" id="keytool">
+          <div class="tc-head"><span class="tc-glyph">kt</span><span class="tc-name">keytool</span><span class="tc-cat">keystore</span></div>
+          <p class="tc-what">The JDK's key and keystore manager. Generate a throwaway self-signed keystore once, then use it with apksigner to sign repackaged lab APKs.</p>
+          <div class="tc-row"><span class="os">WIN / LINUX</span> ships with the JDK (Adoptium / the one Android Studio bundles)</div>
+          <div class="tc-row"><span class="os">CMD</span> <code>keytool -genkey -v -keystore lab.keystore -alias labkey -keyalg RSA -keysize 2048 -validity 10000</code></div>
+          <div class="tc-seen">Reverse Engineering chapter (in progress)</div>
+        </div>
+
+        <div class="toolcard cat-static" id="ghidra">
+          <div class="tc-head"><span class="tc-glyph">gh</span><span class="tc-name">Ghidra</span><span class="tc-cat">disassembler</span></div>
+          <p class="tc-what">Free reverse-engineering suite (NSA). Decompiles a native <code>lib*.so</code> to readable C so you can find and understand detection or check functions. GUI, easiest for reading logic.</p>
+          <div class="tc-row"><span class="os">WIN / LINUX</span> release zip from github.com/NationalSecurityAgency/ghidra (needs a JDK, e.g. Adoptium 21)</div>
+          <div class="tc-row"><span class="os">USE</span> run <code>ghidraRun.bat</code>, File &gt; Import the <code>.so</code>, auto-analyze, read the decompiled C</div>
+          <div class="tc-seen">Reverse Engineering chapter (in progress)</div>
+        </div>
+
+        <div class="toolcard cat-static" id="radare2">
+          <div class="tc-head"><span class="tc-glyph">r2</span><span class="tc-name">radare2</span><span class="tc-cat">disassembler</span></div>
+          <p class="tc-what">Free command-line reverse-engineering framework. Lists exported symbols and disassembles native functions in a <code>lib*.so</code>. Lighter than Ghidra, but a steeper CLI curve.</p>
+          <div class="tc-row"><span class="os">WIN</span> release zip from github.com/radareorg/radare2 (extract, add to PATH)</div>
+          <div class="tc-row"><span class="os">LINUX</span> <code>git clone github.com/radareorg/radare2 &amp;&amp; sys/install.sh</code></div>
+          <div class="tc-row"><span class="os">CMD</span> <code>r2 -A libfoo.so</code> then <code>afl</code>, <code>pdf @ sym.name</code></div>
+          <div class="tc-seen">Reverse Engineering chapter (in progress)</div>
         </div>
 
       </div>
@@ -177,7 +244,7 @@
           <p class="tc-what">The primary target for this guide. An intentionally vulnerable Android app (Info Sec Adventures) with self-contained challenges across most mobile bug classes, from hardcoded secrets to certificate pinning.</p>
           <div class="tc-row"><span class="os">INSTALL</span> APK from github.com/t0thkr1s/allsafe releases, then <code>adb install allsafe.apk</code></div>
           <div class="tc-row"><span class="os">PKG</span> <code>infosecadventures.allsafe</code></div>
-          <div class="tc-seen">seen in <a href="writeup-allsafe.html">AllSafe</a></div>
+          <div class="tc-seen">seen in <a href="writeup-allsafe.html">OWASP Mobile Top 10: Android</a></div>
         </div>
 
         <div class="toolcard cat-runtime" id="androgoat">
@@ -185,7 +252,7 @@
           <p class="tc-what">An intentionally vulnerable Android app (Kotlin) with 20+ challenges. Used here for its working certificate-pinning screens to practice objection and Frida bypasses.</p>
           <div class="tc-row"><span class="os">INSTALL</span> APK from github.com/satishpatnayak/AndroGoat releases, then <code>adb install AndroGoat.apk</code></div>
           <div class="tc-row"><span class="os">PKG</span> <code>owasp.sat.agoat</code></div>
-          <div class="tc-seen">seen in <a href="writeup-allsafe.html">AllSafe</a></div>
+          <div class="tc-seen">seen in <a href="writeup-allsafe.html">OWASP Mobile Top 10: Android</a></div>
         </div>
 
         <div class="toolcard cat-runtime" id="insecurebankv2">
@@ -193,7 +260,7 @@
           <p class="tc-what">A vulnerable banking app with a real backend, so you can watch login and transfer requests travel. Used here for cleartext credentials and transfer-parameter tampering.</p>
           <div class="tc-row"><span class="os">INSTALL</span> clone github.com/dineshshetty/Android-InsecureBankv2, then <code>adb install InsecureBankv2.apk</code></div>
           <div class="tc-row"><span class="os">BACKEND</span> Python 2 Flask in <code>AndroLabServer/</code>: <code>python2 app.py</code> (serves :8888)</div>
-          <div class="tc-seen">seen in <a href="writeup-allsafe.html">AllSafe</a></div>
+          <div class="tc-seen">seen in <a href="writeup-allsafe.html">OWASP Mobile Top 10: Android</a></div>
         </div>
 
       </div>
@@ -210,7 +277,7 @@
           <p class="tc-what">Windows Subsystem for Linux. A lightweight Linux shell inside Windows, no full VM. Used here to run the InsecureBankv2 Python 2 backend (Ubuntu 22.04 still ships python2).</p>
           <div class="tc-row"><span class="os">WIN</span> <code>wsl --install</code> in an admin PowerShell, then reboot</div>
           <div class="tc-row"><span class="os">CMD</span> <code>wsl -d Ubuntu-22.04</code></div>
-          <div class="tc-seen">seen in <a href="writeup-allsafe.html">AllSafe</a></div>
+          <div class="tc-seen">seen in <a href="writeup-allsafe.html">OWASP Mobile Top 10: Android</a></div>
         </div>
 
         <div class="toolcard cat-util" id="cyberchef">
@@ -219,6 +286,24 @@
           <div class="tc-row"><span class="os">HOSTED</span> gchq.github.io/CyberChef</div>
           <div class="tc-row"><span class="os">OFFLINE</span> download the release and open the HTML locally</div>
           <div class="tc-seen">seen in <a href="writeup-biohazard.html">Biohazard</a></div>
+        </div>
+
+        <div class="toolcard cat-util" id="sqlite3">
+          <div class="tc-head"><span class="tc-glyph">sq</span><span class="tc-name">sqlite3</span><span class="tc-cat">database</span></div>
+          <p class="tc-what">Command-line SQLite client. Open a database pulled off a device to browse its tables and confirm what a SQL injection or file pull actually recovered.</p>
+          <div class="tc-row"><span class="os">WIN</span> ships in the Android SDK platform-tools, or download from sqlite.org</div>
+          <div class="tc-row"><span class="os">LINUX</span> <code>sudo apt install sqlite3</code></div>
+          <div class="tc-row"><span class="os">CMD</span> <code>sqlite3 app.db ".tables"</code> &middot; <code>select * from t;</code></div>
+          <div class="tc-seen">seen in <a href="writeup-allsafe.html">OWASP Mobile Top 10: Android</a></div>
+        </div>
+
+        <div class="toolcard cat-util" id="python">
+          <div class="tc-head"><span class="tc-glyph">py</span><span class="tc-name">Python</span><span class="tc-cat">scripting</span></div>
+          <p class="tc-what">General scripting glue. Used to serve a proof-of-concept page to an emulator, tamper serialized bytes, decode data, and run quick one-off helpers.</p>
+          <div class="tc-row"><span class="os">WIN</span> <code>winget install Python.Python.3.12</code></div>
+          <div class="tc-row"><span class="os">LINUX</span> preinstalled, or <code>sudo apt install python3</code></div>
+          <div class="tc-row"><span class="os">CMD</span> <code>python -m http.server 8000</code> (serve a POC to the emulator at <code>10.0.2.2</code>)</div>
+          <div class="tc-seen">seen in <a href="writeup-allsafe.html">OWASP Mobile Top 10: Android</a></div>
         </div>
 
       </div>
@@ -230,7 +315,7 @@
 
 <footer class="foot"><div class="wrap" style="display:flex;gap:18px;flex-wrap:wrap">
   <a href="index.html">home</a>
-  <a href="writeups.html">writeups</a>
+  <a href="writeups.html">write-ups</a>
   <a href="vulns.html">vulns</a>
   <a href="concepts.html">concepts</a>
   <a href="tools.html">tools</a>

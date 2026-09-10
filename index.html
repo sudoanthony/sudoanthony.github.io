@@ -3,8 +3,8 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Anthony - security writeups</title>
-<meta name="description" content="Penetration testing and CTF writeups across TryHackMe, HackTheBox, and mobile - root cause, detection, and the fix, plus notes on tools, concepts, and vulnerabilities.">
+<title>Anthony - security write-ups</title>
+<meta name="description" content="Penetration testing and CTF write-ups across TryHackMe, HackTheBox, and mobile - root cause, detection, and the fix, plus notes on tools, concepts, and vulnerabilities.">
 <link rel="stylesheet" href="style.css">
 </head>
 <body>
@@ -12,7 +12,7 @@
 <nav class="nav"><div class="wrap">
   <a class="brand" href="index.html">~/sudoanthony</a>
   <div class="links">
-    <a href="writeups.html">writeups</a>
+    <a href="writeups.html">write-ups</a>
     <a href="vulns.html">vulns</a>
     <a href="concepts.html">concepts</a>
     <a href="tools.html">tools</a>
@@ -23,89 +23,47 @@
 <main class="wrap">
 
   <section class="hero">
-    <h1>Anhmi's Study</h1>
+    <h1>A Note from Anthony Sciuto</h1>
 
+    <p class="pos">Thanks for visiting my GitHub.</p>
     <p class="pos">
-      Thanks for visiting my GitHub. Here you will find write-ups I've done across
-      <span class="k">TryHackMe</span>, <span class="k">HackTheBox</span>, and my own practice
-      write-ups on <span class="k">Mobile</span>. You can also find my summaries on cybersecurity
-      tools, concepts, and vulnerabilities. It is constantly being updated, so feel free to keep
-      checking to see how things progress.
+      Here you will find my red teaming/penetration testing write-ups I've done across platforms such as
+      <span class="k">TryHackMe</span>, <span class="k">HackTheBox</span>, and on vulnerable
+      <span class="k">Android and iOS</span> Mobile applications.
+    </p>
+    <p class="pos">
+      You can also find my summaries on cybersecurity tools, concepts, and vulnerabilities. It is
+      constantly being updated, so feel free to keep checking to see how things progress. I am constantly
+      going through my notes and turning them into write-ups, so please stay tuned!
     </p>
     <p class="pos" style="font-size:15px;color:var(--text-3)">
-      For clarity's sake, I use AI tools such as Claude to assist in coding this website. However,
-      all of the writing, screenshots, and walkthroughs are done by myself. I want to emphasize that
-      I want this website to be in as much of my own voice and writing style as possible.
+      Regarding the use of AI, I use tools such as Claude to assist in coding this website. However, all
+      of the writing, screenshots, and walkthroughs are done by myself. I want to emphasize that I want
+      this website to be in as much of my own voice and writing style as possible. If Claude is used to
+      assist in penetration testing, I will specifically mention it in a guide/write-up. In fact, I
+      already wrote notes on AI being used to assist in Mobile penetration testing, and once it's cleaned
+      up and double-checked it will be posted here. Stay tuned!
     </p>
 
     <!-- CONTACT ROW - fill these in. Delete any line you don't want public. -->
     <div class="contact">
       <a href="mailto:anhmi@duck.com">email</a>
       <a href="https://github.com/sudoanthony">github</a>
-      <a href="#">linkedin</a>
-      <a href="#">tryhackme</a>
+      <a href="https://www.linkedin.com/in/anthonyvincentsciuto/">linkedin</a>
+      <a href="https://tryhackme.com/p/Anhmi">tryhackme</a>
+      <a href="https://app.hackthebox.com/users/2976115">hackthebox</a>
       <a href="#">resume (pdf)</a>
     </div>
   </section>
 
   <!-- LATEST WRITEUP - rendered automatically from the newest entry in data.js -->
-  <p class="section-label">latest writeup</p>
+  <p class="section-label">latest write-up</p>
   <div id="latest"></div>
 
   <div class="btn-row">
-    <a class="btn primary" href="writeups.html">all writeups →</a>
+    <a class="btn primary" href="writeups.html">all write-ups →</a>
     <button class="btn" id="randomBtn">surprise me</button>
   </div>
-
-  <h2>About</h2>
-  <p>Hello everyone. My name is Anthony Sciuto.</p>
-  <p>Since I was a child I grew a love for computers through video games. I am also a hobbyist
-  illustrator, animator, and game developer. As a professional, I spent seven and a half years in
-  the U.S. Navy in the medical field as a Hospital Corpsman. I was lucky enough to serve as a devil
-  doc alongside Marine units, and I found that the ability to keep a cool head while working in
-  time-critical, life-saving situations had a direct correlation to my pursuit of cybersecurity.</p>
-  <p>I now spend my time working in Japan, studying Japanese, and studying cybersecurity, mainly
-  penetration testing. That ranges from web applications, wifi, and cloud, to more recently mobile
-  penetration testing.</p>
-  <p>A common trend in all of the jobs I've worked and excelled in was the ability to help others.
-  Whether it was the teaching I did in the Navy as a TCCC/CLS instructor or the work I did at hotels,
-  I love helping others and find communication an invaluable skill in any field. Working in the
-  medical field gave me countless repetitions of customer interactions, from civilian babies to
-  seniors to military personnel. At the end of the day, the services we provide to others are
-  fundamentally about helping them. If we remember that when providing a service, the quality and
-  connection we give a client is something that can't really be expressed in a purely monetary
-  transaction. Anyone can spam boxes and study, but we also have to remember that human skills are
-  becoming more and more valuable as AI becomes a bigger part of everyone's lives.</p>
-  <p><strong>Speaking of AI.</strong> When it comes to AI and art, I do not use AI whatsoever in the
-  process or development of my art. While AI is a tool that I enjoy and continue to master, as an
-  artist I want to preserve the creativity and skill that I am able to express as it is. AI as a tool
-  should be used to level up and express our own skills, not to replace them. I am not saying I can't
-  see any valuable use of AI in art, but there are a lot of people using AI for art and calling
-  themselves an artist. That said, I do understand that in the professional world, if you're not
-  maximizing the tools given to you then you're putting yourself at a disadvantage against those who
-  are.</p>
-  <p>I've also noticed that one reason many people underutilize AI in their work is a lack of
-  creativity and planning when prompting it. I truly believe that having creative hobbies, or a mind
-  for solving problems, is essential to using AI effectively. You see many people even asking AI
-  itself how to use AI effectively. That isn't bad, but we have to remember that we are the one
-  prompting it, and if you can't do that part well, you won't have much better luck.</p>
-  <p>The use of AI can be compared to steroids. I love the gym, but I also love my health, and if
-  there were a medicine that could give steroid-like gains without the drawbacks, I'm pretty sure
-  everyone would take it, myself included. An untrained person on steroids who trains ineffectively
-  can still see dramatic gains compared to a natural lifter. But the true difference shows when a
-  professional who understands dieting, programming, and technique takes them. The difference is
-  monumental. Steroids aren't a perfect analogy for AI, but I think it's a pretty good one. In the
-  hands of a novice, AI can produce results sometimes even faster than a professional, but no company
-  wants only that. People who actually use AI well understand how it works and understand the work
-  required to produce a given result. Companies want professionals who understand their trade,
-  understand how AI works, and use it in tandem with their existing knowledge and skills. That is
-  where the value is, and that is still a person in demand.</p>
-  <p style="color:var(--text-4);font-size:14.5px;font-style:italic">
-    Note: thanks for reading. I'll add more to this section as time goes on, and I'll probably make a
-    separate blog for my own thoughts to keep this repo more professional. I do like the personal
-    touch though. People read tons of resumes and GitHubs every day, and the 100% professional angle
-    has to get boring, no?
-  </p>
 
   <!-- OPTIONAL STAT COUNTERS - switch on once the numbers flatter you (~8+ writeups).
        Uncomment the <div id="stats"> line and the stats code near the bottom of this file.
@@ -148,7 +106,7 @@
       '</a>';
   } else {
     document.getElementById('latest').innerHTML =
-      '<div class="card"><div class="desc">No writeups published yet.</div></div>';
+      '<div class="card"><div class="desc">No write-ups published yet.</div></div>';
   }
 
   // "surprise me" - jump to a random writeup

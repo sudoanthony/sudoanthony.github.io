@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Vulnerability index - Anthony</title>
-<meta name="description" content="Every technique used across all writeups, grouped and cross-linked.">
+<meta name="description" content="Every technique used across all write-ups, grouped and cross-linked.">
 <link rel="stylesheet" href="style.css">
 <style>
   /* brief highlight when you arrive via a tag link (vulns.html#jwt-forgery) */
@@ -17,7 +17,7 @@
 <nav class="nav"><div class="wrap">
   <a class="brand" href="index.html">~/sudoanthony</a>
   <div class="links">
-    <a href="writeups.html">writeups</a>
+    <a href="writeups.html">write-ups</a>
     <a href="vulns.html">vulns</a>
     <a href="concepts.html">concepts</a>
     <a href="tools.html">tools</a>
@@ -28,9 +28,9 @@
 <main class="wrap" style="padding-top:44px">
   <h1>Vulnerability index</h1>
   <p style="color:var(--text-3); max-width:560px">
-    Every technique used across all writeups. Click a heading with a
-    <span style="color:var(--accent-2)">deep dive</span> to read the full explainer,
-    or jump straight to the box where it appears.
+    On this page you can find every technique I've used across all current write-ups. As I add more
+    write-ups to my GitHub, I will be adding more vulnerabilities here, or adding more write-up links to
+    the vulnerabilities already listed.
   </p>
 
   <div class="filters" id="filters"></div>
@@ -41,7 +41,7 @@
 
 <footer class="foot"><div class="wrap" style="display:flex;gap:18px;flex-wrap:wrap">
   <a href="index.html">home</a>
-  <a href="writeups.html">writeups</a>
+  <a href="writeups.html">write-ups</a>
   <a href="https://github.com/sudoanthony">github</a>
 </div></footer>
 
@@ -77,7 +77,7 @@
         ? '<a class="name" href="' + v.deepdive + '">' + v.name + '</a>'
         : '<span class="name">' + v.name + '</span>';
       const ext = v.ext ? '<span class="id">' + v.ext + '</span>' : '';
-      const count = v.uses.length + (v.uses.length===1 ? ' writeup' : ' writeups');
+      const count = v.uses.length + (v.uses.length===1 ? ' write-up' : ' write-ups');
       const dive = v.deepdive
         ? '<span class="dive yes">read the deep dive →</span>'
         : '<span class="dive none">no deep dive yet</span>';
