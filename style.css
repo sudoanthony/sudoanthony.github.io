@@ -31,6 +31,7 @@
   --thm:       #ec4899;   /* TryHackMe = pink   */
   --htb:       #9fef00;   /* HackTheBox = green */
   --mobile:    #a78bfa;   /* Mobile = violet    */
+  --web:       #22d3ee;   /* Web = cyan         */
   --gold:      #ebcb8b;   /* soft amber — section headers (beacon) */
 
   /* difficulty / severity */
@@ -155,6 +156,7 @@ figcaption { color: var(--text-4); font-size: 13px; margin-top: 7px; font-family
 .badge.thm { background: rgba(236,72,153,0.15); color: #f087ba; }
 .badge.htb { background: rgba(159,239,0,0.13);  color: #c3f24d; }
 .badge.mobile { background: rgba(167,139,250,0.16); color: #c4b5fd; }
+.badge.web { background: rgba(34,211,238,0.14); color: #7fe4f2; }
 /* team */
 .badge.red-team  { background: rgba(226,114,111,0.14); color: #eb9d9b; }
 .badge.blue-team { background: rgba(122,176,232,0.14); color: #a6c8ee; }
@@ -199,12 +201,14 @@ figcaption { color: var(--text-4); font-size: 13px; margin-top: 7px; font-family
 .platform-head .dot.thm { background: var(--thm); }
 .platform-head .dot.htb { background: var(--htb); }
 .platform-head .dot.mobile { background: var(--mobile); }
+.platform-head .dot.web { background: var(--web); }
 .platform-head .name { font-size: 18px; font-weight: 600; color: var(--text); }
 .platform-head .count { font-family: var(--mono); font-size: 12px; color: var(--text-4); }
 .platform-head .plogo { height: 30px; width: auto; border-radius: 6px; display: block; }
 .platform-head .plogo-thm { height: 42px; }
 .platform-head .plogo-htb { height: 30px; }
 .platform-head .plogo-mobile { height: 30px; }
+.platform-head .plogo-web { height: 30px; }
 
 /* ---------- vulns index ---------- */
 .filters { display: flex; flex-wrap: wrap; gap: 7px; margin: 22px 0 30px; }
@@ -250,11 +254,20 @@ figcaption { color: var(--text-4); font-size: 13px; margin-top: 7px; font-family
 .bx.thm .face { border-top: 3px solid var(--thm); }
 .bx.htb .face { border-top: 3px solid var(--htb); }
 .bx.mobile .face { border-top: 3px solid var(--mobile); }
+.bx.web .face { border-top: 3px solid var(--web); }
 .bx .icon { width: 52px; height: 52px; position: relative; display: flex; align-items: center; justify-content: center; }
 .bx .icon img { width: 52px; height: 52px; object-fit: contain; }
 .bx .mono { width: 52px; height: 52px; border-radius: 12px; background: var(--bg-3); color: var(--text-3); display: flex; align-items: center; justify-content: center; font-family: var(--mono); font-size: 24px; font-weight: 600; }
-.bx .nm { font-size: 15.5px; font-weight: 600; color: var(--text); text-align: center; }
+.bx .nm { font-size: 15.5px; font-weight: 600; color: var(--text); text-align: center; line-height: 1.2; }
+.bx .nm-sub { font-size: 12.5px; font-weight: 500; color: var(--text); text-align: center; line-height: 1.2; margin-top: -3px; }
 .bx .sub { font-family: var(--mono); font-size: 12px; color: var(--text-3); text-align: center; line-height: 1.4; }
+/* Mobile section has a single, text-heavy card (title + sub-headline + long OS) — give it
+   more room and clip-guard so the icon can't spill out of the box. */
+.bx.mobile { grid-template-rows: 200px 0fr; }
+.bx.mobile:hover { grid-template-rows: 200px 1fr; }
+.bx.mobile .face { height: 200px; gap: 6px; overflow: hidden; }
+.bx.mobile .rev { min-height: 200px; }
+@media (hover: none) { .bx.mobile:hover { grid-template-rows: 200px 0fr; } }
 .bx .sub .d-very-easy{color:#9cc3ec;} .bx .sub .d-easy{color:#7fd9bc;} .bx .sub .d-medium{color:#f0b35a;} .bx .sub .d-hard{color:#eb9d9b;} .bx .sub .d-insane{color:#f2f4f6;} .bx .sub .d-practice{color:#9ed8f2;}
 .bx .sub svg{opacity:.85;}
 .bx .revwrap { overflow: hidden; }

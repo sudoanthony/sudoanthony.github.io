@@ -23,17 +23,18 @@
 
 const WRITEUPS = [
   {
-    title:      "OWASP Mobile Top 10: Android",
+    title:      "OWASP Mobile Top 10 2024",
+    subtitle:   "Android App Pentest",
     url:        "writeup-allsafe.html",
     platform:   "Mobile",
     team:       "red",
     difficulty: "Practice",
     os:         "Windows PowerShell",
-    category:   "Android · App Pentest",
+    category:   "Android",
     icon:       "images/icons/allsafe.png",
     date:       "2026-07-31",
     summary:    "Featuring AllSafe, with help from InsecureBankv2 and AndroGoat. A mobile penetration testing methodology that works all three Android targets to demonstrate each risk of the OWASP Mobile Top 10 (2024) - worked examples with screenshots, plus a severity-rated report for every vulnerability found.",
-    tags:       ["hardcoded-secret", "insecure-logging", "exported-component", "insecure-storage", "broken-crypto", "auth-bypass", "credential-usage", "sql-injection", "insecure-deserialization"]
+    tags:       ["hardcoded-secret", "insecure-logging", "exported-component", "insecure-storage", "broken-crypto", "auth-bypass", "credential-usage", "sql-injection", "insecure-deserialization", "binary-protections"]
   },
   {
     title:      "Abducted",
@@ -73,7 +74,7 @@ const VULNS = [
     blurb: "A secret compiled into the APK (strings.xml / resources / smali) - recoverable by anyone with the binary. Severity depends on what the secret authorizes; a challenge-gate key is Low, a live API key is not.",
     deepdive: "",
     uses: [
-      { writeup: "OWASP Mobile Top 10: Android", url: "writeup-allsafe.html", ctx: "UUID in strings.xml gates a deep link - found via the R.string.key reference, not a keyword grep" }
+      { writeup: "OWASP Mobile Top 10 2024", url: "writeup-allsafe.html", ctx: "UUID in strings.xml gates a deep link - found via the R.string.key reference, not a keyword grep" }
     ]
   },
   {
@@ -85,7 +86,7 @@ const VULNS = [
     blurb: "App logs that leak URIs, tokens, or PII to logcat. The pattern is the finding - it would leak any future secret carried through the same code path.",
     deepdive: "",
     uses: [
-      { writeup: "OWASP Mobile Top 10: Android", url: "writeup-allsafe.html", ctx: "full deep-link Uri (with query string) concatenated into a Log.d call" }
+      { writeup: "OWASP Mobile Top 10 2024", url: "writeup-allsafe.html", ctx: "full deep-link Uri (with query string) concatenated into a Log.d call" }
     ]
   },
   {
@@ -97,7 +98,7 @@ const VULNS = [
     blurb: "An activity exported with a VIEW + BROWSABLE intent filter is reachable from any web page - an unauthenticated entry point into app internals.",
     deepdive: "",
     uses: [
-      { writeup: "OWASP Mobile Top 10: Android", url: "writeup-allsafe.html", ctx: "exported activity + BROWSABLE deep link invokable from an arbitrary web page" }
+      { writeup: "OWASP Mobile Top 10 2024", url: "writeup-allsafe.html", ctx: "exported activity + BROWSABLE deep link invokable from an arbitrary web page" }
     ]
   },
   {
@@ -109,7 +110,7 @@ const VULNS = [
     blurb: "Credentials or tokens written to the app sandbox in plaintext - SharedPreferences XML, a SQLite row, a file. The sandbox only stops other apps at runtime; root, a backup, or forensic access reads it straight off the device. The fix is the Android Keystore (EncryptedSharedPreferences). Severity tracks reachability: worse on world-readable external storage than inside /data/data.",
     deepdive: "",
     uses: [
-      { writeup: "OWASP Mobile Top 10: Android", url: "writeup-allsafe.html", ctx: "credentials written to shared_prefs/user.xml in plaintext - no encryption, no Keystore; sandbox swept and /sdcard empty" }
+      { writeup: "OWASP Mobile Top 10 2024", url: "writeup-allsafe.html", ctx: "credentials written to shared_prefs/user.xml in plaintext - no encryption, no Keystore; sandbox swept and /sdcard empty" }
     ]
   },
   {
@@ -121,7 +122,7 @@ const VULNS = [
     blurb: "Crypto that looks encrypted but isn't sound: fast unsalted hashes for secrets (MD5/SHA-1), hardcoded keys, ECB mode, static IVs, home-rolled schemes. If the key sits next to the ciphertext it's obfuscation, not encryption - read the code, take the key, decrypt offline. Severity tracks what the recovered plaintext authorizes.",
     deepdive: "",
     uses: [
-      { writeup: "OWASP Mobile Top 10: Android", url: "writeup-allsafe.html", ctx: "AndroGoat hashes the access-control PIN with unsalted MD5 into shared_prefs - recovered offline via a rainbow table / brute force" }
+      { writeup: "OWASP Mobile Top 10 2024", url: "writeup-allsafe.html", ctx: "AndroGoat hashes the access-control PIN with unsalted MD5 into shared_prefs - recovered offline via a rainbow table / brute force" }
     ]
   },
   {
@@ -133,7 +134,7 @@ const VULNS = [
     blurb: "A login / PIN / biometric gate enforced on the device and trusted by the app itself. On a device the attacker controls it's just code - hook the deciding method (or reroute the failure callback into success) and the protected screen opens with no valid credential. Real only when the gate is cosmetic; a Keystore-bound gate that releases a key on success defeats it.",
     deepdive: "",
     uses: [
-      { writeup: "OWASP Mobile Top 10: Android", url: "writeup-allsafe.html", ctx: "AndroGoat's biometric gate is cosmetic (no CryptoObject) - Frida reroutes onAuthenticationFailed/Error into onAuthenticationSucceeded, no fingerprint needed" }
+      { writeup: "OWASP Mobile Top 10 2024", url: "writeup-allsafe.html", ctx: "AndroGoat's biometric gate is cosmetic (no CryptoObject) - Frida reroutes onAuthenticationFailed/Error into onAuthenticationSucceeded, no fingerprint needed" }
     ]
   },
   {
@@ -145,7 +146,7 @@ const VULNS = [
     blurb: "Credentials mishandled anywhere in their lifecycle: cached to disk recoverably, hardcoded into the binary, sent in cleartext, or never rotated. Base64 and hardcoded-key ciphers are not protection. Severity tracks what the credential authorizes - a live cloud key is critical, a lab value is not.",
     deepdive: "",
     uses: [
-      { writeup: "OWASP Mobile Top 10: Android", url: "writeup-allsafe.html", ctx: "InsecureBankv2 caches creds in shared_prefs (Base64 username + hardcoded-key AES password); AndroGoat ships a hardcoded AWS secret access key" }
+      { writeup: "OWASP Mobile Top 10 2024", url: "writeup-allsafe.html", ctx: "InsecureBankv2 caches creds in shared_prefs (Base64 username + hardcoded-key AES password); AndroGoat ships a hardcoded AWS secret access key" }
     ]
   },
   {
@@ -157,7 +158,7 @@ const VULNS = [
     blurb: "Attacker input concatenated into a SQL query and run as code instead of data. Tautologies bypass filters and logins; UNION plus the metadata table (sqlite_master / information_schema) reads arbitrary tables. On mobile the sink is a local SQLite DB or an exported content provider. Fix is parameterized queries; severity tracks reach - a local search box is lower than a cross-app exported provider.",
     deepdive: "",
     uses: [
-      { writeup: "OWASP Mobile Top 10: Android", url: "writeup-allsafe.html", ctx: "AllSafe login rawQuery bypassed with a tautology and full user dump; InsecureBankv2's exported provider read via UNION on sqlite_master" }
+      { writeup: "OWASP Mobile Top 10 2024", url: "writeup-allsafe.html", ctx: "AllSafe login rawQuery bypassed with a tautology and full user dump; InsecureBankv2's exported provider read via UNION on sqlite_master" }
     ]
   },
   {
@@ -169,7 +170,19 @@ const VULNS = [
     blurb: "The app rebuilds an object from bytes an attacker can modify, then trusts the result. Tampering a stored or transmitted serialized object (like flipping a role field) bypasses checks; on some platforms crafted objects reach code execution via gadget chains. Fix is to not deserialize untrusted data, sign or validate it, and enforce authorization server-side.",
     deepdive: "",
     uses: [
-      { writeup: "OWASP Mobile Top 10: Android", url: "writeup-allsafe.html", ctx: "AllSafe serializes a User object to external storage; editing the role field to ROLE_EDITOR escalates privilege on load" }
+      { writeup: "OWASP Mobile Top 10 2024", url: "writeup-allsafe.html", ctx: "AllSafe serializes a User object to external storage; editing the role field to ROLE_EDITOR escalates privilege on load" }
+    ]
+  },
+  {
+    id:    "binary-protections",
+    name:  "Insufficient binary protections",
+    cat:   "mobile",
+    sev:   "low",
+    ext:   "CWE-693 · MASVS-RESILIENCE · M7",
+    blurb: "Client-side self-defense - root/jailbreak detection, anti-debug, anti-Frida, integrity checks, obfuscation - defeated on a device the attacker controls by hooking (Frida) or by patching and re-signing the app. Defense-in-depth only: absent or weak protections are Low/Informational on their own, rising only when they gate a real bug.",
+    deepdive: "",
+    uses: [
+      { writeup: "OWASP Mobile Top 10 2024", url: "writeup-allsafe.html", ctx: "AllSafe: RootBeer root check hooked with Frida, Smali Patch repackaged and re-signed (no integrity check), native password recovered in Ghidra, and FLAG_SECURE stripped to defeat anti-screenshot" }
     ]
   },
   {

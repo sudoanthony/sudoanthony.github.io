@@ -53,7 +53,7 @@
   <!-- SHELL / TEMPLATE. Findings use .finding tables; redact secrets where needed.
        The left table of contents builds itself from the h2 headings via writeup-toc.js. -->
 
-  <h1>OWASP Mobile Top 10: Android Methodology</h1>
+  <h1>OWASP Mobile Top 10 2024: Android App Pentest Methodology</h1>
   <p>A hands-on mobile penetration testing walkthrough, mapped to the OWASP Mobile Top 10 (2024)
   and MASVS/MASTG, demonstrated through the intentionally vulnerable apps
   <strong>AllSafe</strong> and <strong>InsecureBankv2</strong>.</p>
@@ -130,11 +130,15 @@
     <li><svg style="width:14px;height:14px;vertical-align:-2px;margin-right:6px" viewBox="0 0 24 24" fill="currentColor"><path d="M3 5.4 10.6 4.3v7.1H3zM10.6 12.4v7.1L3 18.6v-6.2zM11.6 4.1 21 2.8v8.6h-9.4zM21 12.4V21l-9.4-1.3v-7.3z"/></svg><strong>Windows PowerShell</strong> (all commands below are written for it)</li>
     <li><a href="tools.html#android-studio">Android Studio</a> (Pixel 5 AVD emulator)</li>
     <li><a href="tools.html#jadx">jadx</a> (decompile the app to readable Java)</li>
-    <li><a href="tools.html#apktool">apktool</a> (decode the manifest and resources)</li>
+    <li><a href="tools.html#apktool">apktool</a> (decode the manifest and resources, disassemble to smali, and rebuild the APK)</li>
+    <li><a href="tools.html#apksigner">apksigner</a>, <a href="tools.html#zipalign">zipalign</a>, and <a href="tools.html#keytool">keytool</a> (align and re-sign a patched APK)</li>
+    <li><a href="tools.html#ghidra">Ghidra</a> (decompile native <code>.so</code> libraries)</li>
     <li><a href="tools.html#burp">Burp Suite Community Edition</a> (intercepting proxy)</li>
     <li><a href="tools.html#mobsf">MobSF</a> (automated static analysis)</li>
     <li><a href="tools.html#frida">Frida</a> (dynamic instrumentation - runtime hooking and pinning bypass)</li>
     <li><a href="tools.html#objection">objection</a> (Frida-powered toolkit - one-command pinning bypass)</li>
+    <li><a href="tools.html#sqlite3">sqlite3</a> (browse a pulled app database)</li>
+    <li><a href="tools.html#python">Python</a> (serve a proof-of-concept page, tamper serialized data)</li>
     <li><a href="tools.html#androgoat">AndroGoat</a> &amp; <a href="tools.html#insecurebankv2">InsecureBankv2</a> (extra vulnerable practice apps used in this section)</li>
     <li><a href="tools.html#wsl">WSL</a> (Windows Subsystem for Linux - runs the InsecureBankv2 backend)</li>
     <li><a href="https://mas.owasp.org/">OWASP MASVS &amp; MASTG</a> (the standard we map findings to)</li>
@@ -308,7 +312,7 @@
 
   <table class="finding">
     <tr><th>Title</th><td>Hardcoded secret in app resources</td></tr>
-    <tr><th>Severity</th><td><strong>Low</strong>. The key only gates a local "congrats" screen. The same pattern guarding a real API key would be Critical.</td></tr>
+    <tr><th>Severity</th><td><strong>Low</strong> &middot; CVSS 4.0 base <code>(AV:L/AC:L/PR:N/UI:N/S:U/C:L/I:N/A:N)</code>. The key only gates a local "congrats" screen, so the real-world severity is Low. The same pattern guarding a real API key would be Critical.</td></tr>
     <tr><th>Description</th><td>A deep-link query parameter is compared against a secret fetched with <code>getString(R.string.key)</code>. The value is a hardcoded UUID stored in <code>res/values/strings.xml</code> (compiled into <code>resources.arsc</code>), a resource rather than source code.</td></tr>
     <tr><th>Impact</th><td>The secret ships inside the APK, so anyone with the file recovers it offline (no device, no root) by following the <code>R.string.key</code> reference into <code>strings.xml</code>. A keyword grep and MobSF both miss it.</td></tr>
     <tr><th>Evidence</th><td><code>infosecadventures.allsafe.challenges.DeepLinkTask.onCreate()</code> &rarr; <code>getString(R.string.key)</code>; value at <code>res/values/strings.xml</code> &rarr; <code>&lt;string name="key"&gt;...&lt;/string&gt;</code>.</td></tr>
@@ -319,7 +323,7 @@
 
   <table class="finding">
     <tr><th>Title</th><td>Exported activity reachable via BROWSABLE deep link</td></tr>
-    <tr><th>Severity</th><td><strong>Medium</strong>. An unauthenticated, web-reachable entry point, exposed to any app or web page.</td></tr>
+    <tr><th>Severity</th><td><strong>Medium</strong> &middot; CVSS 5.3 <code>(AV:N/AC:L/PR:N/UI:N/S:U/C:L/I:N/A:N)</code>. An unauthenticated, web-reachable entry point, exposed to any app or web page.</td></tr>
     <tr><th>Description</th><td><code>DeepLinkTask</code> is exported with a <code>VIEW</code> + <code>BROWSABLE</code> intent-filter on the <code>allsafe://</code> scheme, so any app (or a link on any web page) can invoke it with attacker-chosen URI data.</td></tr>
     <tr><th>Impact</th><td>Exported components are the app's undocumented public API. A crafted <code>allsafe://</code> link drives the activity with attacker-controlled input, with no authentication in front of it.</td></tr>
     <tr><th>Evidence</th><td><code>AndroidManifest.xml</code> &rarr; <code>&lt;activity android:name="...challenges.DeepLinkTask" android:exported="true"&gt;</code> with a <code>VIEW</code>/<code>BROWSABLE</code> <code>&lt;intent-filter&gt;</code> and <code>&lt;data android:scheme="allsafe"&gt;</code>. Repro: <code>adb shell am start -W -a android.intent.action.VIEW -d "allsafe://infosecadventures/congrats?key=..."</code>.</td></tr>
@@ -330,7 +334,7 @@
 
   <table class="finding">
     <tr><th>Title</th><td>Sensitive data written to the system log</td></tr>
-    <tr><th>Severity</th><td><strong>Low</strong>. The logged value is already in the package, so the pattern is the risk.</td></tr>
+    <tr><th>Severity</th><td><strong>Low</strong> &middot; CVSS 2.4 <code>(AV:P/AC:L/PR:N/UI:N/S:U/C:L/I:N/A:N)</code>. The logged value is already in the package, so the pattern is the risk.</td></tr>
     <tr><th>Description</th><td><code>DeepLinkTask.onCreate</code> logs the full incoming URI (query string included) with <code>Log.d("ALLSAFE", "... Data: " + data)</code>.</td></tr>
     <tr><th>Impact</th><td>logcat is readable over USB/<code>adb logcat</code> and, on older Android, by apps with <code>READ_LOGS</code>. Any token or PII routed through the deep link would leak.</td></tr>
     <tr><th>Evidence</th><td><code>infosecadventures.allsafe.challenges.DeepLinkTask.onCreate()</code> &rarr; <code>Log.d("ALLSAFE", "... Data: " + data)</code>; observe with <code>adb logcat -s ALLSAFE</code>.</td></tr>
@@ -349,7 +353,7 @@
 
   <table class="finding">
     <tr><th>Title</th><td>Insecure build and backup configuration</td></tr>
-    <tr><th>Severity</th><td><strong>High</strong> for <code>debuggable</code> in a production release. (Calibration note: AllSafe ships as an <code>app_debug</code> training build, so it is expected here; rated as it would apply to a real app.) <code>allowBackup</code>: Low to Medium.</td></tr>
+    <tr><th>Severity</th><td><strong>High</strong> &middot; CVSS 8.4 <code>(AV:L/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H)</code> for <code>debuggable</code> in a production release. (Calibration note: AllSafe ships as an <code>app_debug</code> training build, so it is expected here; rated as it would apply to a real app.) <code>allowBackup</code>: Low to Medium.</td></tr>
     <tr><th>Description</th><td>The <code>&lt;application&gt;</code> tag sets <code>android:debuggable="true"</code> and <code>android:allowBackup="true"</code>.</td></tr>
     <tr><th>Impact</th><td><code>debuggable=true</code> lets anyone attach a debugger, run code as the app, and read its memory on a non-rooted device. <code>allowBackup=true</code> allows extracting private data via <code>adb backup</code> (largely neutered on Android 12+, still a weak default).</td></tr>
     <tr><th>Evidence</th><td><code>AndroidManifest.xml</code> &rarr; <code>&lt;application ... android:debuggable="true" android:allowBackup="true"&gt;</code>.</td></tr>
@@ -664,7 +668,7 @@ OkHttpClient okHttpClient = new OkHttpClient.Builder()
 
   <table class="finding">
     <tr><th>Title</th><td>Cleartext transmission of credentials (InsecureBankv2)</td></tr>
-    <tr><th>Severity</th><td><strong>High</strong>. Credentials travel in the clear at login and on every transfer, so anyone on the network path reads them with no tooling and no pinning to defeat.</td></tr>
+    <tr><th>Severity</th><td><strong>High</strong> &middot; CVSS 7.5 <code>(AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:N/A:N)</code>. Credentials travel in the clear at login and on every transfer, so anyone on the network path reads them with no tooling and no pinning to defeat.</td></tr>
     <tr><th>Description</th><td>InsecureBankv2 sends the username and password over the network without effective transport protection. They are readable in Burp's HTTP history at login and again in the body of every <code>/dotransfer</code> request.</td></tr>
     <tr><th>Impact</th><td>A network attacker captures working credentials directly, with no MITM certificate trickery or pinning bypass required.</td></tr>
     <tr><th>Evidence</th><td>The login POST and every <code>/dotransfer</code> body contain <code>username=...&amp;password=...</code> in readable cleartext.</td></tr>
@@ -675,7 +679,7 @@ OkHttpClient okHttpClient = new OkHttpClient.Builder()
 
   <table class="finding">
     <tr><th>Title</th><td>Server trusts client-supplied transfer parameters (InsecureBankv2)</td></tr>
-    <tr><th>Severity</th><td><strong>High</strong>. Account numbers and amount are honored without server-side validation, so a tampered request moves money as instructed.</td></tr>
+    <tr><th>Severity</th><td><strong>High</strong> &middot; CVSS 7.5 <code>(AV:N/AC:L/PR:N/UI:N/S:U/C:N/I:H/A:N)</code>. Account numbers and amount are honored without server-side validation, so a tampered request moves money as instructed.</td></tr>
     <tr><th>Description</th><td>The <code>/dotransfer</code> request carries <code>from_acc</code>, <code>to_acc</code>, and <code>amount</code> entirely from the client. Editing them in Repeater and replaying makes the server process the tampered values.</td></tr>
     <tr><th>Impact</th><td>An attacker can change the amount and the source and destination accounts, enabling unauthorized transfers.</td></tr>
     <tr><th>Evidence</th><td>The app sent <code>amount=50000</code>; a Repeater replay with <code>amount=20000</code> returned a successful transfer for the tampered value.</td></tr>
@@ -686,7 +690,7 @@ OkHttpClient okHttpClient = new OkHttpClient.Builder()
 
   <table class="finding">
     <tr><th>Title</th><td>Ineffective certificate pinning, runtime-derived pin (AllSafe)</td></tr>
-    <tr><th>Severity</th><td><strong>Low to Medium</strong>. Defense-in-depth: exploiting it still needs an on-path position plus a CA already trusted on the device, so it is not remotely exploitable on its own.</td></tr>
+    <tr><th>Severity</th><td><strong>Low to Medium</strong> &middot; CVSS 3.7 <code>(AV:N/AC:H/PR:N/UI:N/S:U/C:L/I:N/A:N)</code>. Defense-in-depth: exploiting it still needs an on-path position plus a CA already trusted on the device, so it is not remotely exploitable on its own.</td></tr>
     <tr><th>Description</th><td>The Certificate Pinning challenge derives its pins at runtime from the observed peer-certificate chain (it forces an OkHttp pin failure to harvest the real hashes, then pins to them) instead of using a fixed, build-time pin.</td></tr>
     <tr><th>Impact</th><td>Because the pin is taken from whatever certificate is on the wire, a trusted MITM (our Burp CA) is pinned-to automatically. The control gives no assurance of server identity and adds nothing over default TLS; traffic decrypts with no Frida/objection bypass.</td></tr>
     <tr><th>Evidence</th><td><code>infosecadventures.allsafe.challenges.CertificatePinning</code>: <code>extractPeerCertificateChain()</code> pins to <code>INVALID_HASH</code> to force a failure, <code>AnonymousClass2.onFailure</code> scrapes the real hashes into <code>hashes</code>, and the button handler pins to those harvested values.</td></tr>
@@ -697,7 +701,7 @@ OkHttpClient okHttpClient = new OkHttpClient.Builder()
 
   <table class="finding">
     <tr><th>Title</th><td>Certificate pinning bypassable via runtime instrumentation (AndroGoat)</td></tr>
-    <tr><th>Severity</th><td><strong>Informational to Low</strong>. Pinning is correctly implemented and blocks a trusted proxy; defeating it needs a rooted device plus a Frida/objection hook, so it is not remotely exploitable.</td></tr>
+    <tr><th>Severity</th><td><strong>Informational to Low</strong> &middot; CVSS 2.0 <code>(AV:P/AC:H/PR:N/UI:N/S:U/C:L/I:N/A:N)</code>. Pinning is correctly implemented and blocks a trusted proxy; defeating it needs a rooted device plus a Frida/objection hook, so it is not remotely exploitable.</td></tr>
     <tr><th>Description</th><td>AndroGoat's OkHttp pinning enforces correctly - traffic blocks under our proxy while the browser still decrypts. On a rooted device we neutralized the pin at runtime with objection (<code>android sslpinning disable</code>), <code>frida-multiple-unpinning</code>, and a targeted <code>CertificatePinner.check()</code> hook.</td></tr>
     <tr><th>Impact</th><td>On a device the attacker fully controls, client-side pinning does not prevent traffic inspection. This is an inherent limit of client-side controls, not a flaw unique to AndroGoat.</td></tr>
     <tr><th>Evidence</th><td>The pinning requests returned nothing until a Frida unpinning hook was attached, after which they decrypted in Burp's HTTP history.</td></tr>
@@ -809,7 +813,7 @@ OkHttpClient okHttpClient = new OkHttpClient.Builder()
   actually takes: data that only an attacker who already controls the device can reach isn't "critical."</p>
   <table class="finding">
     <tr><th>Title</th><td>Sensitive credentials stored in plaintext SharedPreferences (AllSafe)</td></tr>
-    <tr><th>Severity</th><td><strong>Low to Medium</strong>. The credentials sit in the app sandbox at <code>/data/data/&lt;pkg&gt;/shared_prefs/user.xml</code>, so reading them needs root, a backup, or forensic access to the device - not remotely exploitable. The same data on external storage (<code>/sdcard/</code>) would raise this to Medium to High, since /sdcard is reachable with no root; here it was empty.</td></tr>
+    <tr><th>Severity</th><td><strong>Low to Medium</strong> &middot; CVSS 4.6 <code>(AV:P/AC:L/PR:N/UI:N/S:U/C:H/I:N/A:N)</code>. The credentials sit in the app sandbox at <code>/data/data/&lt;pkg&gt;/shared_prefs/user.xml</code>, so reading them needs root, a backup, or forensic access to the device - not remotely exploitable. The same data on external storage (<code>/sdcard/</code>) would raise this to Medium to High, since /sdcard is reachable with no root; here it was empty.</td></tr>
     <tr><th>Description</th><td>AllSafe's Insecure Shared Preferences challenge writes the username and password to <code>shared_prefs/user.xml</code> as plaintext key/value XML, with no encryption and without using the Android Keystore.</td></tr>
     <tr><th>Impact</th><td>An attacker with root, a backup, or forensic access to the device recovers the stored credentials directly from the file.</td></tr>
     <tr><th>Evidence</th><td>After storing credentials in the challenge, <code>user.xml</code> contained the username and password as cleartext <code>&lt;string&gt;</code> values; a recursive grep of the sandbox surfaced the same values and nothing else.</td></tr>
@@ -944,7 +948,7 @@ findstr /s /i "java.util.Random"     androgoat-src\*   # insecure randomness</co
   exposes.</p>
   <table class="finding">
     <tr><th>Title</th><td>Weak, unsalted hashing of the access-control PIN (AndroGoat)</td></tr>
-    <tr><th>Severity</th><td><strong>Medium</strong>. The PIN is protected only by fast, unsalted MD5 over a tiny numeric keyspace, so anyone who obtains the stored hash recovers the PIN offline in seconds - either from a public rainbow table or by brute-forcing the whole keyspace. Reading the hash needs access to the app sandbox (root, a backup, or forensic access), so it isn't remotely exploitable on its own, but the cryptographic control provides effectively no protection once that hash is in hand.</td></tr>
+    <tr><th>Severity</th><td><strong>Medium</strong> &middot; CVSS 4.6 <code>(AV:P/AC:L/PR:N/UI:N/S:U/C:H/I:N/A:N)</code>. The PIN is protected only by fast, unsalted MD5 over a tiny numeric keyspace, so anyone who obtains the stored hash recovers the PIN offline in seconds - either from a public rainbow table or by brute-forcing the whole keyspace. Reading the hash needs access to the app sandbox (root, a backup, or forensic access), so it isn't remotely exploitable on its own, but the cryptographic control provides effectively no protection once that hash is in hand.</td></tr>
     <tr><th>Description</th><td>The access-control PIN is hashed with <code>MD5</code> - a fast, broken hash - with no salt, and stored in <code>shared_prefs/pinDetails.xml</code>. Verification is also performed client-side: <code>isPinCorrect()</code> compares the entered PIN's MD5 against the stored value.</td></tr>
     <tr><th>Impact</th><td>An attacker who reads the stored hash recovers the PIN offline almost instantly, defeating the PIN gate protecting the invoice screen. Because the check is client-side, a rooted attacker could also bypass it directly by editing the stored value or hooking the comparison.</td></tr>
     <tr><th>Evidence</th><td><code>hashPIN()</code> in <code>owasp.sat.agoat.AccessControlIssue1Activity</code> calls <code>MessageDigest.getInstance("MD5")</code> with no salt and stores the digest in <code>pinDetails.xml</code>. A pulled hash resolved back to the set PIN offline in seconds.</td></tr>
@@ -1213,7 +1217,7 @@ $pt = $aes.CreateDecryptor().TransformFinalBlock($ct, 0, $ct.Length)
   reach.</p>
   <table class="finding">
     <tr><th>Title</th><td>Client-side biometric authentication bypass (AndroGoat)</td></tr>
-    <tr><th>Severity</th><td><strong>Medium</strong>. The biometric gate is enforced entirely on the device with no cryptographic binding, so a Frida hook that reroutes the failure/cancel callbacks into the success path reaches the protected screen with no valid fingerprint. It requires attacker control of the device (root plus a running Frida), so it isn't remotely exploitable; it rises if the unlocked screen exposes data the server should re-gate, and falls toward Informational if that content is useless without a server-validated session.</td></tr>
+    <tr><th>Severity</th><td><strong>Medium</strong> &middot; CVSS 4.6 <code>(AV:P/AC:L/PR:N/UI:N/S:U/C:H/I:N/A:N)</code>. The biometric gate is enforced entirely on the device with no cryptographic binding, so a Frida hook that reroutes the failure/cancel callbacks into the success path reaches the protected screen with no valid fingerprint. It requires attacker control of the device (root plus a running Frida), so it isn't remotely exploitable; it rises if the unlocked screen exposes data the server should re-gate, and falls toward Informational if that content is useless without a server-validated session.</td></tr>
     <tr><th>Description</th><td><code>BioMetricAuthActivity</code> uses <code>BiometricPrompt</code>, but <code>onAuthenticationSucceeded</code> only shows a Toast and dialog - no <code>CryptoObject</code>, no Keystore key - and <code>authenticate(promptInfo)</code> is called with no crypto object. Success is a cosmetic UI action, not a cryptographic unlock.</td></tr>
     <tr><th>Impact</th><td>On a device the attacker controls, the biometric gate provides no protection; the protected screen opens after a cancelled or failed biometric.</td></tr>
     <tr><th>Evidence</th><td>A Frida hook rerouting <code>onAuthenticationFailed</code> / <code>onAuthenticationError</code> to <code>onAuthenticationSucceeded</code> produced the "Authentication succeeded!" screen after tapping Cancel.</td></tr>
@@ -1223,7 +1227,7 @@ $pt = $aes.CreateDecryptor().TransformFinalBlock($ct, 0, $ct.Length)
   </table>
   <table class="finding">
     <tr><th>Title</th><td>Login credentials stored recoverably on the device (InsecureBankv2)</td></tr>
-    <tr><th>Severity</th><td><strong>Medium</strong>. The cached username and password are recoverable by anyone with access to the app sandbox (root, a backup, or forensic access): the username is only Base64-encoded, and the password is AES-encrypted with a key and IV hardcoded in the app, so both reverse offline to the real login. Not remotely exploitable on its own, but it yields working account credentials.</td></tr>
+    <tr><th>Severity</th><td><strong>Medium</strong> &middot; CVSS 4.6 <code>(AV:P/AC:L/PR:N/UI:N/S:U/C:H/I:N/A:N)</code>. The cached username and password are recoverable by anyone with access to the app sandbox (root, a backup, or forensic access): the username is only Base64-encoded, and the password is AES-encrypted with a key and IV hardcoded in the app, so both reverse offline to the real login. Not remotely exploitable on its own, but it yields working account credentials.</td></tr>
     <tr><th>Description</th><td>On login, InsecureBankv2 caches the credentials in <code>shared_prefs/mySharedPreferences.xml</code>. <code>EncryptedUsername</code> is plain Base64; <code>superSecurePassword</code> is AES-256-CBC using a hardcoded key (<code>"This is the super secret key 123"</code>) and an all-zero IV, both found in <code>CryptoClass</code>.</td></tr>
     <tr><th>Impact</th><td>An attacker with device access recovers the victim's real banking username and password with no server compromise.</td></tr>
     <tr><th>Evidence</th><td><code>EncryptedUsername=ZGluZXNo</code> decoded to <code>dinesh</code>; <code>superSecurePassword</code> decrypted with the hardcoded key and zero IV back to the real password.</td></tr>
@@ -1233,7 +1237,7 @@ $pt = $aes.CreateDecryptor().TransformFinalBlock($ct, 0, $ct.Length)
   </table>
   <table class="finding">
     <tr><th>Title</th><td>Hardcoded cloud credential in the app binary (AndroGoat)</td></tr>
-    <tr><th>Severity</th><td><strong>Low</strong> in this lab (the key is a dummy value in a public training app), but the pattern is <strong>Critical</strong>: a live AWS secret access key embedded in a shipped app grants anyone who decompiles it programmatic access to whatever the key's IAM identity allows - remotely, with no device access.</td></tr>
+    <tr><th>Severity</th><td><strong>Low</strong> &middot; CVSS 4.0 base <code>(AV:L/AC:L/PR:N/UI:N/S:U/C:L/I:N/A:N)</code> in this lab (the key is a dummy value in a public training app), but the pattern is <strong>Critical</strong> &middot; CVSS 9.1 <code>(AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:N)</code>: a live AWS secret access key embedded in a shipped app grants anyone who decompiles it programmatic access to whatever the key's IAM identity allows - remotely, with no device access.</td></tr>
     <tr><th>Description</th><td><code>HardCodeActivity</code> contains a hardcoded <code>aws_secret_access_key</code> string literal, recoverable by decompiling the APK.</td></tr>
     <tr><th>Impact</th><td>Anyone with the APK extracts the key with a single static search. A live key would mean full cloud-account compromise (data exfiltration, resource abuse, billing).</td></tr>
     <tr><th>Evidence</th><td><code>aws_secret_access_key = "OviCwsFN..."</code> found in <code>owasp.sat.agoat.HardCodeActivity</code> via a keyword search in jadx.</td></tr>
@@ -1527,7 +1531,7 @@ adb logcat -d | findstr /i "insecure broadcast password sms updated changed"</co
   authorizes and how hard it is to reach, not to how scary the label sounds.</p>
   <table class="finding">
     <tr><th>Title</th><td>Improper export of authenticated Activities (InsecureBankv2)</td></tr>
-    <tr><th>Severity</th><td><strong>Medium</strong>. Post-authentication screens (<code>PostLogin</code>, <code>DoTransfer</code>, <code>ViewStatement</code>) are exported with no permission guard, so any installed app can launch them directly with <code>am start</code>, skipping the login flow. Device-local rather than remote, and it rises if a launched action screen operates without a valid session.</td></tr>
+    <tr><th>Severity</th><td><strong>Medium</strong> &middot; CVSS 6.2 <code>(AV:L/AC:L/PR:N/UI:N/S:U/C:H/I:N/A:N)</code>. Post-authentication screens (<code>PostLogin</code>, <code>DoTransfer</code>, <code>ViewStatement</code>) are exported with no permission guard, so any installed app can launch them directly with <code>am start</code>, skipping the login flow. Device-local rather than remote, and it rises if a launched action screen operates without a valid session.</td></tr>
     <tr><th>Description</th><td>The manifest marks the post-login activities <code>android:exported="true"</code> with no <code>android:permission</code>. The screens assume they are only reached after the app's own login flow.</td></tr>
     <tr><th>Impact</th><td>Any app deep-jumps a user to the authenticated dashboard and its sensitive action screens with no credentials.</td></tr>
     <tr><th>Evidence</th><td><code>adb shell am start -n com.android.insecurebankv2/.PostLogin</code> rendered the dashboard with no login; the manifest shows <code>exported="true"</code> for those activities.</td></tr>
@@ -1537,7 +1541,7 @@ adb logcat -d | findstr /i "insecure broadcast password sms updated changed"</co
   </table>
   <table class="finding">
     <tr><th>Title</th><td>Exported Content Provider: data disclosure and SQL injection (InsecureBankv2)</td></tr>
-    <tr><th>Severity</th><td><strong>Medium</strong>, rising to <strong>High</strong> once the injection is weaponized to extract the credential table (covered next section). The provider is exported with no read permission and builds its query by string concatenation, so any app reads it and can inject SQL.</td></tr>
+    <tr><th>Severity</th><td><strong>Medium</strong> &middot; CVSS 6.2 <code>(AV:L/AC:L/PR:N/UI:N/S:U/C:H/I:N/A:N)</code>, rising to <strong>High</strong> once the injection is weaponized to extract the credential table (covered next section). The provider is exported with no read permission and builds its query by string concatenation, so any app reads it and can inject SQL.</td></tr>
     <tr><th>Description</th><td><code>TrackUserContentProvider</code> is <code>exported="true"</code> with no permission and concatenates the selection into a raw query against the backing <code>names</code> table instead of using bound parameters.</td></tr>
     <tr><th>Impact</th><td>Any app reads the provider without authentication; the injectable selection allows reads beyond the intended row, and ultimately of other tables.</td></tr>
     <tr><th>Evidence</th><td><code>content query</code> dumped rows with no auth; a selection of <code>name='dinesh'</code> produced a SQLite error leaking <code>SELECT * FROM names WHERE (name=dinesh)</code>; a tautology <code>name='x' or '1'='1'</code> returned every row.</td></tr>
@@ -1547,7 +1551,7 @@ adb logcat -d | findstr /i "insecure broadcast password sms updated changed"</co
   </table>
   <table class="finding">
     <tr><th>Title</th><td>Exported Broadcast Receiver: unauthenticated password change and credential exfiltration (InsecureBankv2)</td></tr>
-    <tr><th>Severity</th><td><strong>High</strong>. <code>MyBroadCastReceiver</code> is exported with no permission and performs a state-changing action (password reset) plus SMSes the credential, all from unvalidated extras, so any installed app can seize the account and exfiltrate to an attacker-chosen number.</td></tr>
+    <tr><th>Severity</th><td><strong>High</strong> &middot; CVSS 7.7 <code>(AV:L/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:N)</code>. <code>MyBroadCastReceiver</code> is exported with no permission and performs a state-changing action (password reset) plus SMSes the credential, all from unvalidated extras, so any installed app can seize the account and exfiltrate to an attacker-chosen number.</td></tr>
     <tr><th>Description</th><td><code>onReceive()</code> reads <code>phonenumber</code> and <code>newpass</code> extras, changes the account password, and sends an SMS via <code>SmsManager</code>, without authenticating the sender of the broadcast.</td></tr>
     <tr><th>Impact</th><td>Any app silently resets the victim's password to an attacker-known value and sends it out of band. The old password is additionally leaked to logcat.</td></tr>
     <tr><th>Evidence</th><td><code>adb shell am broadcast -n .../.MyBroadCastReceiver --es phonenumber 5556 --es newpass attackerpass</code> produced the logcat line <code>Updated Password from: &lt;old&gt; to: attackerpass</code>, and the SMS path engaged.</td></tr>
@@ -1557,7 +1561,7 @@ adb logcat -d | findstr /i "insecure broadcast password sms updated changed"</co
   </table>
   <table class="finding">
     <tr><th>Title</th><td>Externally reachable deep link bypasses a client-side gate and logs its secret (AllSafe)</td></tr>
-    <tr><th>Severity</th><td><strong>Medium</strong>. <code>DeepLinkTask</code> is exported and <code>BROWSABLE</code> and validates the <code>key</code> parameter against a hardcoded resource string, so any web page can pass the gate; what it unlocks here is a lab congrats screen, but the pattern would be Critical guarding a real action.</td></tr>
+    <tr><th>Severity</th><td><strong>Medium</strong> &middot; CVSS 4.3 <code>(AV:N/AC:L/PR:N/UI:R/S:U/C:L/I:N/A:N)</code>. <code>DeepLinkTask</code> is exported and <code>BROWSABLE</code> and validates the <code>key</code> parameter against a hardcoded resource string, so any web page can pass the gate; what it unlocks here is a lab congrats screen, but the pattern would be Critical guarding a real action.</td></tr>
     <tr><th>Description</th><td>The handler compares the <code>key</code> query parameter to <code>getString(R.string.key)</code>, a value baked into the APK's resources, and the check runs client-side. It also logs the full incoming URI.</td></tr>
     <tr><th>Impact</th><td>An attacker reads the key from the binary and fires the deep link from any web page a victim taps, defeating the gate with no device access; the secret is additionally disclosed to logcat.</td></tr>
     <tr><th>Evidence</th><td><code>adb shell am start -W -a android.intent.action.VIEW -d "allsafe://infosecadventures/congrats?key=&lt;recovered&gt;"</code> produced the success state; logcat showed <code>D ALLSAFE Action: ... Data: allsafe://...?key=...</code>.</td></tr>
@@ -1567,7 +1571,7 @@ adb logcat -d | findstr /i "insecure broadcast password sms updated changed"</co
   </table>
   <table class="finding">
     <tr><th>Title</th><td>Unsafe WebView: local file disclosure and arbitrary script execution (AllSafe)</td></tr>
-    <tr><th>Severity</th><td><strong>Medium</strong> (top of range). <code>VulnerableWebView</code> renders attacker-supplied content with JavaScript enabled and <code>setAllowFileAccess(true)</code>, so a <code>file://</code> payload reads the app's private credential file and raw HTML executes script. Delivery is manual here, and it rises if the loaded URL can be driven from outside via an intent or deep link.</td></tr>
+    <tr><th>Severity</th><td><strong>Medium</strong> &middot; CVSS 6.5 <code>(AV:N/AC:L/PR:N/UI:R/S:U/C:H/I:N/A:N)</code> (top of range). <code>VulnerableWebView</code> renders attacker-supplied content with JavaScript enabled and <code>setAllowFileAccess(true)</code>, so a <code>file://</code> payload reads the app's private credential file and raw HTML executes script. Delivery is manual here, and it rises if the loaded URL can be driven from outside via an intent or deep link.</td></tr>
     <tr><th>Description</th><td>The challenge loads the on-screen payload with <code>loadUrl</code> (valid URL) or <code>loadData</code> (raw HTML), with <code>setJavaScriptEnabled(true)</code> and <code>setAllowFileAccess(true)</code> and no allow-listing of the loaded content.</td></tr>
     <tr><th>Impact</th><td>A supplied <code>file://</code> URL reads sandbox files (we recovered plaintext credentials from <code>user.xml</code>); arbitrary JavaScript runs inside the app's WebView.</td></tr>
     <tr><th>Evidence</th><td><code>&lt;script&gt;alert(...)&lt;/script&gt;</code> executed in the WebView; <code>file:///data/data/infosecadventures.allsafe/shared_prefs/user.xml</code> rendered the stored username and password.</td></tr>
@@ -1577,7 +1581,7 @@ adb logcat -d | findstr /i "insecure broadcast password sms updated changed"</co
   </table>
   <table class="finding">
     <tr><th>Title</th><td>Debuggable and backup-enabled build (InsecureBankv2)</td></tr>
-    <tr><th>Severity</th><td><strong>Low</strong>. The manifest sets <code>android:debuggable="true"</code> and <code>android:allowBackup="true"</code>, so a debugger can attach to the app and its private data can be pulled off the device with <code>adb backup</code>.</td></tr>
+    <tr><th>Severity</th><td><strong>Low</strong> &middot; CVSS 3.5 <code>(AV:P/AC:L/PR:N/UI:N/S:U/C:L/I:L/A:N)</code>. The manifest sets <code>android:debuggable="true"</code> and <code>android:allowBackup="true"</code>, so a debugger can attach to the app and its private data can be pulled off the device with <code>adb backup</code>.</td></tr>
     <tr><th>Description</th><td>Release-inappropriate flags left on in the manifest, expanding the attack surface around every other finding above.</td></tr>
     <tr><th>Impact</th><td>Easier runtime tampering (debugger attach) and offline data extraction (backup) on devices without root.</td></tr>
     <tr><th>Evidence</th><td>Both flags visible on the <code>&lt;application&gt;</code> element in <code>AndroidManifest.xml</code>.</td></tr>
@@ -1869,7 +1873,7 @@ adb shell "cat /data/local/tmp/mod.dat > /storage/emulated/0/Android/data/infose
   rather than to how alarming the label sounds.</p>
   <table class="finding">
     <tr><th>Title</th><td>SQL injection in the local login query (AllSafe)</td></tr>
-    <tr><th>Severity</th><td><strong>Medium</strong>. The login query is built by string concatenation, so a payload in the username field bypasses authentication and dumps every row of the <code>user</code> table. Local (the attacker must be at the screen), which keeps it out of High, but it fully defeats the login and discloses all stored credentials.</td></tr>
+    <tr><th>Severity</th><td><strong>Medium</strong> &middot; CVSS 4.6 <code>(AV:P/AC:L/PR:N/UI:N/S:U/C:H/I:N/A:N)</code>. The login query is built by string concatenation, so a payload in the username field bypasses authentication and dumps every row of the <code>user</code> table. Local (the attacker must be at the screen), which keeps it out of High, but it fully defeats the login and discloses all stored credentials.</td></tr>
     <tr><th>Description</th><td>The SQL Injection challenge runs <code>rawQuery("select * from user where username = '" + input + "' and password = '" + md5(...) + "'", null)</code>. The username is concatenated unescaped, so <code>' OR '1'='1' -- </code> comments out the password check and returns all rows.</td></tr>
     <tr><th>Impact</th><td>Authentication bypass plus disclosure of every username and password hash in the table.</td></tr>
     <tr><th>Evidence</th><td>The <code>rawQuery</code> line in jadx; the payload returning the <code>admin</code> row; and a direct <code>sqlite3</code> read of the <code>user</code> table confirming the full contents.</td></tr>
@@ -1879,7 +1883,7 @@ adb shell "cat /data/local/tmp/mod.dat > /storage/emulated/0/Android/data/infose
   </table>
   <table class="finding">
     <tr><th>Title</th><td>Unsalted MD5 password hashing (AllSafe)</td></tr>
-    <tr><th>Severity</th><td><strong>Low</strong> on its own, but it compounds the SQLi above: passwords are stored as fast, unsalted MD5, so the hashes dumped by the injection crack instantly (this one is trivially <code>admin</code>).</td></tr>
+    <tr><th>Severity</th><td><strong>Low</strong> &middot; CVSS 2.4 <code>(AV:P/AC:L/PR:N/UI:N/S:U/C:L/I:N/A:N)</code> on its own, but it compounds the SQLi above: passwords are stored as fast, unsalted MD5, so the hashes dumped by the injection crack instantly (this one is trivially <code>admin</code>).</td></tr>
     <tr><th>Description</th><td>The challenge hashes the password with unsalted MD5 before storing/comparing it. MD5 is fast and unsalted, so recovered hashes fall to rainbow tables or brute force.</td></tr>
     <tr><th>Impact</th><td>Any password hash recovered (for example via the SQLi) is recovered in plaintext almost immediately.</td></tr>
     <tr><th>Evidence</th><td>The dumped hash <code>21232f...</code> is the well-known MD5 of <code>admin</code>.</td></tr>
@@ -1889,7 +1893,7 @@ adb shell "cat /data/local/tmp/mod.dat > /storage/emulated/0/Android/data/infose
   </table>
   <table class="finding">
     <tr><th>Title</th><td>SQL injection in an exported content provider (InsecureBankv2)</td></tr>
-    <tr><th>Severity</th><td><strong>High</strong> as a capability. The exported provider concatenates the selection into its query, so a UNION injection reads arbitrary tables in the database with no permission, cross-app. Concrete impact here is limited because the exposed database only holds a low-value <code>names</code> table, but the vulnerability itself is cross-app arbitrary read.</td></tr>
+    <tr><th>Severity</th><td><strong>High</strong> as a capability &middot; CVSS 6.8 <code>(AV:L/AC:L/PR:N/UI:N/S:U/C:H/I:L/A:N)</code>. The exported provider concatenates the selection into its query, so a UNION injection reads arbitrary tables in the database with no permission, cross-app. Concrete impact here is limited because the exposed database only holds a low-value <code>names</code> table, but the vulnerability itself is cross-app arbitrary read.</td></tr>
     <tr><th>Description</th><td><code>TrackUserContentProvider</code> builds <code>SELECT * FROM names WHERE (&lt;selection&gt;) ORDER BY name</code> by concatenation. Closing the paren and appending a <code>UNION SELECT</code> against <code>sqlite_master</code> enumerates the whole schema; a UNION against any table reads it.</td></tr>
     <tr><th>Impact</th><td>Any zero-permission app on the device can enumerate and read the provider's entire database, not just the intended table.</td></tr>
     <tr><th>Evidence</th><td>The dummy UNION (<code>1=0) UNION SELECT 1,2 --</code>) confirming the break-out; the <code>sqlite_master</code> dump listing every table; and the targeted <code>FROM names</code> read.</td></tr>
@@ -1899,7 +1903,7 @@ adb shell "cat /data/local/tmp/mod.dat > /storage/emulated/0/Android/data/infose
   </table>
   <table class="finding">
     <tr><th>Title</th><td>Insecure deserialization enabling privilege escalation (AllSafe)</td></tr>
-    <tr><th>Severity</th><td><strong>Medium</strong>. The app makes an authorization decision from the <code>role</code> field of an object it deserializes from a user-writable file, with no signing or server check. Tampering the file escalates author to editor. Local (needs storage access), and worse if the object drove a real privilege or a gadget chain.</td></tr>
+    <tr><th>Severity</th><td><strong>Medium</strong> &middot; CVSS 4.6 <code>(AV:P/AC:L/PR:N/UI:N/S:U/C:N/I:H/A:N)</code>. The app makes an authorization decision from the <code>role</code> field of an object it deserializes from a user-writable file, with no signing or server check. Tampering the file escalates author to editor. Local (needs storage access), and worse if the object drove a real privilege or a gadget chain.</td></tr>
     <tr><th>Description</th><td><code>ObjectSerialization</code> writes a <code>User</code> object (role <code>ROLE_AUTHOR</code>) to <code>getExternalFilesDir()/user.dat</code>, then on Load deserializes it and grants access if <code>role.equals("ROLE_EDITOR")</code>. The role is trusted straight from the file.</td></tr>
     <tr><th>Impact</th><td>An attacker who can write the file (external storage) sets any role and is trusted as that role on load, bypassing the intended author/editor control.</td></tr>
     <tr><th>Evidence</th><td>Flipping <code>ROLE_AUTHOR</code> to <code>ROLE_EDITOR</code> in <code>user.dat</code> (overwriting the app-owned file in place to keep its SELinux label) produced "Good job!" and a Toast showing <code>role='ROLE_EDITOR'</code>.</td></tr>
@@ -1942,20 +1946,545 @@ adb shell "cat /data/local/tmp/mod.dat > /storage/emulated/0/Android/data/infose
   <h2 id="reverse-engineering-anti-tamper">Ch.8 - Reverse Engineering &amp; Anti-Tamper</h2>
   <p class="secmeta">MASVS: RESILIENCE &nbsp;&middot;&nbsp; Mobile Top 10: <a href="android.html#m7" class="risk">M7</a></p>
 
-  <p>[ Frida instrumentation, root/tamper detection and bypass, obfuscation, patching. ]</p>
+  <p>In this chapter we will be utilizing all of our currently learned skills. We will open a compiled app,
+  read what it doesn't want us to read, rewrite what it does, and disable any methods the app is using to try
+  to stop us. Everything here maps to the MASTG <a href="android.html#m7" class="risk">MASVS-RESILIENCE</a>
+  tests: anti-tampering, anti-static-analysis, anti-dynamic-analysis, and device-binding.</p>
 
-  <div class="shot-todo">SCREENSHOT - Frida hook / bypass</div>
+  <h3>Concept</h3>
+  <p>Reverse engineering an app usually breaks down into two skills:</p>
+  <ul>
+    <li><strong>a. Read / modify the binary (the content).</strong> We want to see what secrets are inside, and whether we can change behavior: make a check pass, unlock a feature, or reveal a key. Toolkit: <a href="tools.html#jadx">jadx</a>, <a href="tools.html#apktool">apktool</a>/smali, <a href="tools.html#ghidra">Ghidra</a>, radare2, <a href="tools.html#frida">Frida</a>.</li>
+    <li><strong>b. Defeat self-defense (the access).</strong> If the app refuses to run rooted, hooked, or debugged, how do we switch those checks off? Toolkit: Frida, objection, smali patching, native patching.</li>
+  </ul>
+  <p>During a real engagement we usually do (b) first, so we can unlock (a).</p>
+  <div class="concept-sub">
+    <span class="sub-lbl">common self-defense checks</span>
+    <ul>
+      <li><strong>Root / jailbreak detection</strong> - looks for <code>su</code>, Magisk, Cydia, writable system paths; exits or hides functionality if found.</li>
+      <li><strong>Anti-Frida / anti-instrumentation</strong> - scans for the frida-server port (default 27042), the string <code>frida</code> in <code>/proc/self/maps</code>, named pipes, or the gadget library.</li>
+      <li><strong>Anti-debug</strong> - Android: <code>Debug.isDebuggerConnected()</code>, <code>TracerPid</code> in <code>/proc/self/status</code>. iOS: <code>ptrace(PT_DENY_ATTACH)</code>, <code>sysctl</code> checks.</li>
+      <li><strong>Integrity / anti-tamper</strong> - verifies the APK signature or a checksum of itself, so a repackaged build refuses to run.</li>
+      <li><strong>Obfuscation and string encryption</strong> - not a runtime check, but it slows static reading; you defeat it by decrypting strings at runtime instead.</li>
+    </ul>
+  </div>
+  <p>Note: the cert pinning we bypassed in Chapter 2 is itself a binary protection - anti-tamper applied to
+  the network channel. The Frida hooking we used in Chapter 2 and Chapter 6 is the same tool we will use to
+  flip root checks here. Conceptually nothing is new, just new methods to learn and try.</p>
 
-  <table class="finding">
-    <tr><th>Title</th><td>[ finding name ]</td></tr>
-    <tr><th>Severity</th><td>[ ... ]</td></tr>
-    <tr><th>Description</th><td>[ ... ]</td></tr>
-    <tr><th>Impact</th><td>[ ... ]</td></tr>
-    <tr><th>Evidence</th><td>[ ... ]</td></tr>
-    <tr><th>MASTG</th><td>[ ... ]</td></tr>
-    <tr><th>Mobile Top 10</th><td>[ ... ]</td></tr>
-    <tr><th>Remediation</th><td>[ ... ]</td></tr>
+  <h3>Exploit 1 - Root Detection Bypass (AllSafe)</h3>
+  <p>For our first exploit, let's go to the Root Detection challenge in AllSafe and see what happens when we
+  check root.</p>
+  <figure><img src="images/AllSafe/ch91.png" alt="AllSafe Root Detection challenge reporting not rooted"></figure>
+  <p>It says root is already not detected? That's odd, right? We have root through <code>adb root</code>, don't
+  we?</p>
+  <div class="note insight">
+    <span class="lbl">adb root is not the same as a rooted device</span>
+    <code>adb root</code> just restarts the adb daemon (<code>adbd</code>) as the root user, so our shell over
+    adb has root. That is a debug feature of the emulator's userdebug image. What an app means by "rooted" is
+    completely different: apps scan for the artifacts a real rooting leaves behind - a <code>su</code> binary
+    in paths like <code>/system/xbin/su</code>, the Magisk app/files, <code>test-keys</code> in the build, and
+    so on. A standard Google AVD with <code>adb root</code> has none of those artifacts, so when AllSafe scans
+    it finds nothing and reports "root not detected." Our adb is root-capable, but the device doesn't look
+    rooted to an app. Both things are true at once.
+  </div>
+  <p>So let's see what the <code>RootDetection</code> class in jadx is checking for. Based on what we find, we
+  can decide how to run our exploit.</p>
+  <p><strong>Step 1 - open jadx and find <code>RootDetection</code>.</strong></p>
+  <figure><img src="images/AllSafe/ch92.png" alt="RootDetection class showing new RootBeer(context).isRooted()"></figure>
+  <p>The code tells us the check is one line: <code>new RootBeer(context).isRooted()</code>. RootBeer is a
+  popular open-source root-detection library, and the app trusts its boolean directly. So the app's entire
+  defense is a single client-side library call with nothing backing it up. Our device currently has no
+  artifacts RootBeer scans for, so it returns "not detected."</p>
+  <p><strong>Step 2 - hook <code>RootBeer.isRooted</code>.</strong> We hook this specifically because it's the
+  decision point in the code. The <code>if</code> branches solely on the return value, so whatever we make
+  that method return is the app's verdict. The check only runs when we tap Check Root, not at startup. Unlike
+  the biometric bypass (where the callback loaded when the screen opened and we had to spawn first), the app is
+  already running and RootBeer is loaded before we tap, so we can attach, then tap.</p>
+  <pre><code>Java.perform(function () {
+  var FORCE = false;   // false = bypass (not detected) ; true = show "rooted!"
+  var RootBeer = Java.use('com.scottyab.rootbeer.RootBeer');
+  RootBeer.isRooted.implementation = function () {
+    console.log('[+] RootBeer.isRooted() intercepted -> returning ' + FORCE);
+    return FORCE;
+  };
+});</code></pre>
+  <figure><img src="images/AllSafe/ch93.png" alt="the Frida hook script for RootBeer.isRooted"></figure>
+  <p><strong>Step 3 - prove we can force detection ON and OFF with our hook.</strong></p>
+  <p><strong>Step A - force detection ON.</strong> Set <code>FORCE</code> to <code>true</code> in the file,
+  re-run, and tap Check Root. It should now say "Sorry, your device is rooted!"</p>
+  <figure><img src="images/AllSafe/ch94.png" alt="app showing Sorry your device is rooted after forcing true"></figure>
+  <p>On the left we changed <code>FORCE = false</code> to <code>FORCE = true</code> and re-ran our saved
+  script; the value in the file is what controls the result. On the right, the app shows the "rooted!" message
+  highlighted in the red box, and Frida logs that it intercepted <code>RootBeer.isRooted()</code>. Our
+  emulator isn't actually rooted, so this proves the message is driven entirely by our hooked return, not by
+  reality.</p>
+  <p><strong>Step B - the bypass: force detection OFF.</strong> Change <code>FORCE</code> back to
+  <code>false</code>, re-run, and tap Check Root. We get "root is not detected."</p>
+  <figure><img src="images/AllSafe/ch95.png" alt="app showing root not detected after forcing false"></figure>
+  <p>Same method, opposite verdicts, entirely under our control. The file handles everything itself, so we
+  never need to type anything into the Frida prompt to invoke it.</p>
+
+  <h3>Exploit 2 - Smali Patch (AllSafe)</h3>
+  <p>With this patch we will edit the app's own code and re-sign it, so the change is permanent without Frida's
+  intervention.</p>
+  <p><strong>Step 1 - open the Smali Patch challenge and tap Check.</strong></p>
+  <figure><img src="images/AllSafe/ch9smali1.png" alt="Smali Patch challenge showing firewall is down"></figure>
+  <p>It says "Firewall is down, try harder!" when we tap. Like almost everything we've been doing, let's go
+  into jadx.</p>
+  <p><strong>Step 2 - read the logic in jadx.</strong></p>
+  <figure><img src="images/AllSafe/ch9smali2.png" alt="SmaliPatch code with the Firewall enum and INACTIVE assignment"></figure>
+  <p>So what do we see here?</p>
+  <ul>
+    <li>Lines 16-19 define a <code>Firewall</code> that can be either ACTIVE or INACTIVE.</li>
+    <li>Line 24 - when the screen loads, the app automatically sets the firewall to <code>INACTIVE</code>. This is hardwired.</li>
+    <li>Lines 37-42 - if the firewall is <code>ACTIVE</code>, it shows "good job."</li>
+  </ul>
+  <p>So as long as we open the app and hit the button, it will always fail. The outcome is decided by a single
+  value baked into the app.</p>
+  <p><strong>Step 3 - decode the APK to smali.</strong> jadx only reads Java. <a href="tools.html#apktool">apktool</a>
+  disassembles the dex into smali (editable assembly), decodes the resources and manifest, and can rebuild.
+  Since we cannot recompile the decompiled Java, we edit smali and reassemble.</p>
+  <pre><code>apktool d allsafe.apk -o allsafe_patched</code></pre>
+  <figure><img src="images/AllSafe/ch9smali3.png" alt="apktool decoding the APK"></figure>
+  <p><strong>Step 4 - find the smali file.</strong> Because AllSafe is multidex, the class lands in one of the
+  <code>smali_classesN</code> folders. jadx showed us <code>classes4.dex</code>, so it's likely there. We need
+  the exact path before editing.</p>
+  <pre><code>Get-ChildItem -Recurse -Filter SmaliPatch.smali .\allsafe_patched</code></pre>
+  <figure><img src="images/AllSafe/ch9smali4.png" alt="locating SmaliPatch.smali under smali_classes4"></figure>
+  <p><strong>Step 5 - edit the smali file.</strong> Similar to the previous challenge, we change one word from
+  <code>INACTIVE</code> to <code>ACTIVE</code> in that file.</p>
+  <pre><code>code "C:\Users\Anthonby\Desktop\allsafe_patched\smali_classes4\infosecadventures\allsafe\challenges\SmaliPatch.smali"</code></pre>
+  <figure><img src="images/AllSafe/ch9smali5.png" alt="editing the sget-object INACTIVE line in smali"></figure>
+  <p>We search for <code>INACTIVE</code> and find our line:</p>
+  <pre><code>sget-object v1, Linfosecadventures/allsafe/challenges/SmaliPatch$Firewall;-&gt;INACTIVE:Linfosecadventures/allsafe/challenges/SmaliPatch$Firewall;</code></pre>
+  <p><code>sget-object</code> means "get a static object and drop it into a register" - the compiled form of
+  <code>firewall = Firewall.INACTIVE</code>. By repointing it at <code>ACTIVE</code>, the variable the app
+  checks now holds ACTIVE, so the later <code>equals(ACTIVE)</code> is finally true. After changing
+  <code>-&gt;INACTIVE:</code> to <code>-&gt;ACTIVE:</code>, we save and close.</p>
+  <p><strong>Step 6 - rebuild.</strong></p>
+  <pre><code>apktool b allsafe_patched -o allsafe-patched.apk</code></pre>
+  <p>This reassembles our edited smali back into a dex and repackages the whole APK.</p>
+  <figure><img src="images/AllSafe/ch9smali6.png" alt="apktool rebuilding the patched APK"></figure>
+  <p><strong>Step 7 - align the zip entries.</strong></p>
+  <pre><code>zipalign -p -f 4 allsafe-patched.apk allsafe-aligned.apk</code></pre>
+  <p>We align the zip entries to 4-byte boundaries. Android requires this for a valid v2 signature and to
+  memory-map resources efficiently. We must do this before signing.</p>
+  <p><strong>Step 8 - make a signing key (one-time) and sign it.</strong></p>
+  <pre><code>keytool -genkey -v -keystore lab.keystore -alias labkey -keyalg RSA -keysize 2048 -validity 10000 -storepass labpass -keypass labpass -dname "CN=lab, O=lab, C=US"</code></pre>
+  <figure><img src="images/AllSafe/ch9smali7.png" alt="creating the keystore and signing with apksigner"></figure>
+  <p>Here we make the key, sign with <a href="tools.html#apksigner">apksigner</a>, then verify (ignore the wall
+  of warnings - they're just about metadata files not covered by the old v1 JAR signature, and appear on almost
+  every re-signed APK).</p>
+  <pre><code>Verifies
+v1 scheme: true
+v2 scheme: true
+v3 scheme: true</code></pre>
+  <p>These confirm the patched APK is validly signed.</p>
+  <p><strong>Step 9 - re-install.</strong> We uninstall the older version of AllSafe, then install our patched,
+  signed version. (The new self-signed key won't match the original signer, so Android refuses an in-place
+  update - removing it first sidesteps the mismatch.)</p>
+  <figure><img src="images/AllSafe/ch9smali8.png" alt="uninstall and install the patched APK"></figure>
+  <p><strong>Step 10 - check the firewall.</strong> Back in the Smali Patch challenge, tap Check.</p>
+  <figure><img src="images/AllSafe/ch9smali9.png" alt="Firewall is now activated good job"></figure>
+  <p>Nice, it worked. So how was this different from our first exploit? In Exploit 1, Frida changed the
+  behavior live and reversibly, in memory, with nothing on disk. In this exploit we changed the APK
+  permanently, and it installed and ran with a self-signed key, which tells us there is no integrity check.</p>
+
+  <h3>Exploit 3 - Native Library (AllSafe)</h3>
+  <p>Open AllSafe's Native Library challenge to get started.</p>
+  <figure><img src="images/AllSafe/ch9native1.png" alt="Native Library challenge"></figure>
+  <p>The challenge tells us a native library is being used to validate the password.</p>
+  <p><strong>Step 1 - read jadx.</strong></p>
+  <figure><img src="images/AllSafe/ch9native2.png" alt="native checkPassword declaration and loadLibrary"></figure>
+  <p>The highlighted parts show the logic is native (as the challenge suggests). There's nothing to read in the
+  Java - it just calls into the <code>.so</code>. It tells us where to look next (the binary) and what function
+  to find.</p>
+  <p><strong>Step 2 - grab the <code>.so</code>.</strong> When we decoded the APK earlier, apktool already
+  extracted the native libraries, so let's find them.</p>
+  <pre><code>Get-ChildItem -Recurse -Filter libnative_library.so .\allsafe_patched\lib</code></pre>
+  <figure><img src="images/AllSafe/ch9native3.png" alt="native library files per architecture"></figure>
+  <p>We see the library under several architectures. Which do we choose? We'll use the <code>arm64-v8a</code>
+  copy. The <code>.so</code> is the actual compiled code, apktool already unpacked it, and the source is the
+  same across arch folders, so any works; arm64 is the real-device default and Ghidra decompiles it cleanly.</p>
+  <p><strong>Step 3 - open it in Ghidra and find the function.</strong> Ghidra turns raw machine code back into
+  readable C. The JNI naming convention (<code>Java_&lt;pkg&gt;_&lt;class&gt;_&lt;method&gt;</code>) is how a
+  native method maps to its C function, so that's the exact symbol to open. Launch <code>ghidraRun.bat</code>,
+  select New Project, then File &gt; Import File.</p>
+  <figure><img src="images/AllSafe/ch9native4.png" alt="Ghidra new project"></figure>
+  <figure><img src="images/AllSafe/ch9native5.png" alt="Ghidra import file"></figure>
+  <p>Choose <code>libnative_library.so</code> and say Yes to analyze it.</p>
+  <figure><img src="images/AllSafe/ch9native6.png" alt="Ghidra analyzing the library"></figure>
+  <p>After analysis, search the Functions / Symbol Tree filter for <strong>checkPassword</strong>. The export is
+  <code>Java_infosecadventures_allsafe_challenges_NativeLibrary_checkPassword</code>, and we can see one called
+  <code>checkPass</code> on the left. Double-click it to see the decompiled C on the right.</p>
+  <figure><img src="images/AllSafe/ch9native7.png" alt="decompiled checkPass showing hardcoreEncryption and the compare"></figure>
+  <p>Here is the important part of <code>checkPass</code>:</p>
+  <ol>
+    <li><code>hardcoreEncryption(param_1, param_2)</code> transforms our input (the typed password) into an encoded form. (We should confirm this by reading <code>hardcoreEncryption</code> itself, judging off the name for now.)</li>
+    <li><code>FUN_0011ea38(abStack_30, "8&gt;;.98.(9.?")</code> compares that transformed input against the literal string <code>"8&gt;;.98.(9.?"</code>. <code>FUN_0011ea38</code> is the C++ <code>std::string</code> equality check.</li>
+  </ol>
+  <p>So <code>"8&gt;;.98.(9.?"</code> is not the password - it is the password after encoding. The check is
+  <code>encode(ourInput) == "8&gt;;.98.(9.?"</code>. To find the password we reverse that encoding, but first
+  let's confirm what <code>hardcoreEncryption</code> actually does.</p>
+  <p><strong>Step 4 - reverse the encoding and recover the password.</strong></p>
+  <figure><img src="images/AllSafe/ch9native8.png" alt="decompiled hardcoreEncryption showing the XOR loop and supersecret literal"></figure>
+  <ul>
+    <li>Line 20 shows the password in plaintext: <code>basic_string&lt;&gt;(abStack_30,"supersecret")</code> - the secret sitting right there.</li>
+    <li>Line 30: <code>*pbVar4 = bVar1 ^ 0x4b;</code> - the entire "hardcore encryption" is a one-byte XOR (each character XOR 0x4B). This transforms our input into the encoded form.</li>
+    <li>Lines 24-31 (blue box) walk every character and XOR each one, so it's applied to the whole string, not just once.</li>
+  </ul>
+  <p><code>hardcoreEncryption</code> reads our typed input (line 21, <code>jstring2string</code>), then loops
+  over each character and XORs it with <code>0x4B</code> (line 30). That XORed result is what
+  <code>checkPass</code> compares against the fixed string. So the app never compares our raw input - it
+  compares <code>input ^ 0x4B</code> to a stored encoded value. Reversing the literal (XOR each byte by 0x4B)
+  gives back <code>supersecret</code>, which the plaintext literal on line 20 confirms.</p>
+  <p><strong>Step 5 - enter the password into the app.</strong></p>
+  <figure><img src="images/AllSafe/ch9native9.png" alt="Excellent work after entering supersecret"></figure>
+  <p>After typing <code>supersecret</code> and tapping Check, we get the success message.</p>
+  <p><strong>Alternative Step 6 - bypass with Frida.</strong> If we'd rather defeat the check than read it, hook
+  the native method to always return true.</p>
+  <pre><code>Java.perform(function () {
+  var N = Java.use('infosecadventures.allsafe.challenges.NativeLibrary');
+  N.checkPassword.implementation = function (pw) {
+    console.log('[+] checkPassword("' + pw + '") -> forcing true');
+    return true;
+  };
+});</code></pre>
+  <p><strong>Step 7 - run Frida and the challenge.</strong></p>
+  <pre><code>frida -U -f infosecadventures.allsafe -l bypass.js</code></pre>
+  <figure><img src="images/AllSafe/ch9native10.png" alt="Excellent work with any password via the Frida bypass"></figure>
+  <p>Even with a one-character password we get the "That's it! Excellent work!" message.</p>
+
+  <h3>Hook vs Patch guidelines</h3>
+  <table class="reftable">
+    <thead><tr><th>Use Frida hooking when...</th><th>Use patch + repackage when...</th></tr></thead>
+    <tbody>
+      <tr><td>You want a fast, reversible change while exploring.</td><td>You need a standalone build with no laptop attached.</td></tr>
+      <tr><td>The app has a signature integrity check (patching would trip it).</td><td>The app has strong anti-Frida defenses that block hooking.</td></tr>
+      <tr><td>You're observing values (decrypt outputs, return values) live.</td><td>You want to persist a change across reboots or hand it off.</td></tr>
+    </tbody>
   </table>
+
+  <div class="note">
+    <span class="lbl">a note on string deobfuscation and native checks</span>
+    On tougher levels and real apps you hit two complications. <strong>Encrypted strings:</strong> obfuscators
+    store secrets as ciphertext and decrypt them at runtime, so grepping the DEX finds nothing. Don't break the
+    crypto statically - let the app decrypt for you by hooking the decryption routine and logging every
+    plaintext it produces. The app becomes your oracle. <strong>Native (<code>lib*.so</code>) checks:</strong>
+    higher UnCrackable levels and most production apps push detection into a C/C++ library. Pull the
+    <code>.so</code> and disassemble it in Ghidra (decompiled C) or radare2 (<code>r2 -A libfoo.so</code>,
+    <code>afl~check</code>, <code>pdf</code>). From there you either hook the exported JNI function with Frida
+    and override the return, or patch the bytes in the <code>.so</code> and repackage.
+  </div>
+  <div class="note">
+    <span class="lbl">anti-Frida (documented, not reproduced here)</span>
+    Some apps scan for Frida: a listener on port 27042, the string <code>frida</code> in
+    <code>/proc/self/maps</code>, or the gadget's named pipe. None of the AllSafe challenges ship a Frida
+    detector, so this is documented for completeness. Evasions, roughly by effort: run frida-server on a
+    non-default port (<code>frida-server -l 0.0.0.0:8888</code>) and connect with <code>frida -H</code>; rename
+    the frida-server binary/process; use the Frida gadget embedded in the app instead of a server; or hook the
+    scanning function itself to filter out lines mentioning frida. (The OWASP UnCrackable Level 3 is the
+    hands-on target for a real anti-Frida and integrity check, a planned separate write-up.)
+  </div>
+
+  <h3>Exploit 4 - Secure Flag Bypass (AllSafe)</h3>
+  <p><strong>Step 1 - open the challenge and take a screenshot.</strong></p>
+  <figure><img src="images/AllSafe/ch9flag1.png" alt="Secure Flag Bypass challenge"></figure>
+  <p>The challenge is to screenshot its page. It tells us <code>MainActivity</code> uses the secure window
+  flag, which prevents sensitive data from showing in screenshots.</p>
+  <pre><code>adb shell screencap -p /sdcard/shot.png
+adb pull /sdcard/shot.png "$env:USERPROFILE\Desktop\shot.png"</code></pre>
+  <p>When we take a screenshot via adb and open <code>shot.png</code>, it's pure black. Our goal is to be able
+  to capture the challenge screen as we see it with our own eyes.</p>
+  <p><strong>Step 2 - read jadx to understand what's happening.</strong> The challenge told us to check
+  <code>MainActivity</code>, but what if we were testing an app that didn't hold our hand? Let's follow our
+  first instinct and open the <code>SecureFlagBypass</code> challenge code.</p>
+  <figure><img src="images/AllSafe/ch9flag2.png" alt="SecureFlagBypass fragment only inflates a layout"></figure>
+  <p>This is not a lot of code. It doesn't do anything special - it only inflates a layout. So the code blocking
+  our screenshot is at a higher level.</p>
+  <p><strong>Look at <code>MainActivity</code>.</strong></p>
+  <figure><img src="images/AllSafe/ch9flag3.png" alt="MainActivity setFlags 8192 8192"></figure>
+  <p>On line 27 we see <code>getWindow().setFlags(8192, 8192);</code>. <code>setFlags(flags, mask)</code> sets
+  the bits selected by <code>mask</code> to the values in <code>flags</code>. Both are 8192 (0x2000 =
+  FLAG_SECURE), so it switches FLAG_SECURE on. That single line is why every screen, including this challenge,
+  can't be screenshotted. Good lesson: the mechanism lived in <code>MainActivity</code>, not in the challenge
+  fragment we'd expect.</p>
+  <p><strong>Step 3 - write the hook.</strong> The goal is to intercept <code>Window.setFlags</code> and strip
+  the <code>0x2000</code> bit before passing it through, so FLAG_SECURE is never set and we can screenshot
+  freely.</p>
+  <pre><code>Java.perform(function () {
+  var FLAG_SECURE = 0x2000;
+  var Window = Java.use('android.view.Window');
+  Window.setFlags.overload('int', 'int').implementation = function (flags, mask) {
+    console.log('[+] setFlags intercepted -> stripping FLAG_SECURE');
+    return this.setFlags(flags &amp; ~FLAG_SECURE, mask);
+  };
+  Window.addFlags.overload('int').implementation = function (flags) {
+    return this.addFlags(flags &amp; ~FLAG_SECURE);
+  };
+});</code></pre>
+  <p><strong>Step 4 - spawn so the hook lands before the window is created.</strong> Because FLAG_SECURE is set
+  at screen creation, the hook must be in place first - the same timing rule as the root check in Exploit 1.
+  This is why we use <code>-f</code>, which spawns the app fresh from Frida instead of attaching to a running
+  one.</p>
+  <pre><code>frida -U -f infosecadventures.allsafe -l "$env:USERPROFILE\secure-flag-bypass.js"</code></pre>
+  <figure><img src="images/AllSafe/ch9flag4.png" alt="Frida intercepting setFlags and stripping FLAG_SECURE"></figure>
+  <p>We can see it intercept FLAG_SECURE above.</p>
+  <pre><code>adb shell screencap -p /sdcard/shot.png
+adb pull /sdcard/shot.png "$env:USERPROFILE\Desktop\shot.png"</code></pre>
+  <figure><img src="images/AllSafe/ch9flag5.png" alt="the pulled screenshot now viewable"></figure>
+  <p>With the hook active, the same capture method now returns the real screen instead of black.</p>
+
+  <h3>So what did we find in Reverse Engineering?</h3>
+  <p>The findings written up as report entries. A note on severity that matters here: binary protections are
+  <strong>defense-in-depth</strong>. Their absence, on its own, is almost always <strong>Low or
+  Informational</strong> - a missing lock on an inside door. They earn a higher rating only when a weak
+  protection directly enables a concrete higher-impact bug; then you report that chain, with the protection as
+  the enabler.</p>
+  <table class="finding">
+    <tr><th>Title</th><td>Root detection relies solely on a client-side library (AllSafe)</td></tr>
+    <tr><th>Severity</th><td><strong>Low / Informational</strong> &middot; CVSS 2.4 <code>(AV:P/AC:L/PR:N/UI:N/S:U/C:N/I:L/A:N)</code>. Root detection is a single call to the client-side RootBeer library with no anti-hooking or server-side reinforcement, so a one-line Frida hook on <code>RootBeer.isRooted()</code> controls the result entirely. On a device the attacker owns it provides no real protection.</td></tr>
+    <tr><th>Description</th><td><code>RootDetection</code> branches on <code>new RootBeer(context).isRooted()</code> and trusts the boolean directly. Hooking that method forces detection on or off at will.</td></tr>
+    <tr><th>Impact</th><td>On its own, none beyond lowering the cost of running on a rooted device. It matters as an enabler when it gates access to something the app is trying to protect.</td></tr>
+    <tr><th>Evidence</th><td>A Frida hook forcing <code>isRooted()</code> to <code>false</code> produced "root is not detected," and to <code>true</code> produced "your device is rooted!" on the same clean emulator.</td></tr>
+    <tr><th>MASVS / MASTG</th><td>MASVS-RESILIENCE-1 &middot; MASTG anti-tampering / environment-integrity tests &middot; CWE-919</td></tr>
+    <tr><th>Mobile Top 10</th><td><a href="android.html#m7" class="risk">M7</a> - Insufficient Binary Protections</td></tr>
+    <tr><th>Remediation</th><td>Use multiple independent signals, respond by degrading gracefully rather than a single bypassable boolean, and never rely on client-side detection as a security boundary. See the Remediation section below.</td></tr>
+  </table>
+  <table class="finding">
+    <tr><th>Title</th><td>No integrity / anti-tamper verification (AllSafe)</td></tr>
+    <tr><th>Severity</th><td><strong>Low / Informational</strong> &middot; CVSS 2.0 <code>(AV:P/AC:H/PR:N/UI:N/S:U/C:N/I:L/A:N)</code> on its own, but it's the enabler that lets an attacker ship a trojanized build. A repackaged APK signed with a self-signed key installs and runs with modified logic, with no signature or checksum check to detect the tampering.</td></tr>
+    <tr><th>Description</th><td>Editing one smali instruction (INACTIVE to ACTIVE), rebuilding with apktool, and re-signing with a throwaway key produced a working APK that ran unmodified. The app never verifies its own signature.</td></tr>
+    <tr><th>Impact</th><td>An attacker can patch client-side logic permanently and distribute the modified app; combined with the other bypasses here, those changes could ship without Frida.</td></tr>
+    <tr><th>Evidence</th><td>The Smali Patch challenge returned "Firewall is now activated, good job!" from the patched, re-signed build with nothing attached at runtime.</td></tr>
+    <tr><th>MASVS / MASTG</th><td>MASVS-RESILIENCE-2 &middot; MASTG anti-tampering tests &middot; CWE-354 (missing integrity check)</td></tr>
+    <tr><th>Mobile Top 10</th><td><a href="android.html#m7" class="risk">M7</a> - Insufficient Binary Protections</td></tr>
+    <tr><th>Remediation</th><td>Verify the app's own signature/checksum at runtime (Play Integrity or a signing-cert check) so a repackaged build fails. See the Remediation section below.</td></tr>
+  </table>
+  <table class="finding">
+    <tr><th>Title</th><td>Sensitive check and secret in a native library with trivial obfuscation (AllSafe)</td></tr>
+    <tr><th>Severity</th><td><strong>Low / Medium</strong> &middot; CVSS 4.0 <code>(AV:L/AC:L/PR:N/UI:N/S:U/C:L/I:N/A:N)</code>. Moving the password check into a native <code>.so</code> and "encrypting" it only raises the reading cost slightly: the transform is a one-byte XOR and the password also ships in cleartext, so it's recovered by reading the binary and is hookable at runtime.</td></tr>
+    <tr><th>Description</th><td><code>checkPassword</code> is a JNI method in <code>libnative_library.so</code>. <code>hardcoreEncryption</code> XORs the input with <code>0x4B</code> and compares it to a stored encoded value; the plaintext password <code>supersecret</code> is also embedded as a literal.</td></tr>
+    <tr><th>Impact</th><td>The secret is fully recoverable (Ghidra) and the check is fully bypassable (Frida), so native placement provides no real secrecy.</td></tr>
+    <tr><th>Evidence</th><td>Ghidra decompilation showed the XOR-0x4B loop and the <code>"supersecret"</code> literal; entering <code>supersecret</code> succeeded, and a Frida hook forcing <code>checkPassword</code> to true accepted any input.</td></tr>
+    <tr><th>MASVS / MASTG</th><td>MASVS-RESILIENCE-2 / MASVS-CRYPTO &middot; CWE-798 (hardcoded credential) &middot; CWE-327 (weak obfuscation)</td></tr>
+    <tr><th>Mobile Top 10</th><td><a href="android.html#m7" class="risk">M7</a> (with <a href="android.html#m1" class="risk">M1</a> for the embedded secret)</td></tr>
+    <tr><th>Remediation</th><td>Never ship a secret in the binary, obfuscated or not; validate credentials server-side. Native code is not a hiding place. See the Remediation section below.</td></tr>
+  </table>
+  <table class="finding">
+    <tr><th>Title</th><td>Screenshot protection (FLAG_SECURE) is bypassable (AllSafe)</td></tr>
+    <tr><th>Severity</th><td><strong>Low / Informational</strong> &middot; CVSS 2.4 <code>(AV:P/AC:L/PR:N/UI:N/S:U/C:L/I:N/A:N)</code>. FLAG_SECURE is a client-side window flag; hooking <code>Window.setFlags</code> strips it, so the anti-screenshot control is defeated on a device the attacker controls.</td></tr>
+    <tr><th>Description</th><td><code>MainActivity</code> sets <code>getWindow().setFlags(8192, 8192)</code> (FLAG_SECURE). A Frida hook removes the <code>0x2000</code> bit before it is applied.</td></tr>
+    <tr><th>Impact</th><td>Sensitive screens the app tried to keep out of screenshots/recordings can be captured. Minor, privacy-adjacent.</td></tr>
+    <tr><th>Evidence</th><td>A capture without the hook was black; with the <code>setFlags</code> hook active, the same capture returned the real screen.</td></tr>
+    <tr><th>MASVS / MASTG</th><td>MASVS-RESILIENCE / MASVS-PRIVACY &middot; MASTG anti-dynamic-analysis tests</td></tr>
+    <tr><th>Mobile Top 10</th><td><a href="android.html#m7" class="risk">M7</a> (privacy-adjacent, <a href="android.html#m6" class="risk">M6</a>)</td></tr>
+    <tr><th>Remediation</th><td>Treat FLAG_SECURE as a deterrent, not a guarantee; don't render truly sensitive data in a way that relies on it alone. See the Remediation section below.</td></tr>
+  </table>
+
+  <h3>Remediation</h3>
+  <p>Binary protections are layers that raise the attacker's cost. They are never the only control, and
+  remediation should always anchor back to the underlying data or auth bug they were meant to protect.</p>
+  <ul>
+    <li><strong>Environment integrity (root/JB):</strong> detect with multiple independent signals, not one <code>File.exists</code> or a single library call; respond by degrading gracefully rather than flipping one bypassable boolean.</li>
+    <li><strong>Anti-tampering:</strong> verify the app's own signature/checksum at runtime; on Android use Play Integrity or a signing-cert check so a repackaged build fails.</li>
+    <li><strong>Anti-dynamic-analysis:</strong> add anti-debug (<code>TracerPid</code> / <code>isDebuggerConnected</code>) and anti-Frida checks; treat FLAG_SECURE as one deterrent among several.</li>
+    <li><strong>Anti-static-analysis:</strong> obfuscation and runtime string encryption slow reading, but never rely on them as security by themselves - the AllSafe "hardcore encryption" (a one-byte XOR) is exactly this mistake.</li>
+  </ul>
+  <p><strong>General M7 controls, most important first:</strong></p>
+  <ul>
+    <li><span class="risk">Most applicable here:</span> never store a secret in the client (Ghidra read it straight out); enforce the real check server-side, so bypassing the client control gains nothing.</li>
+    <li>Layer protections and expect a determined attacker on a device they own to bypass any single one.</li>
+    <li>Reserve a high severity for cases where a weak protection demonstrably unlocks a real finding, and report that chain.</li>
+  </ul>
+
+  <h3>Chapter Summary</h3>
+  <p>We used every skill from the earlier chapters against a compiled app and its self-defense:</p>
+  <ul>
+    <li><strong>Root detection bypass</strong> (AllSafe) - a one-line Frida hook on <code>RootBeer.isRooted()</code> forced the verdict either way.</li>
+    <li><strong>Smali patch</strong> (AllSafe) - edited one bytecode instruction, rebuilt, re-signed, and installed a permanently altered app with no integrity check to stop us.</li>
+    <li><strong>Native library</strong> (AllSafe) - read the password out of a <code>.so</code> in Ghidra (a one-byte XOR and a cleartext literal), and alternatively hooked the native check with Frida.</li>
+    <li><strong>Secure flag bypass</strong> (AllSafe) - stripped FLAG_SECURE with a Frida hook to capture a protected screen.</li>
+  </ul>
+  <p>The throughline: any check an app runs on a device we control is just code, and code can be read, rewritten,
+  or hooked. Binary protections raise the cost of an attack; they are not a boundary on their own, which is why
+  we rate them honestly (Low/Informational) unless they gate a real bug. For these same techniques on the
+  canonical OWASP UnCrackable crackmes, see my dedicated UnCrackable write-up (coming soon).</p>
+
+  <hr>
+
+  <!-- ==================== 09 - Report Writing ==================== -->
+  <h2 id="report-writing">Ch.9 - Report Writing</h2>
+  <p class="secmeta">MASVS: all categories converge here &nbsp;&middot;&nbsp; Mobile Top 10: every finding maps back to one entry</p>
+
+  <p>We're finally here, the last chapter. This has been a long write-up, but I hope you learned a lot while
+  reading it and got a taste of some of the skills and things I'm capable of. In fact, if you've read this far,
+  and if you're reading these words now, I'd like to thank you. This took a lot of my time to do the work, do
+  research, troubleshoot, take screenshots, and write it all out, so I appreciate it. If you're reading this
+  now, feel free to send me a message saying you read it and you'll get bonus points from me.</p>
+  <p>Anyway, let's get into report writing. When I was in the U.S. Navy, I had to write reports daily for the
+  medical providers I worked with. I actually love writing reports. Writing comprehensive, yet easy to
+  understand reports is essential for a ton of different jobs, and being good at it makes everyone's lives
+  easier.</p>
+  <p>The medical field is quite vast and has a lot of technical jargon, which required us to get really
+  efficient at succinctly explaining a complex concept without losing the important details, and breaking it
+  down into easy-to-understand terms for clients who may not have the technical experience or education we do.
+  Writing reports in cybersecurity is no different.</p>
+  <p>To a client, none of our work exists until it lands as a clear, reproducible, and honestly-rated finding a
+  developer can act on. Even if we find a critical bug, if the report is sloppy, hard to read, and confusing,
+  then we may as well not have taken the job to begin with. The moment we confirm a bug we should begin writing
+  the finding. We must capture the exact commands and screenshots, because re-deriving them from memory can be a
+  disaster.</p>
+
+  <h3>Anatomy of a finding (nine fields)</h3>
+  <p>Every professional finding is built from these same nine fields:</p>
+  <ol>
+    <li><strong>Title</strong> - impact-led and specific, like "Session token recoverable in cleartext from the app's sandbox." The reader should know the bug from the title alone.</li>
+    <li><strong>Severity + CVSS vector</strong> - one word, backed by a CVSS vector string. The vector shows our reasoning.</li>
+    <li><strong>Affected component</strong> - app name, package/bundle ID, version, platform, and the exact class/file/endpoint.</li>
+    <li><strong>Description</strong> - what the issue is and why it's a problem. Use plain English, explain the mechanism, not the play-by-play.</li>
+    <li><strong>Impact</strong> - concrete and business-relevant. What can the attacker do, and what could happen to the business?</li>
+    <li><strong>Steps to Reproduce</strong> - numbered, with commands that can be copied and pasted. A different tester on a different device must be able to redo it exactly.</li>
+    <li><strong>Evidence</strong> - screenshots, logs, file dumps, traffic. Prove it's real without leaking secrets.</li>
+    <li><strong>Remediation</strong> - actionable and dev-ready. A dev should be able to read the report, copy the steps, and fix the problem. Name the API for them, not "store it securely."</li>
+    <li><strong>References</strong> - MASVS category, MASTG test ID, CWE, and the OWASP Mobile Top 10 entry. These let devs verify our claims against a standard.</li>
+  </ol>
+  <div class="note insight">
+    <span class="lbl">what "reproducible" really means</span>
+    Good reproduction steps are so complete that a stranger could follow them with zero context. The classic
+    test is to write them like a recipe. If I asked you to document making a peanut butter and jelly sandwich
+    to that standard, it would read:
+<pre><code>1. Get two slices of bread, a jar of peanut butter, a jar of jelly, and a butter knife.
+2. Lay both slices flat on a plate.
+3. Open the peanut butter. Use the knife to spread an even layer across the top face of slice 1.
+4. Wipe the knife. Open the jelly. Spread an even layer across the top face of slice 2.
+5. Lift slice 2 and place it, spread-side down, on top of slice 1.
+6. Cut diagonally. Result: one PBJ sandwich.</code></pre>
+    No step assumes prior knowledge, every input is named, and the end state is stated. Your reproduction steps
+    for a bug should feel exactly this mechanical.
+  </div>
+
+  <h3>Honest severity - the attacker-model ladder</h3>
+  <p>The single most common mistake on mobile is when we over-rate. If we classify every bug as "High," then
+  what does "High" even really mean to the person reading the report? Before we choose a severity, we should
+  answer one question: what does exploitation require?</p>
+  <ul>
+    <li><strong>(a) Nothing / remote</strong> - a network request, a malicious link, a server flaw. Ceiling: High-Critical.</li>
+    <li><strong>(b) Network position</strong> - MITM on hostile Wi-Fi. Cleartext / broken-pinning issues. Ceiling: Medium-High.</li>
+    <li><strong>(c) A malicious app on the device</strong> - abusing an exported component or world-readable file. Ceiling: Low-Medium.</li>
+    <li><strong>(d) Rooted / jailbroken / forensic foothold</strong> - physical access plus root. Ceiling: Info-Medium.</li>
+  </ul>
+  <p>A token that can only be read after <code>su</code> on a rooted device sits at rung (d), which lands at
+  Medium at most, not High. State the precondition in the finding ("requires a rooted device") so the rating
+  defends itself. This is the exact discipline from the Reverse Engineering chapter: a bypass we only pulled
+  off because we rooted the device is not a remote break.</p>
+
+  <h3>The CVSS vector string</h3>
+  <p>CVSS (Common Vulnerability Scoring System) turns a bug into a number from 0.0 to 10.0, and the vector is
+  the shorthand that shows how we got there. It's us "showing our work." Take this example:</p>
+  <pre><code>CVSS:3.1/AV:P/AC:L/PR:N/UI:N/S:U/C:H/I:N/A:N   ->  4.6 (Medium)</code></pre>
+  <p>Each pair is a metric and a value. The base ones we'll use most:</p>
+  <ul>
+    <li><strong>AV - Attack Vector</strong>: how close the attacker must be. <code>N</code> network (remote), <code>A</code> adjacent (same LAN/Wi-Fi), <code>L</code> local (on the device), <code>P</code> physical. Here <code>P</code> - needs the physical/rooted device.</li>
+    <li><strong>AC - Attack Complexity</strong>: <code>L</code> low (just do it), <code>H</code> high (special conditions). Here <code>L</code>.</li>
+    <li><strong>PR - Privileges Required</strong>: <code>N</code> none, <code>L</code> low, <code>H</code> high. Here <code>N</code>.</li>
+    <li><strong>UI - User Interaction</strong>: <code>N</code> none, <code>R</code> the victim must do something. Here <code>N</code>.</li>
+    <li><strong>S - Scope</strong>: <code>U</code> unchanged, <code>C</code> changed (the bug breaks out into other components). Here <code>U</code>.</li>
+    <li><strong>C / I / A</strong> - impact on Confidentiality / Integrity / Availability: each <code>N</code> none, <code>L</code> low, <code>H</code> high. Here <code>C:H</code> (reads a sensitive token), <code>I:N</code>, <code>A:N</code>.</li>
+  </ul>
+  <p>Read that vector in English: needs physical access to the device, easy to do once you're there, no
+  privileges or user interaction needed, doesn't spread beyond the app, leaks highly sensitive data but doesn't
+  alter or break anything. Those choices compute to 4.6, which lands in the Medium band.</p>
+  <p>The score bands: <strong>0.0</strong> None, <strong>0.1-3.9</strong> Low, <strong>4.0-6.9</strong> Medium,
+  <strong>7.0-8.9</strong> High, <strong>9.0-10.0</strong> Critical.</p>
+  <p>Why it matters in a report: the word (Medium) is the headline, but the vector is the defense. When a client
+  pushes back with "why isn't this High?", we point at <code>AV:P</code>: it needs a rooted or physical
+  foothold, which is exactly the attacker-model ladder. It stops severity from being our opinion and makes it
+  reproducible, since anyone can plug our vector into a calculator and get the same number. That
+  <code>AV:P</code> versus <code>AV:N</code> distinction is the whole "rate honestly" lesson encoded in one
+  field.</p>
+  <div class="note">
+    <span class="lbl">don't compute it by hand</span>
+    Use the official FIRST CVSS 3.1 calculator (<a href="https://www.first.org/cvss/calculator/3.1">first.org/cvss/calculator/3.1</a>):
+    click the metric values and it gives you both the score and the vector string to paste into the finding.
+    Put the vector right next to the severity word in every finding
+    (<code>Severity: Medium | CVSS: 4.6 (AV:P/AC:L/...)</code>). It signals rigor and pre-empts the "how did you
+    get that rating" question.
+  </div>
+  <p>CVSS is only one of the four standards a finding leans on. For how it fits with CWE, MASVS / MASTG and the
+  Mobile Top 10 - and why severity is about what a bug <em>authorizes</em>, not how clever it is - see
+  <a href="android.html#scoring">Scoring &amp; reporting standards</a> in the concepts.</p>
+
+  <h3>Report flow (the document our client expects)</h3>
+  <ol>
+    <li><strong>Scope</strong> - what was tested: app, versions, platforms, backend in or out, dates, and the authorization basis.</li>
+    <li><strong>Methodology</strong> - the standards we worked to: OWASP MASVS (requirements) and MASTG (test procedures).</li>
+    <li><strong>Findings</strong> - each in the nine fields above, ordered by severity.</li>
+    <li><strong>Retest</strong> - after fixes, we re-run our reproduction steps and mark each Resolved, Partially resolved, or Open.</li>
+  </ol>
+
+  <h3>Executive summary</h3>
+  <p>This is where experience comes in. If you have ever spoken in front of senior leadership to explain a
+  situation or concept, you may know that speaking in themes and business language is the goal. We want them to
+  understand: what should we worry about, and what do we do first?</p>
+  <p><strong>Example of a bad executive summary:</strong></p>
+  <div class="note warn">
+    <span class="lbl">bad</span>
+    "During the assessment we identified 7 vulnerabilities: 2 High, 3 Medium, 2 Low. Finding 1 is a SQL
+    injection (CVSS 8.1, AV:N/AC:L). Finding 2 is insecure data storage in SharedPreferences (CWE-922). Finding
+    3 is a hooking bypass of RootBeer via Frida. Finding 4 is a WebView with setAllowFileAccess(true). We
+    recommend remediating all findings per the details below. Tools used: jadx, Frida, apktool, Burp Suite."
+  </div>
+  <p>Why it's bad:</p>
+  <ul>
+    <li>It's just a list of findings.</li>
+    <li>It's a list of CVSS and CWE numbers a CISO doesn't want to read.</li>
+    <li>It lists tool names nobody at that level cares about or may even know.</li>
+    <li>There is no attempt to translate the priority into business terms.</li>
+    <li>"Remediate all findings" is lazy and gives no clear, actionable steps.</li>
+  </ul>
+  <p><strong>Example of a good executive summary:</strong></p>
+  <div class="note insight">
+    <span class="lbl">good</span>
+    "In most respects the mobile application is well-built, but the protection of user credentials falls short
+    of platform best practice. Three of the findings shared a common theme: sensitive data, including login
+    credentials and session material, can be recovered from a device an attacker controls, because it is stored
+    without the protections Android provides for exactly this purpose. A fourth finding shows the app exposing
+    data to interception on untrusted networks such as public Wi-Fi. Individually these range from low to high
+    severity; together they mean a lost, stolen, or malicious-app-infected device is the most likely path to a
+    user account compromise. None of the issues require a sophisticated attacker, and all have well-understood,
+    low-cost fixes. We recommend prioritizing the credential-storage and network-exposure findings, detailed
+    below."
+  </div>
+  <p>Why it's good:</p>
+  <ul>
+    <li>Groups the findings into themes instead of a plain list.</li>
+    <li>Translates the risk into business terms ("a lost or stolen device is the likely path to account compromise").</li>
+    <li>Honest about severity without random numbers.</li>
+    <li>Ends with a clear priority a CISO can act on now.</li>
+    <li>CVSS, CWE, and tools are not mentioned. Those live in the findings section for the developers.</li>
+  </ul>
+
+  <h3>Evidence handling and redaction (non-negotiable)</h3>
+  <p>Never ship live secrets. A report gets emailed, printed, and stored, so a real token, password, or PAN
+  inside it is a breach you authored. Redact just enough to prove the point: keep the first four characters as a
+  fingerprint and mask the rest, like <code>eyJh[REDACTED]</code> or <code>4111[REDACTED]</code>, and blur
+  sensitive regions of screenshots. Keep customer data out of reports and screenshots entirely (phone numbers,
+  health information, and so on). The reader must believe the value was real and recoverable without ever
+  holding it.</p>
+
+  <h3>Conclusion</h3>
+  <p>That's the whole arc. We started by mapping an app's attack surface, then worked risk by risk through the
+  OWASP Mobile Top 10: intercepting traffic, prying open storage, breaking weak crypto, defeating auth gates,
+  walking through exported components, injecting into local sinks, and finally reverse engineering the binary
+  and its self-defense. This last chapter is what turns all of that into something a client can actually use,
+  and it's the skill that separates someone who can find a bug from someone a company can hire to report one.
+  The thread running through every chapter is the same: understand the mechanism, prove it plainly, and rate it
+  honestly. A finding you can defend calmly under pushback is worth more than a scary label you can't. If you
+  take one thing from this write-up, let it be that. Thank you again for reading, and if you'd like to see these
+  same techniques on the OWASP UnCrackable crackmes, or my other work, the rest of my write-ups are one click
+  away.</p>
 
   <p style="margin-top:32px">
     <a href="writeups.html">&larr; all write-ups</a> &nbsp;&middot;&nbsp;

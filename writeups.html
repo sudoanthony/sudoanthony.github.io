@@ -48,7 +48,7 @@
 
 <script src="data.js"></script>
 <script>
-  const platClass = p => /hack.?the.?box|htb/i.test(p || "") ? "htb" : /mobile/i.test(p || "") ? "mobile" : "thm";
+  const platClass = p => /hack.?the.?box|htb/i.test(p || "") ? "htb" : /mobile/i.test(p || "") ? "mobile" : /web/i.test(p || "") ? "web" : "thm";
   const diffClass = d => ({"very easy":"very-easy",easy:"easy",medium:"medium",hard:"hard",insane:"insane",practice:"practice"}[(d||"").toLowerCase()] || "medium");
   const esc = s => (s||"").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");
 
@@ -64,7 +64,7 @@
   }
 
   const sorted = [...WRITEUPS].sort((a,b) => (a.date < b.date ? 1 : -1));
-  const order = ["TryHackMe", "HackTheBox", "Mobile"];
+  const order = ["TryHackMe", "HackTheBox", "Mobile", "Web"];
   const present = order.filter(p => sorted.some(w => w.platform === p))
     .concat([...new Set(sorted.map(w => w.platform))].filter(p => !order.includes(p)));
 
@@ -85,7 +85,8 @@
     const sub = [diffPart, osPart, (w.category ? esc(w.category) : '')].filter(Boolean).join(' &middot; ');
     return '<a class="bx ' + platClass(w.platform) + '" href="' + w.url + '">' +
       '<div class="face">' + iconHtml(w) +
-        '<div class="nm">' + esc(w.title) + '</div>' +
+        '<div class="nm">' + esc(w.title) + (w.subtitle ? ':' : '') + '</div>' +
+        (w.subtitle ? '<div class="nm-sub">' + esc(w.subtitle) + '</div>' : '') +
         '<div class="sub">' + sub + '</div>' +
       '</div>' +
       '<div class="revwrap"><div class="rev">' +
@@ -99,11 +100,13 @@
     document.getElementById("groups").innerHTML = present.map(p => {
       const items = sorted.filter(w => w.platform === p);
       if (!items.length) return "";
+      const pc = platClass(p);
+      const logo = 'images/' + pc + '-logo.' + (pc === 'web' ? 'svg' : 'png');
       return '<div class="platform-head">' +
-          '<img class="plogo plogo-' + platClass(p) + '" src="images/' + platClass(p) + '-logo.png" alt="' + esc(p) + '" ' +
+          '<img class="plogo plogo-' + pc + '" src="' + logo + '" alt="' + esc(p) + '" ' +
             'onerror="this.style.display=\'none\';this.nextElementSibling.style.display=\'inline-flex\'">' +
           '<span class="plfallback" style="display:none;align-items:center;gap:10px">' +
-            '<span class="dot ' + platClass(p) + '"></span><span class="name">' + esc(p) + '</span></span>' +
+            '<span class="dot ' + pc + '"></span><span class="name">' + esc(p) + '</span></span>' +
           '<span class="count">' + items.length + (items.length===1?' write-up':' write-ups') + '</span>' +
         '</div>' +
         '<div class="grid">' + items.map(boxCard).join("") + '</div>';

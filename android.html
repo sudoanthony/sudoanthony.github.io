@@ -28,6 +28,7 @@
     <p class="toc-label">Android</p>
     <nav id="tocNav">
       <a href="#owasp-top-10" data-toc>OWASP Mobile Top 10</a>
+      <a href="#scoring" data-toc>Scoring &amp; reporting</a>
       <a href="#sandbox" data-toc>The sandbox</a>
       <a href="#apk" data-toc>The APK</a>
       <a href="#dex" data-toc>.dex files</a>
@@ -89,6 +90,82 @@
         <span class="lbl">2024 renumbering</span>
         If you see an older M-number that doesn't line up (storage as M2, for example), that is the 2016
         list. This guide uses the 2024 revision throughout.
+      </div>
+    </section>
+
+    <!-- ============ Scoring & reporting ============ -->
+    <section id="scoring" class="concept-block">
+      <p class="kicker">The language of a finding &middot; severity and mapping</p>
+      <h2>Scoring &amp; reporting standards</h2>
+      <div class="concept-sub">
+        <span class="sub-lbl">what it is</span>
+        <p>A finding is more than "this is broken." A professional report has to say <em>how bad</em> it is and
+        <em>what kind</em> of bug it is, in a language any reader - a developer, a manager, another tester -
+        reads the same way. Four standards do most of that work, and a good finding cites all four: <strong>CVSS</strong>
+        scores the severity, <strong>CWE</strong> names the weakness class, the <strong>OWASP Mobile Top 10</strong>
+        is the executive bucket, and <strong>MASVS / MASTG</strong> is the rigor layer that proves how it was tested.</p>
+      </div>
+      <div class="concept-sub">
+        <span class="sub-lbl">CVSS - severity as a number</span>
+        <p>The Common Vulnerability Scoring System turns a vulnerability into a 0.0 - 10.0 score and a
+        <strong>vector string</strong> that shows the work. The v3.1 base vector is eight metrics:</p>
+        <ul>
+          <li><strong>AV</strong> Attack Vector - where the attacker has to be: Network, Adjacent, Local, Physical.</li>
+          <li><strong>AC</strong> Attack Complexity - Low or High.</li>
+          <li><strong>PR</strong> Privileges Required - None, Low, High.</li>
+          <li><strong>UI</strong> User Interaction - None or Required.</li>
+          <li><strong>S</strong> Scope - does the bug stay in its component (Unchanged) or break out (Changed).</li>
+          <li><strong>C / I / A</strong> Confidentiality, Integrity, Availability impact - None, Low, High each.</li>
+        </ul>
+        <p>So <code>CVSS 9.1 (AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:N)</code> reads as "network-reachable, easy, no
+        privileges or interaction, high confidentiality and integrity loss." The score lands in a band:
+        <span style="color:var(--easy)">Low 0.1-3.9</span>, <span style="color:var(--medium)">Medium
+        4.0-6.9</span>, <span style="color:var(--hard)">High 7.0-8.9</span>, <span style="color:var(--insane)">Critical
+        9.0-10.0</span>. The <strong>base</strong> score describes the vulnerability on its own; the optional
+        <strong>environmental</strong> metrics adjust it for a specific deployment, which is how the same bug can
+        be a base 4.0 in a training app and contextually Low because it only gates a demo screen.</p>
+      </div>
+      <div class="concept-sub">
+        <span class="sub-lbl">CWE - the weakness class</span>
+        <p>The Common Weakness Enumeration is a numbered catalogue of <em>types</em> of bug. Where CVSS says how
+        bad, CWE says what kind: <strong>CWE-89</strong> SQL injection, <strong>CWE-532</strong> inserting
+        sensitive information into a log, <strong>CWE-798</strong> use of hardcoded credentials,
+        <strong>CWE-312</strong> cleartext storage of sensitive data. Citing the CWE lets a developer find the
+        standard fix without you re-explaining the whole class.</p>
+      </div>
+      <div class="concept-sub">
+        <span class="sub-lbl">OWASP Mobile Top 10 - the executive bucket</span>
+        <p>The <a href="#owasp-top-10">Top 10</a> is the one-line category a non-specialist understands: "this is
+        an M1, Improper Credential Usage." It is the right label for an executive summary, and the wrong level of
+        detail for the technical body, where MASTG test IDs carry the rigor.</p>
+      </div>
+      <div class="concept-sub">
+        <span class="sub-lbl">MASVS / MASTG - the rigor layer</span>
+        <p>The Mobile Application Security Verification Standard is the list of <em>requirements</em> a secure app
+        should meet, grouped into <strong>STORAGE, CRYPTO, AUTH, NETWORK, PLATFORM, CODE, RESILIENCE, PRIVACY</strong>.
+        The Mobile Application Security Testing Guide is the how-to, with numbered <strong>test IDs</strong>
+        (<code>MASTG-TEST-0001</code> and so on) for verifying each requirement. Quoting a MASVS group plus a MASTG
+        test ID in a finding shows exactly what control failed and how you validated it - the detail that separates
+        a senior report from a tool dump.</p>
+      </div>
+      <div class="concept-sub">
+        <span class="sub-lbl">how they fit together</span>
+        <p>One finding uses all four at once. A hardcoded live AWS key, for example: <strong>Mobile Top 10 M1</strong>
+        for the summary, <strong>MASVS-CRYPTO / MASTG</strong> for the how-tested detail, <strong>CWE-798</strong>
+        for the weakness class, and <strong>CVSS 9.1</strong> for the severity. Four lenses, one bug.</p>
+      </div>
+      <div class="note insight">
+        <span class="lbl">severity is what the bug authorizes, not what the bug is</span>
+        The same weakness can be Low or Critical depending on what it unlocks. A hardcoded key that gates a "you
+        win" screen is Low; the identical pattern holding a live API secret is Critical, because an attacker who
+        reads it can act as that identity remotely. Always tie the score to what the credential or bug actually
+        authorizes, not to how clever the bug is.
+      </div>
+      <div class="seen-in">
+        <span class="lbl">seen in</span>
+        <a href="writeup-allsafe.html">OWASP Mobile Top 10 2024</a> - every finding carries a CVSS vector, a
+        CWE class, a MASVS / MASTG mapping, and a Top 10 bucket, and the <a href="writeup-allsafe.html#report-writing">Report
+        Writing</a> chapter walks through building a finding this way.
       </div>
     </section>
 
@@ -377,7 +454,7 @@
       </div>
       <div class="seen-in">
         <span class="lbl">seen in</span>
-        <a href="writeup-allsafe.html">OWASP Mobile Top 10: Android</a> - a concatenated <code>rawQuery</code>
+        <a href="writeup-allsafe.html">OWASP Mobile Top 10 2024</a> - a concatenated <code>rawQuery</code>
         login, and a UNION-injectable exported content provider read via <code>sqlite_master</code>.
       </div>
     </section>
@@ -417,7 +494,7 @@
       </div>
       <div class="seen-in">
         <span class="lbl">seen in</span>
-        <a href="writeup-allsafe.html">OWASP Mobile Top 10: Android</a> - the same arbitrary-file-read primitive
+        <a href="writeup-allsafe.html">OWASP Mobile Top 10 2024</a> - the same arbitrary-file-read primitive
         via a WebView loading a <code>file://</code> path to the app's private prefs.
       </div>
     </section>
@@ -454,7 +531,7 @@
       </div>
       <div class="seen-in">
         <span class="lbl">seen in</span>
-        <a href="writeup-allsafe.html">OWASP Mobile Top 10: Android</a> - a serialized <code>User</code> object
+        <a href="writeup-allsafe.html">OWASP Mobile Top 10 2024</a> - a serialized <code>User</code> object
         written to storage; editing its role field escalated privileges on load.
       </div>
     </section>
@@ -488,7 +565,7 @@
       </div>
       <div class="seen-in">
         <span class="lbl">seen in</span>
-        <a href="writeup-allsafe.html">OWASP Mobile Top 10: Android</a> - a pushed tamper file was denied until
+        <a href="writeup-allsafe.html">OWASP Mobile Top 10 2024</a> - a pushed tamper file was denied until
         it was recreated by the app and overwritten in place.
       </div>
     </section>
@@ -520,7 +597,7 @@
       </div>
       <div class="seen-in">
         <span class="lbl">seen in</span>
-        <a href="writeup-allsafe.html">AllSafe</a> - <code>DeepLinkTask.onCreate</code> logs the full incoming deep-link URI with a <code>Log.d</code> call.
+        <a href="writeup-allsafe.html">OWASP Mobile Top 10 2024</a> - <code>DeepLinkTask.onCreate</code> logs the full incoming deep-link URI with a <code>Log.d</code> call.
       </div>
     </section>
 

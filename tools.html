@@ -92,7 +92,7 @@
           <p class="tc-what">Intercepting HTTP(S) proxy. Pause, read, and tamper with requests (Intercept), replay them (Repeater), and decode data. The Community edition is free.</p>
           <div class="tc-row"><span class="os">WIN / LINUX</span> installer from portswigger.net (bundled Java)</div>
           <div class="tc-row"><span class="os">USE</span> point the device/browser proxy at <code>127.0.0.1:8080</code>, then install Burp's CA</div>
-          <div class="tc-seen">seen in <a href="writeup-allsafe.html">OWASP Mobile Top 10: Android</a></div>
+          <div class="tc-seen">seen in <a href="writeup-allsafe.html">OWASP Mobile Top 10 2024</a></div>
         </div>
 
         <div class="toolcard cat-web" id="mitmproxy">
@@ -117,7 +117,7 @@
           <div class="tc-row"><span class="os">WIN</span> download the release zip, run <code>jadx-gui.bat</code></div>
           <div class="tc-row"><span class="os">LINUX</span> <code>sudo apt install jadx</code></div>
           <div class="tc-row"><span class="os">CMD</span> <code>jadx -d out app.apk</code></div>
-          <div class="tc-seen">seen in <a href="writeup-allsafe.html">OWASP Mobile Top 10: Android</a> &middot; concept: <a href="android.html#tools">jadx vs apktool</a></div>
+          <div class="tc-seen">seen in <a href="writeup-allsafe.html">OWASP Mobile Top 10 2024</a> &middot; concept: <a href="android.html#tools">jadx vs apktool</a></div>
         </div>
 
         <div class="toolcard cat-static" id="apktool">
@@ -126,7 +126,7 @@
           <div class="tc-row"><span class="os">WIN</span> jar + wrapper from apktool.org</div>
           <div class="tc-row"><span class="os">LINUX</span> <code>sudo apt install apktool</code></div>
           <div class="tc-row"><span class="os">CMD</span> <code>apktool d app.apk -o out</code></div>
-          <div class="tc-seen">seen in <a href="writeup-allsafe.html">OWASP Mobile Top 10: Android</a> &middot; concept: <a href="android.html#tools">jadx vs apktool</a></div>
+          <div class="tc-seen">seen in <a href="writeup-allsafe.html">OWASP Mobile Top 10 2024</a> &middot; concept: <a href="android.html#tools">jadx vs apktool</a></div>
         </div>
 
         <div class="toolcard cat-static" id="mobsf">
@@ -134,7 +134,7 @@
           <p class="tc-what">Mobile Security Framework. One-shot automated static analysis of an APK/IPA: manifest flags, secrets, trackers, and a score. A triage first pass, not the whole test.</p>
           <div class="tc-row"><span class="os">DOCKER</span> <code>docker run -it --rm -p 8000:8000 opensecurity/mobile-security-framework-mobsf</code></div>
           <div class="tc-row"><span class="os">HOSTED</span> <a href="https://mobsf.live">mobsf.live</a> (public/lab apps only, never a client binary)</div>
-          <div class="tc-seen">seen in <a href="writeup-allsafe.html">OWASP Mobile Top 10: Android</a></div>
+          <div class="tc-seen">seen in <a href="writeup-allsafe.html">OWASP Mobile Top 10 2024</a></div>
         </div>
 
       </div>
@@ -151,7 +151,7 @@
           <p class="tc-what">Ships the Android emulator and SDK. Create a Pixel virtual device on a <strong>Google APIs</strong> image (not Google Play) so you can get root.</p>
           <div class="tc-row"><span class="os">WIN / LINUX</span> installer from developer.android.com</div>
           <div class="tc-row"><span class="os">USE</span> Device Manager, new Pixel AVD, Google APIs image</div>
-          <div class="tc-seen">seen in <a href="writeup-allsafe.html">OWASP Mobile Top 10: Android</a> &middot; concept: <a href="android.html#sandbox">the sandbox</a></div>
+          <div class="tc-seen">seen in <a href="writeup-allsafe.html">OWASP Mobile Top 10 2024</a> &middot; concept: <a href="android.html#sandbox">the sandbox</a></div>
         </div>
 
         <div class="toolcard cat-runtime" id="adb">
@@ -161,7 +161,7 @@
           <div class="tc-row"><span class="os">LINUX</span> <code>sudo apt install android-tools-adb</code></div>
           <div class="tc-row"><span class="os">CMD</span> <code>adb devices</code> &middot; <code>adb pull</code> &middot; <code>adb logcat</code></div>
           <div class="tc-row"><span class="os">IPC</span> <code>am start</code> / <code>am broadcast</code> launch components; <code>content query</code> reads a provider</div>
-          <div class="tc-seen">seen in <a href="writeup-allsafe.html">OWASP Mobile Top 10: Android</a> &middot; concept: <a href="android.html#adb">adb</a></div>
+          <div class="tc-seen">seen in <a href="writeup-allsafe.html">OWASP Mobile Top 10 2024</a> &middot; concept: <a href="android.html#adb">adb</a></div>
         </div>
 
         <div class="toolcard cat-runtime" id="frida">
@@ -169,7 +169,7 @@
           <p class="tc-what">Runtime instrumentation. Injects into a running app and hooks functions: read arguments, change return values, dump decrypted data, bypass root and pinning checks.</p>
           <div class="tc-row"><span class="os">WIN / LINUX</span> <code>pip install frida-tools</code> + matching frida-server on device</div>
           <div class="tc-row"><span class="os">CMD</span> <code>frida-ps -U</code></div>
-          <div class="tc-seen">seen in <a href="writeup-allsafe.html">OWASP Mobile Top 10: Android</a> &middot; concept: <a href="android.html#frida">Frida</a></div>
+          <div class="tc-seen">seen in <a href="writeup-allsafe.html">OWASP Mobile Top 10 2024</a> &middot; concept: <a href="android.html#frida">Frida</a></div>
         </div>
 
         <div class="toolcard cat-runtime" id="objection">
@@ -177,7 +177,7 @@
           <p class="tc-what">A Frida-powered toolkit with ready-made commands, so you can hook common things (pinning, root checks, storage) without writing scripts on day one.</p>
           <div class="tc-row"><span class="os">WIN / LINUX</span> <code>pip install objection</code></div>
           <div class="tc-row"><span class="os">CMD</span> <code>objection -g PACKAGE explore</code></div>
-          <div class="tc-seen">seen in <a href="writeup-allsafe.html">OWASP Mobile Top 10: Android</a></div>
+          <div class="tc-seen">seen in <a href="writeup-allsafe.html">OWASP Mobile Top 10 2024</a></div>
         </div>
 
       </div>
@@ -194,7 +194,7 @@
           <p class="tc-what">Signs an APK so Android will install it. After patching and rebuilding with apktool, you re-sign with your own key. Supports the modern v2/v3 signature schemes.</p>
           <div class="tc-row"><span class="os">WIN / LINUX</span> Android SDK build-tools (add <code>build-tools\&lt;ver&gt;</code> to PATH)</div>
           <div class="tc-row"><span class="os">CMD</span> <code>apksigner sign --ks lab.keystore app.apk</code> &middot; <code>apksigner verify --verbose app.apk</code></div>
-          <div class="tc-seen">Reverse Engineering chapter (in progress)</div>
+          <div class="tc-seen">seen in <a href="writeup-allsafe.html">OWASP Mobile Top 10 2024</a></div>
         </div>
 
         <div class="toolcard cat-static" id="zipalign">
@@ -202,7 +202,7 @@
           <p class="tc-what">Aligns an APK's contents on 4-byte boundaries. Run it on a rebuilt APK before signing, so the v2 signature is valid and the app loads efficiently.</p>
           <div class="tc-row"><span class="os">WIN / LINUX</span> Android SDK build-tools (same folder as apksigner)</div>
           <div class="tc-row"><span class="os">CMD</span> <code>zipalign -p -f 4 in.apk out.apk</code></div>
-          <div class="tc-seen">Reverse Engineering chapter (in progress)</div>
+          <div class="tc-seen">seen in <a href="writeup-allsafe.html">OWASP Mobile Top 10 2024</a></div>
         </div>
 
         <div class="toolcard cat-static" id="keytool">
@@ -210,7 +210,7 @@
           <p class="tc-what">The JDK's key and keystore manager. Generate a throwaway self-signed keystore once, then use it with apksigner to sign repackaged lab APKs.</p>
           <div class="tc-row"><span class="os">WIN / LINUX</span> ships with the JDK (Adoptium / the one Android Studio bundles)</div>
           <div class="tc-row"><span class="os">CMD</span> <code>keytool -genkey -v -keystore lab.keystore -alias labkey -keyalg RSA -keysize 2048 -validity 10000</code></div>
-          <div class="tc-seen">Reverse Engineering chapter (in progress)</div>
+          <div class="tc-seen">seen in <a href="writeup-allsafe.html">OWASP Mobile Top 10 2024</a></div>
         </div>
 
         <div class="toolcard cat-static" id="ghidra">
@@ -218,7 +218,7 @@
           <p class="tc-what">Free reverse-engineering suite (NSA). Decompiles a native <code>lib*.so</code> to readable C so you can find and understand detection or check functions. GUI, easiest for reading logic.</p>
           <div class="tc-row"><span class="os">WIN / LINUX</span> release zip from github.com/NationalSecurityAgency/ghidra (needs a JDK, e.g. Adoptium 21)</div>
           <div class="tc-row"><span class="os">USE</span> run <code>ghidraRun.bat</code>, File &gt; Import the <code>.so</code>, auto-analyze, read the decompiled C</div>
-          <div class="tc-seen">Reverse Engineering chapter (in progress)</div>
+          <div class="tc-seen">seen in <a href="writeup-allsafe.html">OWASP Mobile Top 10 2024</a></div>
         </div>
 
         <div class="toolcard cat-static" id="radare2">
@@ -227,7 +227,7 @@
           <div class="tc-row"><span class="os">WIN</span> release zip from github.com/radareorg/radare2 (extract, add to PATH)</div>
           <div class="tc-row"><span class="os">LINUX</span> <code>git clone github.com/radareorg/radare2 &amp;&amp; sys/install.sh</code></div>
           <div class="tc-row"><span class="os">CMD</span> <code>r2 -A libfoo.so</code> then <code>afl</code>, <code>pdf @ sym.name</code></div>
-          <div class="tc-seen">Reverse Engineering chapter (in progress)</div>
+          <div class="tc-seen">seen in <a href="writeup-allsafe.html">OWASP Mobile Top 10 2024</a></div>
         </div>
 
       </div>
@@ -244,7 +244,7 @@
           <p class="tc-what">The primary target for this guide. An intentionally vulnerable Android app (Info Sec Adventures) with self-contained challenges across most mobile bug classes, from hardcoded secrets to certificate pinning.</p>
           <div class="tc-row"><span class="os">INSTALL</span> APK from github.com/t0thkr1s/allsafe releases, then <code>adb install allsafe.apk</code></div>
           <div class="tc-row"><span class="os">PKG</span> <code>infosecadventures.allsafe</code></div>
-          <div class="tc-seen">seen in <a href="writeup-allsafe.html">OWASP Mobile Top 10: Android</a></div>
+          <div class="tc-seen">seen in <a href="writeup-allsafe.html">OWASP Mobile Top 10 2024</a></div>
         </div>
 
         <div class="toolcard cat-runtime" id="androgoat">
@@ -252,7 +252,7 @@
           <p class="tc-what">An intentionally vulnerable Android app (Kotlin) with 20+ challenges. Used here for its working certificate-pinning screens to practice objection and Frida bypasses.</p>
           <div class="tc-row"><span class="os">INSTALL</span> APK from github.com/satishpatnayak/AndroGoat releases, then <code>adb install AndroGoat.apk</code></div>
           <div class="tc-row"><span class="os">PKG</span> <code>owasp.sat.agoat</code></div>
-          <div class="tc-seen">seen in <a href="writeup-allsafe.html">OWASP Mobile Top 10: Android</a></div>
+          <div class="tc-seen">seen in <a href="writeup-allsafe.html">OWASP Mobile Top 10 2024</a></div>
         </div>
 
         <div class="toolcard cat-runtime" id="insecurebankv2">
@@ -260,7 +260,7 @@
           <p class="tc-what">A vulnerable banking app with a real backend, so you can watch login and transfer requests travel. Used here for cleartext credentials and transfer-parameter tampering.</p>
           <div class="tc-row"><span class="os">INSTALL</span> clone github.com/dineshshetty/Android-InsecureBankv2, then <code>adb install InsecureBankv2.apk</code></div>
           <div class="tc-row"><span class="os">BACKEND</span> Python 2 Flask in <code>AndroLabServer/</code>: <code>python2 app.py</code> (serves :8888)</div>
-          <div class="tc-seen">seen in <a href="writeup-allsafe.html">OWASP Mobile Top 10: Android</a></div>
+          <div class="tc-seen">seen in <a href="writeup-allsafe.html">OWASP Mobile Top 10 2024</a></div>
         </div>
 
       </div>
@@ -277,7 +277,7 @@
           <p class="tc-what">Windows Subsystem for Linux. A lightweight Linux shell inside Windows, no full VM. Used here to run the InsecureBankv2 Python 2 backend (Ubuntu 22.04 still ships python2).</p>
           <div class="tc-row"><span class="os">WIN</span> <code>wsl --install</code> in an admin PowerShell, then reboot</div>
           <div class="tc-row"><span class="os">CMD</span> <code>wsl -d Ubuntu-22.04</code></div>
-          <div class="tc-seen">seen in <a href="writeup-allsafe.html">OWASP Mobile Top 10: Android</a></div>
+          <div class="tc-seen">seen in <a href="writeup-allsafe.html">OWASP Mobile Top 10 2024</a></div>
         </div>
 
         <div class="toolcard cat-util" id="cyberchef">
@@ -294,7 +294,7 @@
           <div class="tc-row"><span class="os">WIN</span> ships in the Android SDK platform-tools, or download from sqlite.org</div>
           <div class="tc-row"><span class="os">LINUX</span> <code>sudo apt install sqlite3</code></div>
           <div class="tc-row"><span class="os">CMD</span> <code>sqlite3 app.db ".tables"</code> &middot; <code>select * from t;</code></div>
-          <div class="tc-seen">seen in <a href="writeup-allsafe.html">OWASP Mobile Top 10: Android</a></div>
+          <div class="tc-seen">seen in <a href="writeup-allsafe.html">OWASP Mobile Top 10 2024</a></div>
         </div>
 
         <div class="toolcard cat-util" id="python">
@@ -303,7 +303,7 @@
           <div class="tc-row"><span class="os">WIN</span> <code>winget install Python.Python.3.12</code></div>
           <div class="tc-row"><span class="os">LINUX</span> preinstalled, or <code>sudo apt install python3</code></div>
           <div class="tc-row"><span class="os">CMD</span> <code>python -m http.server 8000</code> (serve a POC to the emulator at <code>10.0.2.2</code>)</div>
-          <div class="tc-seen">seen in <a href="writeup-allsafe.html">OWASP Mobile Top 10: Android</a></div>
+          <div class="tc-seen">seen in <a href="writeup-allsafe.html">OWASP Mobile Top 10 2024</a></div>
         </div>
 
       </div>
