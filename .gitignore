@@ -1,4 +1,8 @@
-# OS / filesystem junk
-.fuse_hidden*
-.DS_Store
-Thumbs.db
+# Word / Office temp and lock files
+~$*
+*.tmp
+
+# Personal job-application documents - keep OUT of the public site repo
+Anthony-Sciuto-*
+*Resume*.rtf
+*CoverLetter*.rtf
