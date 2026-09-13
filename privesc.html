@@ -1,0 +1,276 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Privilege Escalation - Concepts - Anthony</title>
+<meta name="description" content="Linux privilege escalation concepts - abusing root-run scheduled jobs (cron and systemd timers) and symlink attacks that redirect a privileged write into a root-only path.">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<nav class="nav"><div class="wrap">
+  <a class="brand" href="index.html">~/sudoanthony</a>
+  <div class="links">
+    <a href="writeups.html">write-ups</a>
+    <a href="vulns.html">vulns</a>
+    <a href="concepts.html">concepts</a>
+    <a href="tools.html">tools</a>
+    <a href="https://github.com/sudoanthony">github</a>
+  </div>
+</div></nav>
+
+<div class="concept-wrap">
+<div class="concept-layout">
+
+  <!-- ==================== SIDEBAR (scrollspy) ==================== -->
+  <aside class="concept-toc">
+    <p class="toc-label">Privilege Escalation</p>
+    <nav id="tocNav">
+      <a href="#scheduled-jobs" data-toc>Scheduled jobs</a>
+      <a href="#symlink" data-toc>Symlink attacks</a>
+      <a href="#tools" data-toc>Tools</a>
+    </nav>
+  </aside>
+
+  <!-- ==================== CONTENT ==================== -->
+  <div class="concept-content">
+
+    <p style="margin-bottom:4px"><a href="concepts.html" style="color:var(--text-3);font-size:13.5px">&larr; concepts</a></p>
+    <h1>Privilege Escalation</h1>
+    <p class="concept-intro">
+      Getting a foothold makes you <em>a</em> user; privilege escalation makes you <em>root</em>.
+      On Linux the recurring pattern isn't a single exploit - it's finding a place where something
+      already running with more power than you touches something you can influence. A script root
+      runs on a timer, a file root writes into a directory you own, a service that trusts a path
+      without checking it. The two concepts below are the ones Nexus turned on, and they pair
+      naturally: first you find the automated root job, then you turn <em>where</em> it writes
+      against it.
+    </p>
+
+    <!-- ============ Scheduled jobs ============ -->
+    <section id="scheduled-jobs" class="concept-block">
+      <p class="kicker">Automated root jobs · cron &amp; systemd timers</p>
+      <h2>Scheduled jobs</h2>
+
+      <div class="concept-sub">
+        <span class="sub-lbl">what it is</span>
+        <p>Most Linux boxes run tasks automatically on a schedule - backups, cleanups, sync
+        scripts. If one of those runs as <strong>root</strong> and touches anything you can
+        influence (a script you can edit, a file or directory you own, a relative path, a
+        shell wildcard on data you control), it's an escalation path. The job hands root's
+        privileges to whatever it operates on, and you supply that "whatever."</p>
+      </div>
+
+      <div class="concept-sub">
+        <span class="sub-lbl">how to find it - check BOTH schedulers</span>
+        <p>Cron and systemd timers are two separate systems, and it's easy to check one and miss
+        the other. Cover both:</p>
+        <p style="margin-top:8px"><strong>cron:</strong> <code>cat /etc/crontab</code>,
+        <code>ls -la /etc/cron.d/ /etc/cron.daily/</code>, and per-user
+        <code>crontab -l</code>. The system tables have a <em>username column</em> - you're
+        hunting a non-default line that runs as root.</p>
+        <p style="margin-top:8px"><strong>systemd timers:</strong>
+        <code>systemctl list-timers --all</code> shows what fires and when. For anything
+        interesting, read its <code>.timer</code> and the <code>.service</code> it triggers:
+        a service with <em>no</em> <code>User=</code> line runs as root, and
+        <code>ExecStart=</code> is the exact command it runs. A quick
+        <code>grep -rn 'name' /etc/systemd /etc/cron*</code> ties a suspicious script back to
+        the unit that launches it.</p>
+      </div>
+
+      <div class="concept-sub">
+        <span class="sub-lbl">why it works</span>
+        <p>The scheduler is trusted infrastructure, so admins wire custom scripts into it without
+        thinking of them as an attack surface. The flaw is rarely the schedule itself - it's that
+        the root-run job reaches into a location, script, or input that a lower-privileged user can
+        modify. Once you can change what root executes or reads, you inherit root.</p>
+      </div>
+
+      <div class="concept-sub">
+        <span class="sub-lbl">hardening / remediation</span>
+        <p>Run the job as a dedicated least-privilege user instead of root. Keep the script and
+        every directory in its path root-owned and not group/other-writable. Use absolute paths,
+        avoid wildcards on attacker-influenceable input, and validate anything the job reads from
+        a user-writable location.</p>
+      </div>
+
+      <div class="power-bars">
+        <div class="power-row"><span class="pl">Impact</span><div class="power-track"><div class="power-fill security" style="width:100%"></div></div><span class="pv">5/5</span></div>
+        <div class="power-row"><span class="pl">Exploit difficulty</span><div class="power-track"><div class="power-fill crackdiff" style="width:35%"></div></div><span class="pv">2/5</span></div>
+        <div class="power-row"><span class="pl">How common</span><div class="power-track"><div class="power-fill modernuse" style="width:80%"></div></div><span class="pv">4/5</span></div>
+      </div>
+
+      <div class="seen-in">
+        <span class="lbl">seen in</span>
+        <a href="writeup-nexus.html">Nexus</a> - a custom <code>template-sync.py</code> wired into
+        a systemd timer (<code>gitea-template-sync.timer</code>) firing every ~60s as root, found
+        via <code>systemctl list-timers</code> after the crontab came back clean.
+      </div>
+    </section>
+
+    <!-- ============ Symlink attacks ============ -->
+    <section id="symlink" class="concept-block">
+      <p class="kicker">Write-redirection · symlink following / TOCTOU</p>
+      <h2>Symlink attacks</h2>
+
+      <div class="concept-sub">
+        <span class="sub-lbl">what it is</span>
+        <p>A symlink is just a file that points at another path. When a program opens a path that
+        passes <em>through</em> a symlink, it follows the link without question. So if a privileged
+        process is going to write a file into a directory <em>you</em> control, and you replace part
+        of that path with a symlink pointing somewhere only root can write, root's process follows
+        your link and writes there - as root. You never gain the write yourself; you borrow root's.</p>
+      </div>
+
+      <div class="concept-sub">
+        <span class="sub-lbl">how it works</span>
+        <p>Say a root job writes to
+        <code>/home/git/staging/&lt;name&gt;/authorized_keys</code> and you own
+        <code>/home/git/staging</code>. Pre-create the <code>&lt;name&gt;</code> segment as a
+        symlink:</p>
+        <pre><code>ln -s /root/.ssh /home/git/staging/name</code></pre>
+        <p style="margin-top:8px">Now when root writes
+        <code>/home/git/staging/name/authorized_keys</code>, it lands in
+        <code>/root/.ssh/authorized_keys</code> instead. Drop your own SSH public key in and you
+        log straight in as root. Any predictable root-written filename works as the payload -
+        <code>authorized_keys</code>, a cron line in <code>/etc/cron.d/</code>, a config the next
+        root process reads.</p>
+        <p style="margin-top:8px"><strong>Racing the job:</strong> if the scheduled job already ran
+        and created a real directory where you wanted your symlink, you can't drop the link inside
+        it. But you own the parent, so move the whole tree aside, recreate the path clean, and place
+        the symlink before the next tick - then let the timer fire.</p>
+      </div>
+
+      <div class="concept-sub">
+        <span class="sub-lbl">why it works (TOCTOU)</span>
+        <p>The privileged writer trusts the path at write-time without checking that no component is
+        a symlink - it never opens with <code>O_NOFOLLOW</code> or <code>lstat</code>s the path
+        first. That gap between assuming a path is safe and actually using it is the classic
+        time-of-check / time-of-use (TOCTOU) flaw.</p>
+      </div>
+
+      <div class="concept-sub">
+        <span class="sub-lbl">hardening / remediation</span>
+        <p>Open with <code>O_NOFOLLOW</code> (or resolve and verify the real path before writing),
+        keep the target directory root-owned so no one can plant links in it, and don't have root
+        write into a tree a lower-privileged user controls. Running the writer as a non-root user
+        contains the damage even if a link slips through.</p>
+      </div>
+
+      <div class="power-bars">
+        <div class="power-row"><span class="pl">Impact</span><div class="power-track"><div class="power-fill security" style="width:100%"></div></div><span class="pv">5/5</span></div>
+        <div class="power-row"><span class="pl">Exploit difficulty</span><div class="power-track"><div class="power-fill crackdiff" style="width:40%"></div></div><span class="pv">2/5</span></div>
+        <div class="power-row"><span class="pl">How common</span><div class="power-track"><div class="power-fill modernuse" style="width:60%"></div></div><span class="pv">3/5</span></div>
+      </div>
+
+      <div class="seen-in">
+        <span class="lbl">seen in</span>
+        <a href="writeup-nexus.html">Nexus</a> - symlinked the root timer's staging path to
+        <code>/root/.ssh</code>, so the next sync wrote a controlled <code>authorized_keys</code>
+        into root's home and opened a direct SSH login as root.
+      </div>
+    </section>
+
+    <!-- ============ TOOLS ============ -->
+    <section id="tools" class="concept-block">
+      <p class="kicker">Working privilege escalation</p>
+      <h2>Tools</h2>
+      <p style="color:var(--text-3); font-size:15px; margin-bottom:0">
+        Enumeration first - most escalations are found, not forced. Manual checks teach you what to
+        look for; the automated scanners just do it faster once you know why.
+      </p>
+
+      <div class="tool-grid">
+        <div class="tool-card">
+          <p class="tn">manual enumeration</p>
+          <p class="td"><code>systemctl list-timers --all</code>, <code>cat /etc/crontab</code>,
+          <code>sudo -l</code>, <code>id</code>, and <code>find / -perm -4000 -type f 2&gt;/dev/null</code>
+          for SUID. Knowing these by hand is the point - the scanners below just automate them.</p>
+        </div>
+        <div class="tool-card">
+          <p class="tn">pspy</p>
+          <p class="td">Watches processes and scheduled jobs fire in real time <em>without root</em> -
+          the fastest way to catch a cron/timer job and see the exact command it runs, including the
+          paths it touches. Ideal for spotting a writable-path job.</p>
+        </div>
+        <div class="tool-card">
+          <p class="tn">LinPEAS</p>
+          <p class="td">Automated Linux enumeration - flags writable cron/timer scripts, SUID
+          binaries, weak permissions, and known escalation paths, colour-coded by likelihood. Great
+          to expedite, but learn the manual checks first so you understand what it's flagging.</p>
+        </div>
+        <div class="tool-card">
+          <p class="tn">ln -s (coreutils)</p>
+          <p class="td">The symlink primitive itself - no special tool needed.
+          <code>ln -s TARGET LINK</code> creates the pointer; <code>ls -la</code> confirms it reads
+          <code>link -&gt; target</code> before you let the root job fire.</p>
+        </div>
+        <div class="tool-card">
+          <p class="tn">GTFOBins</p>
+          <p class="td">Reference for turning a specific binary (via sudo, SUID, or a capability)
+          into a shell, file read/write, or command execution - the go-to when <code>sudo -l</code>
+          or the SUID sweep turns up something non-default.</p>
+        </div>
+      </div>
+    </section>
+
+  </div>
+</div>
+</div>
+
+<footer class="foot"><div class="wrap" style="display:flex;gap:18px;flex-wrap:wrap">
+  <a href="index.html">home</a>
+  <a href="writeups.html">write-ups</a>
+  <a href="vulns.html">vulns</a>
+  <a href="concepts.html">concepts</a>
+  <a href="https://github.com/sudoanthony">github</a>
+</div></footer>
+
+<script>
+  const tocLinks = Array.from(document.querySelectorAll('#tocNav a'));
+  const sections = tocLinks
+    .map(a => document.getElementById(a.getAttribute('href').slice(1)))
+    .filter(Boolean);
+
+  function setActive(id) {
+    tocLinks.forEach(a => a.classList.toggle('active', a.getAttribute('href') === '#' + id));
+  }
+
+  const observer = new IntersectionObserver((entries) => {
+    const visible = entries.filter(e => e.isIntersecting);
+    if (visible.length) {
+      visible.sort((a, b) => a.boundingClientRect.top - b.boundingClientRect.top);
+      setActive(visible[0].target.id);
+    }
+  }, { root: null, rootMargin: '-96px 0px -70% 0px', threshold: 0 });
+
+  sections.forEach(sec => observer.observe(sec));
+
+  tocLinks.forEach(a => {
+    a.addEventListener('click', (e) => {
+      e.preventDefault();
+      const id = a.getAttribute('href').slice(1);
+      const target = document.getElementById(id);
+      if (!target) return;
+      setActive(id);
+      history.pushState(null, '', '#' + id);
+      target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    });
+  });
+
+  if (location.hash) {
+    const id = location.hash.slice(1);
+    const target = document.getElementById(id);
+    if (target) {
+      setActive(id);
+      requestAnimationFrame(() => target.scrollIntoView({ block: 'start' }));
+    }
+  } else if (sections.length) {
+    setActive(sections[0].id);
+  }
+</script>
+
+<script src="lightbox.js"></script>
+</body>
+</html>

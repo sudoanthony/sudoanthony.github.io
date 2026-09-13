@@ -30,6 +30,7 @@
       <a href="#summary" data-toc>Categories</a>
       <a href="#recon" data-toc>Recon &amp; Scanning</a>
       <a href="#web" data-toc>Web &amp; Proxies</a>
+      <a href="#network" data-toc>Networking &amp; Access</a>
       <a href="#mobile-static" data-toc>Mobile: Static</a>
       <a href="#mobile-runtime" data-toc>Mobile: Device &amp; Runtime</a>
       <a href="#mobile-re" data-toc>Reverse Engineering &amp; Signing</a>
@@ -53,8 +54,9 @@
       <p class="kicker">By the job it does</p>
       <h2>Categories</h2>
       <ul>
-        <li><strong>Recon &amp; scanning:</strong> <a href="#nmap">nmap</a>.</li>
+        <li><strong>Recon &amp; scanning:</strong> <a href="#nmap">nmap</a>, <a href="#gobuster">gobuster</a>.</li>
         <li><strong>Web &amp; proxies:</strong> <a href="#burp">Burp Suite</a>, <a href="#mitmproxy">mitmproxy</a>.</li>
+        <li><strong>Networking &amp; access:</strong> <a href="#netcat">netcat</a>, <a href="#ssh">ssh</a> (local port forwarding).</li>
         <li><strong>Mobile static:</strong> <a href="#jadx">jadx</a>, <a href="#apktool">apktool</a>, <a href="#mobsf">MobSF</a>.</li>
         <li><strong>Mobile device &amp; runtime:</strong> <a href="#android-studio">Android Studio</a>, <a href="#adb">adb</a> (with <code>am</code> and <code>content</code>), <a href="#frida">Frida</a>, <a href="#objection">objection</a>.</li>
         <li><strong>Reverse engineering &amp; signing:</strong> <a href="#apksigner">apksigner</a>, <a href="#zipalign">zipalign</a>, <a href="#keytool">keytool</a>, <a href="#ghidra">Ghidra</a>, <a href="#radare2">radare2</a>.</li>
@@ -75,7 +77,16 @@
           <div class="tc-row"><span class="os">WIN</span> <code>winget install Insecure.Nmap</code></div>
           <div class="tc-row"><span class="os">LINUX</span> <code>sudo apt install nmap</code></div>
           <div class="tc-row"><span class="os">CMD</span> <code>nmap -p- -sVC TARGET</code></div>
-          <div class="tc-seen">seen in <a href="writeup-biohazard.html">Biohazard</a>, <a href="writeup-abducted.html">Abducted</a></div>
+          <div class="tc-seen">seen in <a href="writeup-biohazard.html">Biohazard</a>, <a href="writeup-abducted.html">Abducted</a>, <a href="writeup-nexus.html">Nexus</a></div>
+        </div>
+
+        <div class="toolcard cat-recon" id="gobuster">
+          <div class="tc-head"><span class="tc-glyph">go</span><span class="tc-name">gobuster</span><span class="tc-cat">brute-forcer</span></div>
+          <p class="tc-what">Fast content and virtual-host brute-forcer. <code>dir</code> mode discovers hidden paths and files by appending a wordlist to the URL; <code>vhost</code> mode changes the <code>Host:</code> header to find subdomains served off the same IP.</p>
+          <div class="tc-row"><span class="os">LINUX</span> <code>sudo apt install gobuster</code></div>
+          <div class="tc-row"><span class="os">DIR</span> <code>gobuster dir -u URL -w LIST -x php,html,txt --exclude-length N</code></div>
+          <div class="tc-row"><span class="os">VHOST</span> <code>gobuster vhost -u http://DOMAIN -w LIST --append-domain</code></div>
+          <div class="tc-seen">seen in <a href="writeup-nexus.html">Nexus</a></div>
         </div>
 
       </div>
@@ -100,6 +111,32 @@
           <p class="tc-what">A free, scriptable intercepting proxy driven from the terminal (or a web UI). Handy when you want to automate or filter traffic instead of clicking.</p>
           <div class="tc-row"><span class="os">WIN / LINUX</span> <code>pip install mitmproxy</code></div>
           <div class="tc-row"><span class="os">CMD</span> <code>mitmproxy</code> &nbsp;or&nbsp; <code>mitmweb</code></div>
+        </div>
+
+      </div>
+    </section>
+
+    <!-- ============ Networking & Access ============ -->
+    <section id="network" class="concept-block">
+      <p class="kicker">Catch shells and reach internal-only services</p>
+      <h2>Networking &amp; Access</h2>
+      <div class="toolgrid">
+
+        <div class="toolcard cat-recon" id="netcat">
+          <div class="tc-head"><span class="tc-glyph">nc</span><span class="tc-name">netcat</span><span class="tc-cat">tcp swiss-army</span></div>
+          <p class="tc-what">Reads and writes raw TCP/UDP. On an engagement it's most often a <strong>listener</strong> that catches a reverse shell called back from the target after you fire an RCE.</p>
+          <div class="tc-row"><span class="os">LINUX</span> <code>sudo apt install netcat-traditional</code> (or <code>ncat</code> from the nmap suite)</div>
+          <div class="tc-row"><span class="os">LISTEN</span> <code>nc -lvnp 4444</code> &nbsp;&mdash; wait for the shell on port 4444</div>
+          <div class="tc-seen">seen in <a href="writeup-nexus.html">Nexus</a></div>
+        </div>
+
+        <div class="toolcard cat-recon" id="ssh">
+          <div class="tc-head"><span class="tc-glyph">ssh</span><span class="tc-name">ssh</span><span class="tc-cat">remote access / tunneling</span></div>
+          <p class="tc-what">OpenSSH client. A stable remote shell once you have credentials &mdash; but also a tunnel. <strong>Local port forwarding</strong> (<code>-L</code>) takes a service bound only to the target's <code>localhost</code> and exposes it on your own machine, so an internal-only web app becomes reachable in your browser.</p>
+          <div class="tc-row"><span class="os">WIN / LINUX</span> ships with OpenSSH (Windows: <code>Add-WindowsCapability</code>; Linux: <code>openssh-client</code>)</div>
+          <div class="tc-row"><span class="os">SHELL</span> <code>ssh user@TARGET</code></div>
+          <div class="tc-row"><span class="os">TUNNEL</span> <code>ssh -L 3000:127.0.0.1:3000 user@TARGET</code> &nbsp;&mdash; run from <em>your</em> box; now browse <code>127.0.0.1:3000</code> to hit the target's internal service</div>
+          <div class="tc-seen">seen in <a href="writeup-biohazard.html">Biohazard</a>, <a href="writeup-nexus.html">Nexus</a></div>
         </div>
 
       </div>
