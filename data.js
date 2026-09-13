@@ -23,6 +23,19 @@
 
 const WRITEUPS = [
   {
+    title:      "Nexus",
+    url:        "writeup-nexus.html",
+    platform:   "HackTheBox",
+    team:       "red",
+    difficulty: "Easy",
+    os:         "Linux",
+    category:   "Web",
+    icon:       "images/icons/nexus.png",
+    date:       "2026-09-14",
+    summary:    "Krayin CRM file-upload RCE gets a foothold; DB password reuse pivots to jones; internal Gitea running CVE-2026-60004 gives a shell as git; a root systemd timer exploited via symlink attack writes an SSH key into /root/.ssh for root access.",
+    tags:       ["file-upload-rce", "exposed-credentials", "gitea-hook-rce", "symlink-write", "priv-esc"]
+  },
+  {
     title:      "OWASP Mobile Top 10 2024",
     subtitle:   "Android App Pentest",
     url:        "writeup-allsafe.html",
@@ -207,7 +220,8 @@ const VULNS = [
     deepdive: "",
     uses: [
       { writeup: "Abducted", url: "writeup-abducted.html", ctx: "writable systemd drop-in dir + polkit rule to restart smbd -> ExecStartPre SetUID bash" },
-      { writeup: "Biohazard", url: "writeup-biohazard.html", ctx: "operator re-auths to root with a reused password" }
+      { writeup: "Biohazard", url: "writeup-biohazard.html", ctx: "operator re-auths to root with a reused password" },
+      { writeup: "Nexus", url: "writeup-nexus.html", ctx: "symlink planted in user-writable staging dir; root systemd timer follows it and writes SSH key into /root/.ssh/authorized_keys" }
     ]
   },
   {
@@ -220,7 +234,8 @@ const VULNS = [
     deepdive: "",
     uses: [
       { writeup: "Abducted", url: "writeup-abducted.html", ctx: "rclone-obfuscated backup password revealed and reused for scott's SSH" },
-      { writeup: "Biohazard", url: "writeup-biohazard.html", ctx: "creds hidden behind an encoding chain, then key files on FTP" }
+      { writeup: "Biohazard", url: "writeup-biohazard.html", ctx: "creds hidden behind an encoding chain, then key files on FTP" },
+      { writeup: "Nexus", url: "writeup-nexus.html", ctx: "DB password in git commit history reused for SSH and Gitea login; live .env password reused by jones for system login" }
     ]
   },
   {
@@ -233,6 +248,42 @@ const VULNS = [
     deepdive: "",
     uses: [
       { writeup: "Biohazard", url: "writeup-biohazard.html", ctx: "empty-passphrase steghide, appended data, and an embedded file across three key images" }
+    ]
+  },
+  {
+    id:    "file-upload-rce",
+    name:  "Authenticated file-upload RCE",
+    cat:   "web",
+    sev:   "high",
+    ext:   "CWE-434",
+    blurb: "An upload handler that validates only the stated MIME type allows a PHP webshell labeled image/jpeg to slip through. The file is stored in a web-accessible, PHP-executable directory - visit the URL and the server runs the command. Severity is often high because it gives server-side code execution; authenticated-only lowers the bar only if the credential bar is also low.",
+    deepdive: "",
+    uses: [
+      { writeup: "Nexus", url: "writeup-nexus.html", ctx: "Krayin CRM TinyMCE upload endpoint (CVE-2026-38526) - PHP shell uploaded as image/jpeg, executed by visiting the stored file path" }
+    ]
+  },
+  {
+    id:    "gitea-hook-rce",
+    name:  "Gitea diffpatch git-hook RCE",
+    cat:   "web",
+    sev:   "crit",
+    ext:   "CWE-77 · CVE-2026-60004",
+    blurb: "CVE-2026-60004 (GHSA-rcr6-4jqh-j84m) affects Gitea 1.17–1.27.0. A user with repository write access can smuggle attacker-controlled content into a server-side git hook via the diffpatch endpoint. The hook fires on the next receive/commit event and executes as the Gitea OS service account. Fixed in 1.27.1.",
+    deepdive: "",
+    uses: [
+      { writeup: "Nexus", url: "writeup-nexus.html", ctx: "Internal Gitea 1.26.0 - hook injected via diffpatch API as jones, hook fires and returns a shell as the git OS user" }
+    ]
+  },
+  {
+    id:    "symlink-write",
+    name:  "Symlink attack on privileged file write",
+    cat:   "priv-esc",
+    sev:   "high",
+    ext:   "CWE-61 · CWE-59",
+    blurb: "A privileged process writes files to a path inside a directory the attacker controls. By pre-placing a symlink at the expected path, the process follows the link and writes into a root-only location instead. Classic pattern: world-writable /tmp or user-owned home dir with a root-run script that doesn't check for symlinks (O_NOFOLLOW). Combine with any predictable root-written filename (authorized_keys, cron entries) for full escalation.",
+    deepdive: "",
+    uses: [
+      { writeup: "Nexus", url: "writeup-nexus.html", ctx: "Root systemd timer runs template-sync.py writing into /home/git/template-staging (git-owned). Symlink /home/git/template-staging/jones/test -> /root/.ssh causes root to write authorized_keys there." }
     ]
   },
   {
