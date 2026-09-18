@@ -33,7 +33,7 @@ const WRITEUPS = [
     category:   "Web",
     icon:       "images/icons/juice.png",
     date:       "2026-09-18",
-    summary:    "OWASP Juice Shop (Angular + Node/Express) worked against the OWASP Top 10:2025. Basket IDOR (A01), SQLi auth bypass and DOM XSS (A05), and verbose error handling (A10) - each with Burp replication, root-cause breakdown, and a severity-rated finding.",
+    summary:    "OWASP Juice Shop (Angular + Node/Express) worked against the OWASP Top 10: 2025. Basket IDOR (A01), SQLi auth bypass and DOM XSS (A05), and verbose error handling (A10) - each with Burp replication, root-cause breakdown, and a severity-rated finding.",
     tags:       ["broken-access-control", "sql-injection", "dom-xss", "improper-error-handling"]
   },
   {

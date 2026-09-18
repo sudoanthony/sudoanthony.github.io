@@ -7,13 +7,32 @@
 <meta name="description" content="A hands-on web application penetration testing methodology walked through the OWASP Top 10:2025 using the intentionally vulnerable OWASP Juice Shop: broken access control, injection (SQLi and XSS), mishandling of exceptional conditions, and more - worked examples with screenshots and a severity-rated finding for every vulnerability.">
 <link rel="stylesheet" href="style.css">
 <style>
-  /* Sub-section headers scoped to this page, matching the mobile write-up. */
+  /* Sub-section headers (3rd level) - one per challenge. Frost-blue, top rule, bigger. */
   .writeup-gold h3 {
     color: var(--accent);
     font-size: 20px;
     margin-top: 40px;
     padding-top: 13px;
     border-top: 1px solid var(--border);
+  }
+  /* Small gold "CHALLENGE" eyebrow above a challenge's name so it stands out. */
+  .writeup-gold h3 .chlabel {
+    display: block;
+    font-family: var(--mono);
+    font-size: 11.5px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 1.5px;
+    color: var(--gold);
+    margin-bottom: 3px;
+  }
+  /* Step / smaller headers (4th level) - inside a challenge. White, smaller, no rule. */
+  .writeup-gold h4 {
+    color: var(--text);
+    font-size: 16.5px;
+    font-weight: 650;
+    letter-spacing: -0.2px;
+    margin: 26px 0 6px;
   }
   /* OWASP risk IDs / CWE tags in severity coral. */
   .risk { color: #bf616a; font-weight: 600; }
@@ -37,7 +56,10 @@
 
 <main class="wrap writeup-gold" style="padding-top:44px">
 
-  <h1>OWASP Top 10 (2025): OWASP Juice Shop Web App Pentest</h1>
+  <div class="wu-head">
+    <img class="wu-icon" src="images/icons/juice.png" alt="" onerror="this.style.display='none'">
+    <h1>OWASP Top 10 (2025): OWASP Juice Shop Web App Pentest</h1>
+  </div>
   <p>A hands-on web application penetration testing walkthrough, mapped to the current
   <strong>OWASP Top 10:2025</strong> and demonstrated through the intentionally vulnerable
   <strong>OWASP Juice Shop</strong> - each challenge exploited by hand, explained down to its root
@@ -123,7 +145,7 @@
   <h2 id="a01">A01 - Broken Access Control</h2>
   <p class="secmeta">Challenge: <strong>View Basket</strong> &nbsp;&middot;&nbsp; Difficulty: <span class="stars">&#9733;&#9733;</span> &nbsp;&middot;&nbsp; OWASP: <a href="vulns.html" class="risk">A01:2025</a> &middot; CWE-639</p>
 
-  <h3>View Basket</h3>
+  <h3><span class="chlabel">Challenge</span>View Basket</h3>
   <p>The challenge is to view another user's shopping basket by changing the basket ID. Let's make an
   account for the website.</p>
   <figure><img src="images/Juice/juicea01-0.png" alt="Registering an account on Juice Shop"><figcaption>Creating an account on Juice Shop.</figcaption></figure>
@@ -148,7 +170,7 @@
   The server trusts a client-supplied ID with no authorization check - the textbook definition of an
   <strong>Insecure Direct Object Reference (IDOR)</strong>.</p>
 
-  <h3>Replicating in Burp</h3>
+  <h4>Replicating in Burp</h4>
   <p>Editing session storage is quick, but a purist could argue it's "just client-side tampering." Proving
   the same result at the HTTP layer shows the flaw is server-side and can't be dismissed. Let's turn
   FoxyProxy on, open Burp's <strong>Proxy</strong> tab, go to Juice Shop, and click the basket. Burp
@@ -197,9 +219,9 @@
 
   <!-- ==================== A05 - Injection ==================== -->
   <h2 id="a05">A05 - Injection</h2>
-  <p class="secmeta">Challenges: <strong>Login Admin (SQLi)</strong> &amp; <strong>DOM XSS</strong> &nbsp;&middot;&nbsp; OWASP: <a href="vulns.html" class="risk">A05:2025</a> &middot; CWE-89 / CWE-79</p>
+  <p class="secmeta">Challenges: <strong>Login Admin (SQLi)</strong> (<span class="stars">&#9733;&#9733;</span>) &amp; <strong>DOM XSS</strong> (<span class="stars">&#9733;</span>) &nbsp;&middot;&nbsp; OWASP: <a href="vulns.html" class="risk">A05:2025</a> &middot; CWE-89 / CWE-79</p>
 
-  <h3>Login Admin (SQL Injection)</h3>
+  <h3><span class="chlabel">Challenge</span>Login Admin (SQL Injection)</h3>
   <p>The challenge is to log in as admin via SQL injection in the email field, using <code>' OR 1=1--</code>.
   Login forms are the textbook SQLi target: our input is put into a database query that checks our
   credentials. The quickest confirmation is to put a single quote in the field. If it errors out, that
@@ -219,7 +241,7 @@
   it were parameterized, <code>' OR 1=1--</code> would just become a search for an email literally equal to
   the string <code>' OR 1=1--</code>, which is nobody.</p>
 
-  <h3>Why did <code>' OR 1=1--</code> work?</h3>
+  <h4>Why did <code>' OR 1=1--</code> work?</h4>
   <p>When anyone tries to log in, the server builds a query something like this:</p>
   <pre><code>SELECT * FROM Users WHERE email = 'INPUT' AND password = 'INPUT' AND deletedAt IS NULL</code></pre>
   <p>When we enter <code>' OR 1=1--</code> in the email field, it becomes:</p>
@@ -231,7 +253,7 @@
     <li><code>--</code> - an SQL comment. It comments out the rest of the query, the <code>AND password = '...'</code> part, so the password check is completely ignored. That's why our password of <code>test</code> didn't matter.</li>
   </ul>
 
-  <h3>How did we become admin from this?</h3>
+  <h4>How did we become admin from this?</h4>
   <p>The query returns all users (the condition is always true), and the app logs us in as the first row
   returned - in this case the <code>administrator</code> (<code>admin@juice-sh.op</code>).</p>
   <p>We can also target a specific user, for example <code>victim@email.com'--</code>. We can even try it
@@ -260,7 +282,7 @@
     <tr><th>Remediation</th><td>Use parameterized queries / prepared statements so input is treated as data, not code. Add input validation and least-privilege database accounts.</td></tr>
   </table>
 
-  <h3>DOM-Based Cross-Site Scripting (XSS)</h3>
+  <h3><span class="chlabel">Challenge</span>DOM-Based Cross-Site Scripting (XSS)</h3>
   <p>The search bar is right on the main page, so let's enter our DOM XSS payload and hit enter:</p>
   <pre><code>&lt;iframe src="javascript:alert(`xss`)"&gt;</code></pre>
   <figure><img src="images/Juice/juicea03-2-2.png" alt="DOM XSS payload firing in the search bar"><figcaption>The payload executes - challenge complete.</figcaption></figure>
@@ -347,7 +369,7 @@ Fix 4:  this.sanitizer.bypassSecurityTrustStyle(queryParam)</code></pre>
   <h2 id="a10">A10 - Mishandling of Exceptional Conditions</h2>
   <p class="secmeta">Challenge: <strong>Error Handling</strong> &nbsp;&middot;&nbsp; Difficulty: <span class="stars">&#9733;</span> &nbsp;&middot;&nbsp; OWASP: <a href="vulns.html" class="risk">A10:2025</a> &middot; CWE-209</p>
 
-  <h3>Error Handling</h3>
+  <h3><span class="chlabel">Challenge</span>Error Handling</h3>
   <p>Heads-up on numbering: in the older 2021 list, verbose errors lived under Security Misconfiguration
   (A05:2021). The 2025 Top 10 adds a dedicated category - <strong>Mishandling of Exceptional
   Conditions</strong> (A10:2025) - that this finding maps to more precisely, though it still overlaps with
