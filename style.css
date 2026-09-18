@@ -183,6 +183,11 @@ figcaption { color: var(--text-4); font-size: 13px; margin-top: 7px; font-family
 .card:hover { border-color: var(--border-2); text-decoration: none; }
 .card.thm { border-left: 3px solid var(--thm); }
 .card.htb { border-left: 3px solid var(--htb); }
+.card.mobile { border-left: 3px solid var(--mobile); }
+.card.web { border-left: 3px solid var(--web); }
+.card-head { display: flex; align-items: center; gap: 14px; margin-bottom: 6px; }
+.card-head .title { margin: 0; }
+.card-icon { flex: none; width: 44px; height: 44px; object-fit: contain; border-radius: 9px; }
 .card .eyebrow { font-family: var(--mono); font-size: 11px; text-transform: uppercase; letter-spacing: 1.2px; color: var(--accent); margin-bottom: 8px; }
 .card .title { color: var(--text); font-size: 20px; font-weight: 650; margin: 0 0 6px; letter-spacing: -0.3px; }
 .card .desc { color: var(--text-3); font-size: 14.5px; margin: 0 0 12px; line-height: 1.55; }

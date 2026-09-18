@@ -101,7 +101,7 @@
   const sorted = [...WRITEUPS].sort((a,b) => (a.date < b.date ? 1 : -1));
   const latest = sorted[0];
 
-  const platClass = p => /hack.?the.?box|htb/i.test(p || '') ? 'htb' : /mobile/i.test(p || '') ? 'mobile' : 'thm';
+  const platClass = p => /hack.?the.?box|htb/i.test(p || '') ? 'htb' : /mobile/i.test(p || '') ? 'mobile' : /web/i.test(p || '') ? 'web' : 'thm';
   const diffClass = d => ({"very easy":"very-easy",easy:'easy',medium:'medium',hard:'hard',insane:'insane',practice:'practice'}[(d||'').toLowerCase()] || 'medium');
   const teamClass = t => (t||'').toLowerCase()==='blue' ? 'blue-team' : 'red-team';
   const teamLabel = t => (t||'').toLowerCase()==='blue' ? 'blue team' : 'red team';
@@ -109,7 +109,10 @@
   if (latest) {
     document.getElementById('latest').innerHTML =
       '<a class="card ' + platClass(latest.platform) + '" href="' + latest.url + '">' +
-        '<div class="title">' + latest.title + '</div>' +
+        '<div class="card-head">' +
+          (latest.icon ? '<img class="card-icon" src="' + latest.icon + '" alt="" onerror="this.style.display=\'none\'">' : '') +
+          '<div class="title">' + latest.title + '</div>' +
+        '</div>' +
         '<div class="desc">' + latest.summary + '</div>' +
         '<div class="row">' +
           '<span class="badge ' + platClass(latest.platform) + '">' + latest.platform + '</span>' +
