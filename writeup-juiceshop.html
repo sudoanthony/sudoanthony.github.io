@@ -1,0 +1,404 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>OWASP Top 10 (2025) - Juice Shop web app pentest</title>
+<meta name="description" content="A hands-on web application penetration testing methodology walked through the OWASP Top 10:2025 using the intentionally vulnerable OWASP Juice Shop: broken access control, injection (SQLi and XSS), mishandling of exceptional conditions, and more - worked examples with screenshots and a severity-rated finding for every vulnerability.">
+<link rel="stylesheet" href="style.css">
+<style>
+  /* Sub-section headers scoped to this page, matching the mobile write-up. */
+  .writeup-gold h3 {
+    color: var(--accent);
+    font-size: 20px;
+    margin-top: 40px;
+    padding-top: 13px;
+    border-top: 1px solid var(--border);
+  }
+  /* OWASP risk IDs / CWE tags in severity coral. */
+  .risk { color: #bf616a; font-weight: 600; }
+  /* Stub sections not yet written up. */
+  .todo { color: var(--text-3); font-style: italic; border-left: 2px solid var(--border-2); padding-left: 12px; margin: 10px 0 26px; }
+  .stars { color: #d0a54a; letter-spacing: 1px; }
+</style>
+</head>
+<body>
+
+<nav class="nav"><div class="wrap">
+  <a class="brand" href="index.html">~/sudoanthony</a>
+  <div class="links">
+    <a href="writeups.html">write-ups</a>
+    <a href="vulns.html">vulns</a>
+    <a href="concepts.html">concepts</a>
+    <a href="tools.html">tools</a>
+    <a href="https://github.com/sudoanthony">github</a>
+  </div>
+</div></nav>
+
+<main class="wrap writeup-gold" style="padding-top:44px">
+
+  <h1>OWASP Top 10 (2025): OWASP Juice Shop Web App Pentest</h1>
+  <p>A hands-on web application penetration testing walkthrough, mapped to the current
+  <strong>OWASP Top 10:2025</strong> and demonstrated through the intentionally vulnerable
+  <strong>OWASP Juice Shop</strong> - each challenge exploited by hand, explained down to its root
+  cause, and written up as a severity-rated finding.</p>
+
+  <div class="meta">
+    <span class="badge web">Web</span>
+    <span class="badge practice">Practice</span>
+    <span class="badge red-team">red team</span>
+    <span class="sep">|</span>
+    <span>Web &middot; OWASP Juice Shop &middot; Linux</span>
+  </div>
+  <hr>
+
+  <!-- ==================== What is OWASP Juice Shop? ==================== -->
+  <h2>What is OWASP Juice Shop?</h2>
+  <p>OWASP Juice Shop is an open-source, intentionally vulnerable web application maintained by OWASP.
+  It is a modern single-page shop (an Angular front end on a Node.js/Express back end) deliberately seeded
+  with dozens of real-world security bugs, from SQL injection and cross-site scripting to broken access
+  control and cryptographic mistakes. Every bug is packaged as a "challenge" tracked on a hidden Score
+  Board, which makes it a safe and legal target for practicing web application testing end to end. Because
+  the vulnerabilities map cleanly onto the OWASP Top 10, it is one of the best environments to learn how
+  each risk is found, exploited, and remediated.</p>
+
+  <p>This guide runs Juice Shop locally on Kali Linux and drives every attack through an intercepting
+  proxy, exactly as you would against a real client's application, just against a target that is
+  intentionally broken and legal to test.</p>
+
+  <!-- ==================== Objective ==================== -->
+  <h2>Objective</h2>
+  <p>This write-up is a guide to how each category of the OWASP Top 10 can be demonstrated in practice
+  against a live web target. The goal is that it can be followed, or used as a reference, to understand
+  <em>why</em> each item sits in the ten most critical web risks, how it is exploited, and how it would be
+  remediated.</p>
+  <p>This write-up maps to the <strong>OWASP Top 10:2025</strong>, the current edition. The 2025 list
+  reordered several risks and added new categories (Software Supply Chain Failures, and Mishandling of
+  Exceptional Conditions), so the numbering here differs from older 2021 guides:</p>
+  <ul>
+    <li><strong>A01 Broken Access Control</strong> - users acting outside their intended permissions.</li>
+    <li><strong>A02 Security Misconfiguration</strong> - insecure defaults, exposed features, missing hardening.</li>
+    <li><strong>A03 Software Supply Chain Failures</strong> - risk from third-party and dependency components (absorbs the old "Vulnerable &amp; Outdated Components").</li>
+    <li><strong>A04 Cryptographic Failures</strong> - weak or missing protection of sensitive data.</li>
+    <li><strong>A05 Injection</strong> - untrusted input executed as code (SQLi, XSS, command injection).</li>
+    <li><strong>A06 Insecure Design</strong> - flaws in the design itself, not just the implementation.</li>
+    <li><strong>A07 Authentication Failures</strong> - weak login, credential, and session handling.</li>
+    <li><strong>A08 Software or Data Integrity Failures</strong> - trusting unverified data, updates, or tokens.</li>
+    <li><strong>A09 Security Logging &amp; Alerting Failures</strong> - attacks that go undetected.</li>
+    <li><strong>A10 Mishandling of Exceptional Conditions</strong> - improper error handling that leaks internals or fails unsafely (new in 2025).</li>
+  </ul>
+  <p>A second goal is that the report-writing and testing approach here can be reused when working with a
+  real client on identifying flaws and recommending improvements in their application.</p>
+  <p>This guide is written in a Linux (Kali) environment. Juice Shop is run locally and all traffic is
+  proxied through Burp Suite.</p>
+
+  <!-- ==================== Methodology ==================== -->
+  <h2>Methodology</h2>
+  <p>Each section maps a Juice Shop challenge to its OWASP Top 10:2025 category. For every one we identify
+  the vulnerability, exploit it by hand through the browser and Burp, explain the root cause (down to the
+  vulnerable code where Juice Shop exposes it), and record a severity-rated finding:</p>
+  <ul>
+    <li><strong>Recon &amp; setup</strong> - run Juice Shop locally, proxy the browser through Burp, and fingerprint the stack (Angular front end, Node/Express back end) to know what protections exist by default.</li>
+    <li><strong>A01 Broken Access Control</strong> - IDOR on the basket endpoint (<span class="risk">A01</span>).</li>
+    <li><strong>A05 Injection</strong> - SQL injection authentication bypass and DOM-based XSS (<span class="risk">A05</span>).</li>
+    <li><strong>A10 Mishandling of Exceptional Conditions</strong> - improper error handling / information disclosure (<span class="risk">A10</span>).</li>
+    <li><strong>A02, A03, A04, A06-A09</strong> - security misconfiguration, supply-chain / vulnerable components, cryptographic failures, insecure design, authentication failures, integrity (JWT) flaws, and logging gaps (added as each is completed).</li>
+  </ul>
+
+  <!-- ==================== Tools Used ==================== -->
+  <h2>Tools Used</h2>
+  <ul>
+    <li><a href="tools.html#burp">Burp Suite Community Edition</a> (intercepting proxy - view, replay, and tamper with requests)</li>
+    <li>FoxyProxy (browser extension to route traffic through Burp)</li>
+    <li>Firefox Developer Tools (inspect the DOM, session/local storage)</li>
+    <li>Wappalyzer (fingerprint the front-end framework and back end)</li>
+    <li>OWASP Juice Shop (the intentionally vulnerable target, run locally on Node.js)</li>
+    <li>Kali Linux (host environment)</li>
+    <li><a href="https://top10.owasp.org/2025/">OWASP Top 10:2025</a> (the standard findings are mapped to)</li>
+  </ul>
+
+  <hr style="border:none; border-top:3px solid var(--gold); margin:46px 0 40px;">
+
+  <!-- ==================== A01 - Broken Access Control ==================== -->
+  <h2 id="a01">A01 - Broken Access Control</h2>
+  <p class="secmeta">Challenge: <strong>View Basket</strong> &nbsp;&middot;&nbsp; Difficulty: <span class="stars">&#9733;&#9733;</span> &nbsp;&middot;&nbsp; OWASP: <a href="vulns.html" class="risk">A01:2025</a> &middot; CWE-639</p>
+
+  <h3>View Basket</h3>
+  <p>The challenge is to view another user's shopping basket by changing the basket ID. Let's make an
+  account for the website.</p>
+  <figure><img src="images/Juice/juicea01-0.png" alt="Registering an account on Juice Shop"><figcaption>Creating an account on Juice Shop.</figcaption></figure>
+
+  <p>Next, let's add some items to our basket to confirm it's ours. For me, I added 12 Basil Smoothies as
+  my unique basket, since I doubt another user has exactly that.</p>
+  <figure><img src="images/Juice/juicea01-1.png" alt="Basket filled with 12 Basil Smoothies"><figcaption>A basket unique enough to recognize.</figcaption></figure>
+
+  <p>If we inspect the page and go to Storage, we can look around for any interesting values we can change.
+  Under <strong>Session Storage</strong>, I see a value called <code>bid</code> (basket ID) currently set
+  to <code>6</code>.</p>
+  <figure><img src="images/Juice/juicea01-2.png" alt="Session storage showing the bid value"><figcaption>The <code>bid</code> value in session storage.</figcaption></figure>
+
+  <p>If we change it and refresh the page, let's see what happens.</p>
+  <figure><img src="images/Juice/juicea01-3.png" alt="Editing the bid value"><figcaption>Changing <code>bid</code> to another number.</figcaption></figure>
+
+  <p>The basket contents changed, and we get some confetti with an achievement that we completed the
+  challenge: View Basket!</p>
+  <figure><img src="images/Juice/juicea01-complete.png" alt="View Basket challenge solved"><figcaption>A different user's basket, and the solved challenge.</figcaption></figure>
+
+  <p>The server returns basket data for any basket ID we enter without checking whether we own that basket.
+  The server trusts a client-supplied ID with no authorization check - the textbook definition of an
+  <strong>Insecure Direct Object Reference (IDOR)</strong>.</p>
+
+  <h3>Replicating in Burp</h3>
+  <p>Editing session storage is quick, but a purist could argue it's "just client-side tampering." Proving
+  the same result at the HTTP layer shows the flaw is server-side and can't be dismissed. Let's turn
+  FoxyProxy on, open Burp's <strong>Proxy</strong> tab, go to Juice Shop, and click the basket. Burp
+  captures the request and we send it to <strong>Repeater</strong>.</p>
+  <figure><img src="images/Juice/juicea01-4.png" alt="Basket request captured in Burp"><figcaption>The basket request captured in Burp.</figcaption></figure>
+
+  <p>Here we see <code>GET /rest/basket/6 HTTP/1.1</code>. If we change the ID number and hit send, the
+  contents of the basket change just as they did earlier - straight from the server, with no session
+  storage involved.</p>
+  <figure><img src="images/Juice/juicea01-5.png" alt="Changing the basket ID in Burp Repeater"><figcaption>Changing the ID in Repeater returns another user's basket.</figcaption></figure>
+
+  <table class="finding">
+    <tr><th>Title</th><td>Insecure Direct Object Reference in Basket Retrieval</td></tr>
+    <tr><th>Category</th><td>Broken Access Control &middot; OWASP A01:2025 &middot; CWE-639</td></tr>
+    <tr><th>Severity</th><td><strong>High</strong> - unauthorized access to other users' data.</td></tr>
+    <tr><th>Description</th><td>The <code>/rest/basket/{id}</code> endpoint returns basket contents for any ID without verifying ownership.</td></tr>
+    <tr><th>Steps to reproduce</th><td>Log in, note your basket ID (session storage <code>bid</code> / the <code>GET /rest/basket/{id}</code> request), change it to another value, and the server returns a different user's basket.</td></tr>
+    <tr><th>Impact</th><td>Any authenticated user can view other customers' basket contents (privacy breach, customer data exposure).</td></tr>
+    <tr><th>Remediation</th><td>Enforce server-side authorization: verify the basket belongs to the authenticated user before returning it.</td></tr>
+  </table>
+
+  <div class="note">
+    <span class="lbl">Also in this category</span>
+    Two related A01 challenges are planned for a future update: <strong>CSRF</strong>
+    (<span class="stars">&#9733;&#9733;&#9733;</span>), which changes another user's username via a
+    cross-site request, and <strong>SSRF</strong>
+    (<span class="stars">&#9733;&#9733;&#9733;&#9733;&#9733;</span>), which coerces the server into
+    fetching an internal URL. Note the 2025 change: SSRF was its own category (A10:2021) but has been
+    rolled into Broken Access Control in the 2025 Top 10.
+  </div>
+
+  <!-- ==================== A02 - Security Misconfiguration ==================== -->
+  <h2 id="a02">A02 - Security Misconfiguration</h2>
+  <p class="secmeta">Challenge: <strong>Deprecated Interface</strong> &nbsp;&middot;&nbsp; Difficulty: <span class="stars">&#9733;&#9733;</span> &nbsp;&middot;&nbsp; OWASP: <a href="vulns.html" class="risk">A02:2025</a></p>
+  <p class="todo">TODO: Use a leftover/deprecated B2B interface that should have been disabled (insecure default left exposed). Write-up to follow.</p>
+
+  <!-- ==================== A03 - Software Supply Chain Failures ==================== -->
+  <h2 id="a03">A03 - Software Supply Chain Failures</h2>
+  <p class="secmeta">Challenge: <strong>Vulnerable Library</strong> &nbsp;&middot;&nbsp; Difficulty: <span class="stars">&#9733;&#9733;&#9733;</span> &nbsp;&middot;&nbsp; OWASP: <a href="vulns.html" class="risk">A03:2025</a></p>
+  <p class="todo">TODO: Identify a known-vulnerable third-party JavaScript library the shop bundles (the 2025 successor to "Vulnerable &amp; Outdated Components"). Write-up to follow.</p>
+
+  <!-- ==================== A04 - Cryptographic Failures ==================== -->
+  <h2 id="a04">A04 - Cryptographic Failures</h2>
+  <p class="secmeta">Challenge: <strong>Confidential Document</strong> &nbsp;&middot;&nbsp; Difficulty: <span class="stars">&#9733;</span> &nbsp;&middot;&nbsp; OWASP: <a href="vulns.html" class="risk">A04:2025</a></p>
+  <p class="todo">TODO: Access a confidential file left in the <code>/ftp</code> directory (sensitive data exposure through missing access protection). Write-up to follow.</p>
+
+  <!-- ==================== A05 - Injection ==================== -->
+  <h2 id="a05">A05 - Injection</h2>
+  <p class="secmeta">Challenges: <strong>Login Admin (SQLi)</strong> &amp; <strong>DOM XSS</strong> &nbsp;&middot;&nbsp; OWASP: <a href="vulns.html" class="risk">A05:2025</a> &middot; CWE-89 / CWE-79</p>
+
+  <h3>Login Admin (SQL Injection)</h3>
+  <p>The challenge is to log in as admin via SQL injection in the email field, using <code>' OR 1=1--</code>.
+  Login forms are the textbook SQLi target: our input is put into a database query that checks our
+  credentials. The quickest confirmation is to put a single quote in the field. If it errors out, that
+  tells us our quote is breaking the query's syntax - meaning our input is being treated as code, not
+  data.</p>
+  <p>First, let's log out if we're already logged in. Next, let's test for SQL injection in the email
+  field. The challenge tells us to use <code>' OR 1=1--</code>, so let's try that with a random password of
+  <code>test</code>.</p>
+  <figure><img src="images/Juice/juicea03-1.png" alt="SQL injection payload in the login form"><figcaption>The payload <code>' OR 1=1--</code> in the email field.</figcaption></figure>
+  <figure><img src="images/Juice/juicea03-complete.png" alt="Login Admin challenge solved"><figcaption>Challenge solved.</figcaption></figure>
+
+  <p>We got the achievement and completed the challenge. We can confirm by looking at our profile details:
+  we're logged in as the admin account.</p>
+  <figure><img src="images/Juice/juicea03-complete2.png" alt="Logged in as administrator"><figcaption>Logged in as <code>admin@juice-sh.op</code>.</figcaption></figure>
+
+  <p>The app concatenated our input directly into the SQL string instead of using parameterized queries. If
+  it were parameterized, <code>' OR 1=1--</code> would just become a search for an email literally equal to
+  the string <code>' OR 1=1--</code>, which is nobody.</p>
+
+  <h3>Why did <code>' OR 1=1--</code> work?</h3>
+  <p>When anyone tries to log in, the server builds a query something like this:</p>
+  <pre><code>SELECT * FROM Users WHERE email = 'INPUT' AND password = 'INPUT' AND deletedAt IS NULL</code></pre>
+  <p>When we enter <code>' OR 1=1--</code> in the email field, it becomes:</p>
+  <pre><code>SELECT * FROM Users WHERE email = '' OR 1=1--' AND password = '...' ...</code></pre>
+  <p>What each part does:</p>
+  <ul>
+    <li><code>'</code> - closes the opening quote, so <code>email = ''</code> (empty). This is us breaking out of the data and into the query's logic.</li>
+    <li><code>OR 1=1</code> - a condition that is always true. Because it's <code>OR</code>, the whole <code>WHERE</code> clause is now true for every row in the Users table.</li>
+    <li><code>--</code> - an SQL comment. It comments out the rest of the query, the <code>AND password = '...'</code> part, so the password check is completely ignored. That's why our password of <code>test</code> didn't matter.</li>
+  </ul>
+
+  <h3>How did we become admin from this?</h3>
+  <p>The query returns all users (the condition is always true), and the app logs us in as the first row
+  returned - in this case the <code>administrator</code> (<code>admin@juice-sh.op</code>).</p>
+  <p>We can also target a specific user, for example <code>victim@email.com'--</code>. We can even try it
+  with our own registered email but a completely different password, and still log in. Let's enter
+  <code>a.sciuto@hacker.com'--</code> as the email and <code>hehe</code> as the password. My password is
+  <em>not</em> <code>hehe</code>, but if the vulnerability is present (as we confirmed), it should log me
+  in:</p>
+  <pre><code>SELECT * FROM Users WHERE email = 'a.sciuto@hacker.com'--' AND password = 'hehe'</code></pre>
+  <figure><img src="images/Juice/juicea03-complete3.png" alt="Targeting a specific email with SQLi"><figcaption>Logging into our own account with the wrong password.</figcaption></figure>
+  <figure><img src="images/Juice/juicea03-complete4.png" alt="Logged in via targeted SQLi"><figcaption>Success - the password check was bypassed.</figcaption></figure>
+
+  <p>As further proof, we can find a user's email in one of the product reviews and log in as them:</p>
+  <figure><img src="images/Juice/juicea03-complete5.png" alt="User email found in a review"><figcaption>An email address exposed in a review.</figcaption></figure>
+  <p>I like Futurama, so let's log in as <code>bender</code> with the email
+  <code>bender@juice-sh.op'--</code> and a random password of <code>shinymetal</code>.</p>
+  <figure><img src="images/Juice/juicea03-complete6.png" alt="Logged in as bender"><figcaption>Logged in as bender, plus an unrelated bonus challenge.</figcaption></figure>
+
+  <table class="finding">
+    <tr><th>Title</th><td>SQL Injection in Login (Authentication Bypass)</td></tr>
+    <tr><th>Category</th><td>Injection &middot; OWASP A05:2025 &middot; CWE-89</td></tr>
+    <tr><th>Severity</th><td><strong>Critical</strong> - full authentication bypass, admin access.</td></tr>
+    <tr><th>How discovered</th><td>Submitting <code>'</code> in the email field caused a SQL error, confirming the input is concatenated into a query.</td></tr>
+    <tr><th>Payload</th><td>email = <code>' OR 1=1--</code>, password = anything.</td></tr>
+    <tr><th>Why it works</th><td>The <code>'</code> closes the email string, <code>OR 1=1</code> makes the WHERE clause always true, and <code>--</code> comments out the password check. The query returns all users and logs in as the first (admin).</td></tr>
+    <tr><th>Impact</th><td>Any attacker can log in as any user, including admin, with no valid credentials.</td></tr>
+    <tr><th>Remediation</th><td>Use parameterized queries / prepared statements so input is treated as data, not code. Add input validation and least-privilege database accounts.</td></tr>
+  </table>
+
+  <h3>DOM-Based Cross-Site Scripting (XSS)</h3>
+  <p>The search bar is right on the main page, so let's enter our DOM XSS payload and hit enter:</p>
+  <pre><code>&lt;iframe src="javascript:alert(`xss`)"&gt;</code></pre>
+  <figure><img src="images/Juice/juicea03-2-2.png" alt="DOM XSS payload firing in the search bar"><figcaption>The payload executes - challenge complete.</figcaption></figure>
+
+  <h4 class="bypass">DOM XSS vs Reflected / Stored XSS</h4>
+  <p>With Reflected or Stored XSS, the payload goes to the server and comes back in a response. With
+  <strong>DOM XSS</strong>, the payload never reaches the server: the front-end JavaScript reads our input
+  (from the search box or URL) and writes it into the page's DOM itself. The vulnerability lives entirely
+  in the client-side code.</p>
+  <p>A note on the payload: <code>&lt;script&gt;</code> won't execute when inserted via <code>innerHTML</code>
+  (per the HTML5 spec, scripts added that way don't run), so we use an alternative vector - an
+  <code>&lt;iframe&gt;</code> with a <code>javascript:</code> URI.</p>
+
+  <h4 class="bypass">Root cause shown in the code</h4>
+  <p>Juice Shop attaches a coding challenge to this bug. It shows the vulnerable source and asks us to
+  "click the line(s) containing the vulnerability."</p>
+  <figure><img src="images/Juice/juicea03-2-3.png" alt="The Find It coding challenge"><figcaption>The vulnerable <code>filterTable()</code> code.</figcaption></figure>
+
+  <p>Line 2 is the <strong>source</strong> - where untrusted input enters:</p>
+  <pre><code>let queryParam = this.route.snapshot.queryParams.q</code></pre>
+  <p>This reads the <code>q</code> parameter directly from the URL, which we control. Line 6 is the
+  <strong>sink</strong> - where the payload does damage:</p>
+  <pre><code>this.searchValue = this.sanitizer.bypassSecurityTrustHtml(queryParam)</code></pre>
+  <p>It takes the untrusted <code>queryParam</code> and calls <code>bypassSecurityTrustHtml</code>, which
+  tells Angular (the front-end framework) to treat it as safe HTML and not sanitize it. <code>searchValue</code>
+  is then rendered into the page as HTML. Angular normally auto-escapes everything - which is why Angular
+  apps are generally XSS-safe - but this line switches that protection off for attacker input. (We can use
+  Wappalyzer to confirm Angular and research how it normally keeps XSS safe.)</p>
+  <figure><img src="images/Juice/juicea03-2-5.png" alt="Wappalyzer showing Angular"><figcaption>Fingerprinting the front end as Angular.</figcaption></figure>
+  <figure><img src="images/Juice/juicea03-2-4.png" alt="Selecting the vulnerable line"><figcaption>Line 6 selected as the vulnerability.</figcaption></figure>
+
+  <h4 class="bypass">Fix It</h4>
+  <p>After choosing line 6, we pick the code that would have prevented the vulnerability. The four options
+  each keep the same method but change that one line:</p>
+  <pre><code>Fix 1:  this.searchValue = this.sanitizer.bypassSecurityTrustResourceUrl(queryParam)
+Fix 2:  this.searchValue = queryParam
+Fix 3:  this.sanitizer.bypassSecurityTrustScript(queryParam)
+Fix 4:  this.sanitizer.bypassSecurityTrustStyle(queryParam)</code></pre>
+  <figure><img src="images/Juice/juicea03-2-complete.png" alt="Correct fix selected"><figcaption>Fix 2 is correct.</figcaption></figure>
+  <p>The correct answer is <strong>Fix 2</strong>. Juice Shop's own explanation: "Removing the bypass of
+  sanitization entirely is the best way to fix this vulnerability. Fiddling with Angular's built-in
+  sanitization was entirely unnecessary as the user input for a text search should not be expected to
+  contain HTML that needs to be rendered but merely plain text."</p>
+  <ul>
+    <li><strong>Fix 1</strong> &rarr; <code>bypassSecurityTrustResourceUrl</code> - still bypasses sanitization, just for URLs. Still trusts attacker input. &#10007;</li>
+    <li><strong>Fix 2</strong> &rarr; <code>this.searchValue = queryParam</code> - removes the bypass entirely and assigns the plain string. Angular's default auto-escaping now neutralizes the payload. &#10003;</li>
+    <li><strong>Fix 3</strong> &rarr; <code>bypassSecurityTrustScript</code> - bypasses for the script context. Arguably the worst option. &#10007;</li>
+    <li><strong>Fix 4</strong> &rarr; <code>bypassSecurityTrustStyle</code> - bypasses for style. Still a bypass. &#10007;</li>
+  </ul>
+  <p>The fix is to simply stop bypassing and let the framework do its default escaping.</p>
+
+  <table class="finding">
+    <tr><th>Title</th><td>DOM-Based Cross-Site Scripting in Search</td></tr>
+    <tr><th>Category</th><td>Injection (XSS) &middot; OWASP A05:2025 &middot; CWE-79</td></tr>
+    <tr><th>Type</th><td>DOM-based (payload rendered client-side, no server round-trip).</td></tr>
+    <tr><th>Payload</th><td><code>&lt;iframe src="javascript:alert(`xss`)"&gt;</code> in the search field.</td></tr>
+    <tr><th>Why this vector</th><td><code>&lt;script&gt;</code> won't execute via <code>innerHTML</code>, so an iframe <code>javascript:</code> URI is used.</td></tr>
+    <tr><th>Root cause</th><td>The front end bypasses Angular's HTML sanitization (<code>bypassSecurityTrustHtml</code>) on an untrusted URL parameter (source line 2 &rarr; sink line 6).</td></tr>
+    <tr><th>Impact</th><td>Attacker-controlled JavaScript runs in the victim's session - session/JWT theft, account takeover, phishing redirects - delivered via a crafted search URL.</td></tr>
+    <tr><th>Remediation</th><td>Use framework-default output encoding; never bypass the sanitizer. Add a Content-Security-Policy as defense-in-depth.</td></tr>
+  </table>
+
+  <!-- ==================== A06 - Insecure Design ==================== -->
+  <h2 id="a06">A06 - Insecure Design</h2>
+  <p class="secmeta">Challenge: <strong>Empty User Registration</strong> &nbsp;&middot;&nbsp; Difficulty: <span class="stars">&#9733;</span> &nbsp;&middot;&nbsp; OWASP: <a href="vulns.html" class="risk">A06:2025</a></p>
+  <p class="todo">TODO: Register a user with an empty email and password (the design permits an invalid account state). Write-up to follow.</p>
+
+  <!-- ==================== A07 - Authentication Failures ==================== -->
+  <h2 id="a07">A07 - Authentication Failures</h2>
+  <p class="secmeta">Challenges: <strong>Password Strength</strong> (<span class="stars">&#9733;&#9733;</span>) &amp; <strong>Reset Jim's Password</strong> (<span class="stars">&#9733;&#9733;&#9733;</span>) &nbsp;&middot;&nbsp; OWASP: <a href="vulns.html" class="risk">A07:2025</a></p>
+  <p class="todo">TODO: Log in as admin by guessing the weak password (no SQLi); reset Jim's password via the forgot-password security question. Write-ups to follow.</p>
+
+  <!-- ==================== A08 - Software or Data Integrity Failures ==================== -->
+  <h2 id="a08">A08 - Software or Data Integrity Failures</h2>
+  <p class="secmeta">Challenge: <strong>Unsigned JWT</strong> &nbsp;&middot;&nbsp; Difficulty: <span class="stars">&#9733;&#9733;&#9733;&#9733;</span> &nbsp;&middot;&nbsp; OWASP: <a href="vulns.html" class="risk">A08:2025</a></p>
+  <p class="todo">TODO: Forge an <code>alg:none</code> JWT to bypass signature verification. Write-up to follow.</p>
+
+  <!-- ==================== A09 - Security Logging & Alerting Failures ==================== -->
+  <h2 id="a09">A09 - Security Logging &amp; Alerting Failures</h2>
+  <p class="secmeta">Challenge: <strong>Access Log</strong> &nbsp;&middot;&nbsp; Difficulty: <span class="stars">&#9733;&#9733;&#9733;&#9733;</span> &nbsp;&middot;&nbsp; OWASP: <a href="vulns.html" class="risk">A09:2025</a></p>
+  <p class="todo">TODO: Access the server's access-log file (logs exposed rather than protected and monitored). Write-up to follow.</p>
+
+  <!-- ==================== A10 - Mishandling of Exceptional Conditions ==================== -->
+  <h2 id="a10">A10 - Mishandling of Exceptional Conditions</h2>
+  <p class="secmeta">Challenge: <strong>Error Handling</strong> &nbsp;&middot;&nbsp; Difficulty: <span class="stars">&#9733;</span> &nbsp;&middot;&nbsp; OWASP: <a href="vulns.html" class="risk">A10:2025</a> &middot; CWE-209</p>
+
+  <h3>Error Handling</h3>
+  <p>Heads-up on numbering: in the older 2021 list, verbose errors lived under Security Misconfiguration
+  (A05:2021). The 2025 Top 10 adds a dedicated category - <strong>Mishandling of Exceptional
+  Conditions</strong> (A10:2025) - that this finding maps to more precisely, though it still overlaps with
+  Security Misconfiguration.</p>
+  <p>When testing for A05 Injection, I actually completed this challenge first, before the SQLi one. In the
+  email field, we can prove the app mishandles errors by entering a single quote and anything for a
+  password:</p>
+  <figure><img src="images/Juice/juicea05-complete.png" alt="Unhandled error rendered as [object Object]"><figcaption>A single quote produces a raw, unhandled error.</figcaption></figure>
+
+  <p>Placing a single quote in the email field broke something server-side, and we received a raw,
+  unhandled error of <code>[object Object]</code> - a JavaScript error object that wasn't properly handled
+  or turned into a string. An app that reveals raw errors like this is not handling them "gracefully or
+  consistently" (as the achievement banner stated). Verbose/raw errors leak internal information - stack
+  traces, SQL error messages, framework details, object structures - anything that helps an attacker.</p>
+
+  <h4 class="bypass">What is a stack trace?</h4>
+  <p>A stack trace is the list of function calls that led to an error - the program showing the exact path
+  it took right before it crashed. When code hits an error, the runtime prints the "call stack": which
+  function was running, which function called it, which called that, and so on, usually with file names and
+  line numbers. An example in Node.js:</p>
+  <pre><code>Error: SQLITE_ERROR: near "OR": syntax error
+    at Database.query (/home/kali/juice-shop/build/routes/login.js:42:15)
+    at handleLogin (/home/kali/juice-shop/build/app.js:118:9)
+    ...</code></pre>
+  <p>Stack traces can expose file paths and directory structure, the database and frameworks in use, line
+  numbers, function names, and more - free reconnaissance for an attacker.</p>
+
+  <table class="finding">
+    <tr><th>Title</th><td>Improper Error Handling / Information Disclosure</td></tr>
+    <tr><th>Category</th><td>Mishandling of Exceptional Conditions &middot; OWASP A10:2025 &middot; CWE-209 (Information Exposure Through an Error Message). Overlaps A02:2025 Security Misconfiguration.</td></tr>
+    <tr><th>Severity</th><td><strong>Low-Medium</strong> - information disclosure that aids further attacks.</td></tr>
+    <tr><th>How discovered</th><td>Submitting <code>'</code> in the login email field produced an error rendered as <code>[object Object]</code> rather than a graceful message.</td></tr>
+    <tr><th>Impact</th><td>Raw error output can leak internal details (object structures, SQL errors, stack traces) that help an attacker map and exploit the app.</td></tr>
+    <tr><th>Remediation</th><td>Catch and handle errors server-side; return generic user-facing messages; log details internally, never expose raw errors or stack traces to the client.</td></tr>
+  </table>
+
+  <hr style="border:none; border-top:3px solid var(--gold); margin:46px 0 24px;">
+  <p style="color:var(--text-3)">This write-up is a work in progress - sections A01 (Broken Access
+  Control), A05 (Injection), and A10 (Mishandling of Exceptional Conditions) are complete, with the
+  remaining OWASP Top 10:2025 categories added as they're finished.</p>
+
+</main>
+
+<footer class="foot"><div class="wrap" style="display:flex;gap:18px;flex-wrap:wrap">
+  <a href="index.html">home</a>
+  <a href="writeups.html">write-ups</a>
+  <a href="vulns.html">vulns</a>
+  <a href="https://github.com/sudoanthony">github</a>
+</div></footer>
+
+<script src="writeup-toc.js"></script>
+<script src="lightbox.js"></script>
+</body>
+</html>

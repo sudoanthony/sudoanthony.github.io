@@ -34,7 +34,7 @@ const NO_COLOR = ARGS.includes('--no-color') || !!process.env.NO_COLOR;
 /* ---------- known-good values -------------------------------- */
 
 const DIFFICULTIES = ['Very Easy', 'Easy', 'Medium', 'Hard', 'Insane', 'Practice'];
-const PLATFORMS    = ['TryHackMe', 'HackTheBox', 'Mobile'];
+const PLATFORMS    = ['TryHackMe', 'HackTheBox', 'Mobile', 'Web'];
 const TEAMS        = ['red', 'blue'];
 const SEVERITIES   = ['crit', 'high', 'med', 'low'];
 const WRITEUP_FIELDS = ['title', 'url', 'platform', 'team', 'difficulty', 'os',

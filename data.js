@@ -23,6 +23,20 @@
 
 const WRITEUPS = [
   {
+    title:      "OWASP Web Top 10 2025",
+    subtitle:   "Juice Shop Web App Pentest",
+    url:        "writeup-juiceshop.html",
+    platform:   "Web",
+    team:       "red",
+    difficulty: "Practice",
+    os:         "Linux",
+    category:   "Web",
+    icon:       "images/icons/juice.png",
+    date:       "2026-09-18",
+    summary:    "OWASP Juice Shop (Angular + Node/Express) worked against the OWASP Top 10:2025. Basket IDOR (A01), SQLi auth bypass and DOM XSS (A05), and verbose error handling (A10) - each with Burp replication, root-cause breakdown, and a severity-rated finding.",
+    tags:       ["broken-access-control", "sql-injection", "dom-xss", "improper-error-handling"]
+  },
+  {
     title:      "Nexus",
     url:        "writeup-nexus.html",
     platform:   "HackTheBox",
@@ -78,6 +92,42 @@ const WRITEUPS = [
 ];
 
 const VULNS = [
+  {
+    id:    "broken-access-control",
+    name:  "Broken access control (IDOR)",
+    cat:   "web",
+    sev:   "high",
+    ext:   "CWE-639 · CWE-284 · OWASP A01:2025",
+    blurb: "The server acts on a client-supplied object reference (an ID in the URL, body, or storage) without checking the requester is authorized for it. Swap the ID and you read or change another user's data. SSRF folds into this category as of the 2025 Top 10. Fix is server-side authorization on every object access, keyed to the session, not the supplied ID.",
+    deepdive: "",
+    uses: [
+      { writeup: "OWASP Web Top 10 2025", url: "writeup-juiceshop.html", ctx: "/rest/basket/{id} returns any basket by ID with no ownership check - View Basket solved via the bid in session storage and replicated in Burp Repeater" }
+    ]
+  },
+  {
+    id:    "dom-xss",
+    name:  "DOM-based cross-site scripting",
+    cat:   "web",
+    sev:   "high",
+    ext:   "CWE-79 · OWASP A05:2025",
+    blurb: "Front-end JavaScript reads attacker-controlled input (URL param, search box) and writes it into the DOM without escaping - the payload never touches the server. In Angular it means calling bypassSecurityTrustHtml on untrusted input, switching off the framework's default auto-escaping. Fix is to never bypass the sanitizer and let the framework encode output.",
+    deepdive: "",
+    uses: [
+      { writeup: "OWASP Web Top 10 2025", url: "writeup-juiceshop.html", ctx: "search reads the q URL param (source) and passes it to sanitizer.bypassSecurityTrustHtml (sink); an iframe javascript: URI fires since <script> won't run via innerHTML" }
+    ]
+  },
+  {
+    id:    "improper-error-handling",
+    name:  "Mishandling of exceptional conditions",
+    cat:   "web",
+    sev:   "low",
+    ext:   "CWE-209 · CWE-755 · OWASP A10:2025",
+    blurb: "The app fails to catch and normalize errors, returning raw exception objects, stack traces, or SQL messages to the client - free reconnaissance (file paths, frameworks, DB engine, internal structure). A new dedicated category in the 2025 Top 10; verbose errors previously lived under Security Misconfiguration. Fix is catch-all handling that logs details internally and returns a generic message.",
+    deepdive: "",
+    uses: [
+      { writeup: "OWASP Web Top 10 2025", url: "writeup-juiceshop.html", ctx: "a single quote in the Juice Shop login email returns an unhandled [object Object] error instead of a graceful message" }
+    ]
+  },
   {
     id:    "hardcoded-secret",
     name:  "Hardcoded secret in app resources",
@@ -171,7 +221,8 @@ const VULNS = [
     blurb: "Attacker input concatenated into a SQL query and run as code instead of data. Tautologies bypass filters and logins; UNION plus the metadata table (sqlite_master / information_schema) reads arbitrary tables. On mobile the sink is a local SQLite DB or an exported content provider. Fix is parameterized queries; severity tracks reach - a local search box is lower than a cross-app exported provider.",
     deepdive: "",
     uses: [
-      { writeup: "OWASP Mobile Top 10 2024", url: "writeup-allsafe.html", ctx: "AllSafe login rawQuery bypassed with a tautology and full user dump; InsecureBankv2's exported provider read via UNION on sqlite_master" }
+      { writeup: "OWASP Mobile Top 10 2024", url: "writeup-allsafe.html", ctx: "AllSafe login rawQuery bypassed with a tautology and full user dump; InsecureBankv2's exported provider read via UNION on sqlite_master" },
+      { writeup: "OWASP Web Top 10 2025", url: "writeup-juiceshop.html", ctx: "Juice Shop login bypassed with ' OR 1=1-- to authenticate as admin, and targeted specific users with email'-- ; input concatenated into the query instead of parameterized" }
     ]
   },
   {
