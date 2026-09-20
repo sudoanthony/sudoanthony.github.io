@@ -23,6 +23,19 @@
 
 const WRITEUPS = [
   {
+    title:      "Abducted",
+    url:        "writeup-abducted.html",
+    platform:   "HackTheBox",
+    team:       "red",
+    difficulty: "Medium",
+    os:         "Linux",
+    category:   "SMB",
+    icon:       "images/icons/abducted.png",
+    date:       "2026-09-20",
+    summary:    "Unauthenticated Samba print command injection (CVE-2026-4480) to a foothold as nobody, then rclone credential reuse to scott, wide-link + force-user abuse to pivot to marcus, and a group-writable systemd drop-in plus a loose polkit rule to root.",
+    tags:       ["command-injection", "exposed-credentials", "priv-esc"]
+  },
+  {
     title:      "OWASP Web Top 10: 2025",
     subtitle:   "Juice Shop Web App Pentest",
     url:        "writeup-juiceshop.html",
@@ -62,19 +75,6 @@ const WRITEUPS = [
     date:       "2026-07-31",
     summary:    "Featuring AllSafe, with help from InsecureBankv2 and AndroGoat. A mobile penetration testing methodology that works all three Android targets to demonstrate each risk of the OWASP Mobile Top 10 (2024) - worked examples with screenshots, plus a severity-rated report for every vulnerability found.",
     tags:       ["hardcoded-secret", "insecure-logging", "exported-component", "insecure-storage", "broken-crypto", "auth-bypass", "credential-usage", "sql-injection", "insecure-deserialization", "binary-protections"]
-  },
-  {
-    title:      "Abducted",
-    url:        "writeup-abducted.html",
-    platform:   "HackTheBox",
-    team:       "red",
-    difficulty: "Medium",
-    os:         "Linux",
-    category:   "SMB",
-    icon:       "images/icons/abducted.png",
-    date:       "2026-07-30",
-    summary:    "Unauthenticated Samba print command injection (CVE-2026-4480) to a foothold, then credential reuse and wide-link abuse to pivot users, and a systemd/polkit misconfig to root.",
-    tags:       ["command-injection", "exposed-credentials", "priv-esc"]
   },
   {
     title:      "Biohazard",
