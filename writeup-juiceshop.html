@@ -39,6 +39,8 @@
   /* Stub sections not yet written up. */
   .todo { color: var(--text-3); font-style: italic; border-left: 2px solid var(--border-2); padding-left: 12px; margin: 10px 0 26px; }
   .stars { color: #d0a54a; letter-spacing: 1px; }
+  /* Giant gold difficulty stars in a challenge header. */
+  .writeup-gold h3 .chstars { color: #ebcb8b; font-weight: 400; font-size: 0.92em; letter-spacing: 3px; margin-left: 8px; white-space: nowrap; }
 </style>
 </head>
 <body>
@@ -96,7 +98,7 @@
   remediated.</p>
   <p>This write-up maps to the <strong>OWASP Top 10:2025</strong>, the current edition. The 2025 list
   reordered several risks and added new categories (Software Supply Chain Failures, and Mishandling of
-  Exceptional Conditions), so the numbering here differs from older 2021 guides:</p>
+  Exceptional Conditions). Here is the current list:</p>
   <ul>
     <li><strong>A01 Broken Access Control</strong> - users acting outside their intended permissions.</li>
     <li><strong>A02 Security Misconfiguration</strong> - insecure defaults, exposed features, missing hardening.</li>
@@ -121,10 +123,15 @@
   vulnerable code where Juice Shop exposes it), and record a severity-rated finding:</p>
   <ul>
     <li><strong>Recon &amp; setup</strong> - run Juice Shop locally, proxy the browser through Burp, and fingerprint the stack (Angular front end, Node/Express back end) to know what protections exist by default.</li>
-    <li><strong>A01 Broken Access Control</strong> - IDOR on the basket endpoint (<span class="risk">A01</span>).</li>
-    <li><strong>A05 Injection</strong> - SQL injection authentication bypass and DOM-based XSS (<span class="risk">A05</span>).</li>
-    <li><strong>A10 Mishandling of Exceptional Conditions</strong> - improper error handling / information disclosure (<span class="risk">A10</span>).</li>
-    <li><strong>A02, A03, A04, A06-A09</strong> - security misconfiguration, supply-chain / vulnerable components, cryptographic failures, insecure design, authentication failures, integrity (JWT) flaws, and logging gaps (added as each is completed).</li>
+    <li><strong>A01 Broken Access Control</strong> - IDOR on the basket endpoint.</li>
+    <li><strong>A02 Security Misconfiguration</strong> - a deprecated B2B (XML) upload interface left active.</li>
+    <li><strong>A03 Software Supply Chain Failures</strong> - a directly-used dependency with a known CVE.</li>
+    <li><strong>A04 Cryptographic Failures</strong> - a confidential document exposed in a browsable directory.</li>
+    <li><strong>A05 Injection</strong> - SQL injection authentication bypass and DOM-based XSS.</li>
+    <li><strong>A06 Insecure Design</strong> - registration validation enforced only on the client.</li>
+    <li><strong>A07 Authentication Failures</strong> - an OSINT-guessable password-reset question and a weak, brute-forceable admin password.</li>
+    <li><strong>A10 Mishandling of Exceptional Conditions</strong> - improper error handling / information disclosure.</li>
+    <li><strong>A08 &amp; A09</strong> - software/data integrity (unsigned JWT) and security logging &amp; alerting failures (added as each is completed).</li>
   </ul>
 
   <!-- ==================== Tools Used ==================== -->
@@ -145,7 +152,7 @@
   <h2 id="a01">A01 - Broken Access Control</h2>
   <p class="secmeta">Challenge: <strong>View Basket</strong> &nbsp;&middot;&nbsp; Difficulty: <span class="stars">&#9733;&#9733;</span> &nbsp;&middot;&nbsp; OWASP: <a href="vulns.html" class="risk">A01:2025</a> &middot; CWE-639</p>
 
-  <h3><span class="chlabel">Challenge</span>View Basket</h3>
+  <h3><span class="chlabel">Challenge</span>View Basket <span class="chstars">(&#9733;&#9733;)</span></h3>
   <p>The challenge is to view another user's shopping basket by changing the basket ID. Let's make an
   account for the website.</p>
   <figure><img src="images/Juice/juicea01-0.png" alt="Registering an account on Juice Shop"><figcaption>Creating an account on Juice Shop.</figcaption></figure>
@@ -198,30 +205,192 @@
     (<span class="stars">&#9733;&#9733;&#9733;</span>), which changes another user's username via a
     cross-site request, and <strong>SSRF</strong>
     (<span class="stars">&#9733;&#9733;&#9733;&#9733;&#9733;</span>), which coerces the server into
-    fetching an internal URL. Note the 2025 change: SSRF was its own category (A10:2021) but has been
-    rolled into Broken Access Control in the 2025 Top 10.
+    fetching an internal URL. Worth noting: SSRF now falls under Broken Access Control in the current
+    Top 10.
   </div>
 
   <!-- ==================== A02 - Security Misconfiguration ==================== -->
   <h2 id="a02">A02 - Security Misconfiguration</h2>
-  <p class="secmeta">Challenge: <strong>Deprecated Interface</strong> &nbsp;&middot;&nbsp; Difficulty: <span class="stars">&#9733;&#9733;</span> &nbsp;&middot;&nbsp; OWASP: <a href="vulns.html" class="risk">A02:2025</a></p>
-  <p class="todo">TODO: Use a leftover/deprecated B2B interface that should have been disabled (insecure default left exposed). Write-up to follow.</p>
+  <p class="secmeta">Challenge: <strong>Deprecated Interface</strong> &nbsp;&middot;&nbsp; OWASP: <a href="vulns.html" class="risk">A02:2025</a> &middot; CWE-16</p>
+
+  <h3><span class="chlabel">Challenge</span>Deprecated Interface <span class="chstars">(&#9733;&#9733;)</span></h3>
+  <p>The challenge wants us to use a deprecated, leftover B2B interface that should have been disabled.</p>
+
+  <h4>What's a B2B interface?</h4>
+  <p>B2B = business-to-business - companies dealing with one another, as opposed to B2C
+  (business-to-consumer). A B2B interface is a machine-to-machine hook that lets one company's system talk
+  to another's automatically, with no human clicking a website. Those legacy integrations historically ran
+  on <code>XML</code>. The story here is that the shop used to accept XML for some B2B feature, then "pulled
+  it away." This challenge focuses on what happens when they <em>said</em> they pulled it, but either forgot
+  to or did it improperly - leaving the interface open for customers, and anyone else, to still poke at.</p>
+
+  <p>Once we log in, a new item shows up in the hamburger menu on the left: <strong>Complain?</strong></p>
+  <figure><img src="images/Juice/juicea02-1.png" alt="Complaint option in the menu"><figcaption>The File Complaint feature only appears once we're authenticated.</figcaption></figure>
+  <figure><img src="images/Juice/juicea02-2.png" alt="File Complaint page"><figcaption>The complaint form, with a file-attachment control.</figcaption></figure>
+
+  <p>After clicking <strong>Browse...</strong>, I can see that "all supported types" is the default option
+  on the file picker - it isn't actually restricting anything. So if we upload an XML file, we should be
+  able to complete the challenge.</p>
+  <figure><img src="images/Juice/juicea02-3.png" alt="File picker showing all types allowed"><figcaption>The upload quietly accepts anything - the deprecated interface is still wide open.</figcaption></figure>
+
+  <pre><code><span class="p">$</span> touch test.xml   <span class="c"># create an empty .xml file</span></code></pre>
+  <figure><img src="images/Juice/juicea02-4.png" alt="Creating test.xml"><figcaption>An empty XML file is all we need.</figcaption></figure>
+  <figure><img src="images/Juice/juicea02-5.png" alt="Attaching the xml file to the complaint"><figcaption>Attach <code>test.xml</code> to the complaint.</figcaption></figure>
+
+  <p>Upload the file and hit <strong>Submit</strong>.</p>
+  <figure><img src="images/Juice/juicea02-complete.png" alt="Deprecated Interface challenge solved"><figcaption>Solved - the retired XML interface still processed our file.</figcaption></figure>
+  <p>We solved the challenge, nice.</p>
+
+  <div class="note">
+    <span class="lbl">note for the report</span>
+    "All types accepted" isn't proof XML is fine - it <em>is</em> the bug. A hardened complaint upload
+    would whitelist a couple of safe formats server-side and reject the rest. XML shows up as accepted
+    input only because leftover B2B parsing code was never actually turned off. (Careful: stuffing a
+    <em>malicious</em> XML payload in here is a separate challenge - XXE - so keep it to plain XML for
+    this one.)
+  </div>
+
+  <table class="finding">
+    <tr><th>Title</th><td>Deprecated / Unrestricted File-Upload Interface</td></tr>
+    <tr><th>Category</th><td>Security Misconfiguration &middot; OWASP A02:2025 &middot; CWE-16 / CWE-434</td></tr>
+    <tr><th>Severity</th><td><strong>Medium</strong> - a retired interface left active expands the attack surface (here it feeds directly into an XXE path).</td></tr>
+    <tr><th>How discovered</th><td>The File Complaint upload accepts arbitrary file types, including the deprecated XML format, with no server-side restriction.</td></tr>
+    <tr><th>Steps to reproduce</th><td>Log in, open File Complaint, attach any <code>.xml</code> file, and submit.</td></tr>
+    <tr><th>Impact</th><td>A deprecated B2B interface still processes input it shouldn't, keeping old and unmaintained code paths reachable by any user.</td></tr>
+    <tr><th>Remediation</th><td>Fully remove deprecated interfaces, not just from the UI; enforce a server-side allow-list of accepted file types and reject everything else.</td></tr>
+  </table>
 
   <!-- ==================== A03 - Software Supply Chain Failures ==================== -->
   <h2 id="a03">A03 - Software Supply Chain Failures</h2>
-  <p class="secmeta">Challenge: <strong>Vulnerable Library</strong> &nbsp;&middot;&nbsp; Difficulty: <span class="stars">&#9733;&#9733;&#9733;</span> &nbsp;&middot;&nbsp; OWASP: <a href="vulns.html" class="risk">A03:2025</a></p>
-  <p class="todo">TODO: Identify a known-vulnerable third-party JavaScript library the shop bundles (the 2025 successor to "Vulnerable &amp; Outdated Components"). Write-up to follow.</p>
+  <p class="secmeta">Challenge: <strong>Vulnerable Library</strong> &nbsp;&middot;&nbsp; OWASP: <a href="vulns.html" class="risk">A03:2025</a> &middot; CWE-1035</p>
+
+  <h3><span class="chlabel">Challenge</span>Vulnerable Library <span class="chstars">(&#9733;&#9733;&#9733;&#9733;)</span></h3>
+  <p>The challenge: inform the shop about a high-severity vulnerability caused by one of its
+  <strong>directly used dependencies</strong>, mentioning the exact library name and version in a comment.
+  The link in the challenge brings us to <code>http://localhost:3000/#/contact</code> (Customer Feedback).
+  So we need to find a bundled third-party library with a known vulnerability, then report it to Juice Shop.</p>
+
+  <h4>What's a JS library?</h4>
+  <p>Using Wappalyzer, we can see the server runs <code>Node.js</code> with some JavaScript frameworks
+  (<code>Angular</code> and <code>Zone.js</code>). Instead of writing every piece of an app, people pull in
+  code others wrote and shared - a library for handling dates, one for input sanitization, and so on -
+  installed via <code>npm install</code> and called as functions. Juice Shop has tons of these. And because
+  it's running a pile of code made by a bunch of different people, it inherits their flaws too. Sometimes
+  libraries pull in other libraries, and five layers deep some guy made a mistake - and now it's
+  <em>your</em> mistake! That's the core idea behind <strong>A03 - Software Supply Chain Failures</strong>.</p>
+
+  <h4>Finding it with retire.js</h4>
+  <p><code>retire.js</code> scans an app's JavaScript - the source, or the libraries the site loads in the
+  browser - figures out which libraries and versions are in use, and checks them against a database of
+  known-vulnerable versions. From that, it tells us which vulnerabilities it finds, for which library, at
+  which version.</p>
+  <figure><img src="images/Juice/juicea032-1.png" alt="retire.js output"><figcaption>retire.js has been busy.</figcaption></figure>
+  <p>Our focus is a <em>high</em>-severity vulnerability, and out of all the results there's only one:
+  <code>underscore.js 1.7.0</code>. Let's report it and see what happens.</p>
+  <figure><img src="images/Juice/juicea032-2.png" alt="Reporting underscore.js in Customer Feedback"><figcaption>Reporting <code>underscore.js 1.7.0</code> in the feedback form.</figcaption></figure>
+  <figure><img src="images/Juice/juicea032-3.png" alt="underscore report not accepted"><figcaption>No solve - and trying just <code>underscore.js 1.7.0</code> on its own didn't work either.</figcaption></figure>
+
+  <p>Here's the catch, and it's worth remembering: the challenge asks about "directly used dependencies."
+  <code>retire.js</code> found us <strong>frontend</strong> libraries, which is genuinely useful, but the
+  library the challenge expects may live in the <strong>backend</strong>. So let's try another tool:
+  <code>npm audit</code>. Where <code>retire.js</code> asks "what vulnerable JS is this website serving to
+  us?", <code>npm audit</code> asks "what vulnerable packages are in this project's full dependency tree?"</p>
+  <figure><img src="images/Juice/juicea032-4.png" alt="npm audit output showing 19 high"><figcaption><code>npm audit</code> - a whopping 19 high-severity vulnerabilities.</figcaption></figure>
+
+  <p>Now, we could bash our head on the keyboard brute-forcing them one by one, or we can <strong>triage</strong>.
+  When I used to work in the medical field, triage was essential when dealing with a high number of
+  casualties and injuries at the same time - you sort by what matters most. The key filter with these
+  findings is <strong>direct vs. transitive</strong>: most of these are transitive, meaning they're
+  <em>deep</em> dependencies-of-dependencies that Juice Shop never directly chose.</p>
+  <pre><code><span class="p">$</span> cd ~/juice-shop
+<span class="p">$</span> npm audit --omit=dev   <span class="c"># drop dev/build-tool noise (the challenge lib is a runtime dep)</span></code></pre>
+  <figure><img src="images/Juice/juicea032-5.png" alt="npm audit --omit=dev, down to 16 high"><figcaption>19 &rarr; 16. A little bit of an improvement.</figcaption></figure>
+
+  <p>Let's try another command:</p>
+  <pre><code><span class="p">$</span> npm outdated   <span class="c"># shows which direct deps are behind, and how far</span></code></pre>
+  <figure><img src="images/Juice/juicea032-6.png" alt="npm outdated output"><figcaption>The version gaps do the sorting for us.</figcaption></figure>
+  <p>Three big mismatches stick out here. <code>jsonwebtoken</code> is currently at <code>0.4.0</code>, but
+  its latest version is <code>9.0.3</code> - a HUGE difference. Right behind it, <code>express-jwt</code> and
+  <code>sanitize-html</code> are both embarrassingly far behind their latest updates. Let's try each of them
+  in the form, one by one.</p>
+  <figure><img src="images/Juice/juicea032-complete.png" alt="Submitting the candidate in feedback"><figcaption>Submitting a candidate with the correct captcha.</figcaption></figure>
+  <figure><img src="images/Juice/juicea032-complete2.png" alt="Vulnerable Library solved"><figcaption>We did it!</figcaption></figure>
+  <p>The answer was <code>sanitize-html 1.4.2</code>. Entered in the comment box with the correct captcha,
+  we got our achievement.</p>
+
+  <div class="note insight">
+    <span class="lbl">how to pick the right one out of 19</span>
+    Why hunt in the dependencies at all? Because a "vulnerable library" finding <em>is</em> a dependency
+    problem - the flaw isn't in the shop's own code, it's in something it installed. And when a scanner
+    floods you with 19 highs, you don't report all 19 equally, you triage. Two moves did the sorting:
+    <code>npm audit --omit=dev</code> to drop build-tool noise, then <code>npm outdated</code> to surface
+    the <strong>biggest version gaps</strong>. A library frozen at <code>0.x</code> while the world is on
+    <code>9.x</code> isn't "a bit stale," it's deliberately abandoned - and it's almost always both the
+    easiest to spot and the most likely to be genuinely dangerous. Reading that gap is the skill; no
+    keyboard-mashing required.
+  </div>
+
+  <table class="finding">
+    <tr><th>Title</th><td>Use of Components with Known Vulnerabilities (<code>sanitize-html 1.4.2</code>)</td></tr>
+    <tr><th>Category</th><td>Software Supply Chain Failures &middot; OWASP A03:2025 &middot; CWE-1035 / CWE-937</td></tr>
+    <tr><th>Severity</th><td><strong>High</strong> - the app ships direct dependencies pinned to severely outdated versions with public CVEs.</td></tr>
+    <tr><th>How discovered</th><td><code>retire.js</code> flagged a frontend lib (underscore 1.7.0); <code>npm audit</code> + <code>npm outdated</code> then surfaced backend direct deps frozen far behind current (jsonwebtoken 0.4.0, express-jwt, sanitize-html 1.4.2).</td></tr>
+    <tr><th>Impact</th><td>Known, publicly documented vulnerabilities are inherited directly by the application through its outdated dependencies.</td></tr>
+    <tr><th>Remediation</th><td>Upgrade dependencies to patched versions; wire automated dependency scanning (<code>npm audit</code>, Dependabot, retire.js) into CI; track and patch components on a schedule.</td></tr>
+  </table>
 
   <!-- ==================== A04 - Cryptographic Failures ==================== -->
   <h2 id="a04">A04 - Cryptographic Failures</h2>
-  <p class="secmeta">Challenge: <strong>Confidential Document</strong> &nbsp;&middot;&nbsp; Difficulty: <span class="stars">&#9733;</span> &nbsp;&middot;&nbsp; OWASP: <a href="vulns.html" class="risk">A04:2025</a></p>
-  <p class="todo">TODO: Access a confidential file left in the <code>/ftp</code> directory (sensitive data exposure through missing access protection). Write-up to follow.</p>
+  <p class="secmeta">Challenge: <strong>Confidential Document</strong> &nbsp;&middot;&nbsp; OWASP: <a href="vulns.html" class="risk">A04:2025</a> &middot; CWE-538</p>
+
+  <h3><span class="chlabel">Challenge</span>Confidential Document <span class="chstars">(&#9733;)</span></h3>
+  <p>The goal here is to access a confidential file the shop meant to keep private. The trail starts on
+  the <strong>About Us</strong> page, where one of the links doesn't point at an in-app route but at a
+  file served straight off the server, inside a directory called <code>/ftp</code>.</p>
+
+  <p>After navigating to <code>localhost:3000/ftp</code>, we see a lot of interesting files. A lot of them
+  are tied to other challenges, but for this one we just want to prove Sensitive Data Exposure.</p>
+  <figure><img src="images/Juice/juicea04-1.png" alt="Browsable /ftp directory listing"><figcaption>The <code>/ftp</code> directory is browsable and full of files it shouldn't be handing out.</figcaption></figure>
+
+  <p>Opening <code>acquisitions.md</code>, right at the top we see "This document is confidential! Do not
+  distribute!"</p>
+  <figure><img src="images/Juice/juicea04-2.png" alt="acquisitions.md marked confidential"><figcaption>A confidential-marked document about the company's planned acquisitions.</figcaption></figure>
+
+  <p>When we return to the main site, we see that just viewing that file got us the achievement.</p>
+  <figure><img src="images/Juice/juicea04-complete.png" alt="Confidential Document challenge solved"><figcaption>Challenge solved simply by requesting the file.</figcaption></figure>
+
+  <p>This is a pretty clean example of what Sensitive Data Exposure looks like: we saw a file we weren't
+  supposed to see, and just like that, sensitive data was accidentally exposed to us.</p>
+
+  <h4>It was never really "FTP"</h4>
+  <p>That <code>/ftp</code> directory wasn't FTP at all. It's just a folder that happens to be named
+  <code>ftp</code>, and everything in it is served as static files over HTTP. So when we clicked
+  <code>/ftp/acquisitions.md</code>, we weren't touching an FTP server, we just made a web request and
+  the server said "ok, here you go." Two things went wrong:</p>
+  <ul>
+    <li>Confidential files should never live under a path a web server will hand out.</li>
+    <li>Sensitive files should be served through an endpoint that asks "who's requesting this, and are
+    they authorized?" - not dropped into a browsable static folder.</li>
+  </ul>
+  <p>Juice Shop tags this as Sensitive Data Exposure, which in the 2025 Top 10 lives under
+  <strong>A04 Cryptographic Failures</strong> - the category for sensitive data left unprotected. Worth
+  being precise: it isn't an encryption bug itself, it's the broader "sensitive data isn't protected" idea.</p>
+
+  <table class="finding">
+    <tr><th>Title</th><td>Sensitive Document Exposure in <code>/ftp</code> Directory</td></tr>
+    <tr><th>Category</th><td>Cryptographic Failures / Sensitive Data Exposure &middot; OWASP A04:2025 &middot; CWE-538 / CWE-200</td></tr>
+    <tr><th>Severity</th><td><strong>Medium</strong> (as tested) - trivially reachable with no authentication, but the file is placeholder content. Rises to <strong>High</strong> if the directory holds genuinely sensitive material; the doc claims to be M&amp;A plans, and real material non-public info would carry regulatory / insider-trading impact.</td></tr>
+    <tr><th>How discovered</th><td>An About Us link pointed into <code>/ftp</code>; the directory is served as browsable static files, and <code>acquisitions.md</code> was directly downloadable.</td></tr>
+    <tr><th>Steps to reproduce</th><td>Browse to <code>/ftp/acquisitions.md</code> (browser or <code>curl</code>) - no authentication required.</td></tr>
+    <tr><th>Impact</th><td>Any unauthenticated user can retrieve confidential files stored in the served directory.</td></tr>
+    <tr><th>Remediation</th><td>Keep sensitive files outside the web root; serve protected downloads through an authenticated, authorization-checked route; disable directory listing; never rely on path obscurity.</td></tr>
+  </table>
 
   <!-- ==================== A05 - Injection ==================== -->
   <h2 id="a05">A05 - Injection</h2>
   <p class="secmeta">Challenges: <strong>Login Admin (SQLi)</strong> (<span class="stars">&#9733;&#9733;</span>) &amp; <strong>DOM XSS</strong> (<span class="stars">&#9733;</span>) &nbsp;&middot;&nbsp; OWASP: <a href="vulns.html" class="risk">A05:2025</a> &middot; CWE-89 / CWE-79</p>
 
-  <h3><span class="chlabel">Challenge</span>Login Admin (SQL Injection)</h3>
+  <h3><span class="chlabel">Challenge</span>Login Admin (SQL Injection) <span class="chstars">(&#9733;&#9733;)</span></h3>
   <p>The challenge is to log in as admin via SQL injection in the email field, using <code>' OR 1=1--</code>.
   Login forms are the textbook SQLi target: our input is put into a database query that checks our
   credentials. The quickest confirmation is to put a single quote in the field. If it errors out, that
@@ -282,7 +451,7 @@
     <tr><th>Remediation</th><td>Use parameterized queries / prepared statements so input is treated as data, not code. Add input validation and least-privilege database accounts.</td></tr>
   </table>
 
-  <h3><span class="chlabel">Challenge</span>DOM-Based Cross-Site Scripting (XSS)</h3>
+  <h3><span class="chlabel">Challenge</span>DOM-Based Cross-Site Scripting (XSS) <span class="chstars">(&#9733;)</span></h3>
   <p>The search bar is right on the main page, so let's enter our DOM XSS payload and hit enter:</p>
   <pre><code>&lt;iframe src="javascript:alert(`xss`)"&gt;</code></pre>
   <figure><img src="images/Juice/juicea03-2-2.png" alt="DOM XSS payload firing in the search bar"><figcaption>The payload executes - challenge complete.</figcaption></figure>
@@ -347,13 +516,165 @@ Fix 4:  this.sanitizer.bypassSecurityTrustStyle(queryParam)</code></pre>
 
   <!-- ==================== A06 - Insecure Design ==================== -->
   <h2 id="a06">A06 - Insecure Design</h2>
-  <p class="secmeta">Challenge: <strong>Empty User Registration</strong> &nbsp;&middot;&nbsp; Difficulty: <span class="stars">&#9733;</span> &nbsp;&middot;&nbsp; OWASP: <a href="vulns.html" class="risk">A06:2025</a></p>
-  <p class="todo">TODO: Register a user with an empty email and password (the design permits an invalid account state). Write-up to follow.</p>
+  <p class="secmeta">Challenge: <strong>Empty User Registration</strong> &nbsp;&middot;&nbsp; OWASP: <a href="vulns.html" class="risk">A06:2025</a> &middot; CWE-602</p>
+
+  <h3><span class="chlabel">Challenge</span>Empty User Registration <span class="chstars">(&#9733;)</span></h3>
+  <p>Navigating to the registration form, we see we have to enter something to register an account. But the
+  challenge wants us to register with an <em>empty</em> email and password.</p>
+  <figure><img src="images/Juice/juicea06-1.png" alt="Registration form requiring input"><figcaption>The form won't let us submit blank fields.</figcaption></figure>
+
+  <p>This sounds like a job for Burp Suite - because that validation is running in the browser, not on the
+  server.</p>
+  <figure><img src="images/Juice/juicea06-2.png" alt="Capturing the registration POST in Burp"><figcaption>Capture the registration <code>POST</code> in Burp.</figcaption></figure>
+
+  <p>We capture the <code>POST</code> request and send it to <strong>Repeater</strong>.</p>
+  <figure><img src="images/Juice/juicea06-3.png" alt="Registration request in Repeater"><figcaption>Our email and password strings are sitting right there in the JSON body.</figcaption></figure>
+
+  <p>Our intended email and password values are there, so what if we just remove them and hit
+  <strong>Send</strong>?</p>
+  <figure><img src="images/Juice/juicea06-4.png" alt="Empty email and password sent"><figcaption>Blank the values and send.</figcaption></figure>
+
+  <p>Well, it successfully registers and we get our achievement is what happens.</p>
+  <figure><img src="images/Juice/juicea06-complete.png" alt="Empty User Registration solved, plus Repetitive Registration"><figcaption>Two for one - Empty User Registration, plus a surprise bonus.</figcaption></figure>
+
+  <p>And look - we accidentally got another achievement at the same time:
+  <strong>Repetitive Registration (Follow the DRY principle while registering a user)</strong>. The
+  registration form makes us repeat our password in a <code>passwordRepeat</code> field, but the server
+  never checks that they even match! The password-confirmation check is enforced only in the browser; the
+  backend just ignores it.</p>
+
+  <div class="note">
+    <span class="lbl">also in this category: Repetitive Registration</span>
+    Same root cause, second proof. DRY ("Don't Repeat Yourself") is the joke - the "repeat password" field
+    is pointless because the server never validates it. Both challenges show the identical flaw: a security
+    control (input validation) placed where the attacker controls it. That's the essence of
+    <strong>Insecure Design</strong> - the design trusts the client.
+  </div>
+
+  <table class="finding">
+    <tr><th>Title</th><td>Client-Side-Only Validation on User Registration</td></tr>
+    <tr><th>Category</th><td>Insecure Design &middot; OWASP A06:2025 &middot; CWE-602 (Client-Side Enforcement of Server-Side Security) / CWE-20</td></tr>
+    <tr><th>Severity</th><td><strong>Low</strong> - creates invalid/inconsistent account state rather than direct compromise; the value is in exposing the pattern of trusting client validation.</td></tr>
+    <tr><th>How discovered</th><td>Removing the email/password (and mismatching <code>passwordRepeat</code>) in the intercepted registration request still created the account.</td></tr>
+    <tr><th>Impact</th><td>Accounts can be created in states the UI forbids - blank credentials, unconfirmed passwords - which can break downstream logic and assumptions.</td></tr>
+    <tr><th>Remediation</th><td>Enforce all validation server-side (required fields, format, password match); treat client-side checks as UX only.</td></tr>
+  </table>
 
   <!-- ==================== A07 - Authentication Failures ==================== -->
   <h2 id="a07">A07 - Authentication Failures</h2>
-  <p class="secmeta">Challenges: <strong>Password Strength</strong> (<span class="stars">&#9733;&#9733;</span>) &amp; <strong>Reset Jim's Password</strong> (<span class="stars">&#9733;&#9733;&#9733;</span>) &nbsp;&middot;&nbsp; OWASP: <a href="vulns.html" class="risk">A07:2025</a></p>
-  <p class="todo">TODO: Log in as admin by guessing the weak password (no SQLi); reset Jim's password via the forgot-password security question. Write-ups to follow.</p>
+  <p class="secmeta">Challenges: <strong>Login Jim</strong>, <strong>Reset Jim's Password</strong> &amp; <strong>Password Strength</strong> &nbsp;&middot;&nbsp; OWASP: <a href="vulns.html" class="risk">A07:2025</a> &middot; CWE-640 / CWE-521</p>
+
+  <h3><span class="chlabel">Challenge</span>Login Jim <span class="chstars">(&#9733;&#9733;&#9733;)</span></h3>
+  <p>Not strictly an authentication <em>failure</em>, but we may as well knock out the easy achievement
+  while we're here, no? Just like we logged in as Bender earlier with SQLi, let's do the same for poor Jim.</p>
+  <figure><img src="images/Juice/juicea07-1.png" alt="SQLi login as Jim"><figcaption>Same SQLi login trick as before.</figcaption></figure>
+  <p>Just in case we don't already know Jim's email, we search the site's reviews to find it, exactly as we
+  did with Bender's.</p>
+  <figure><img src="images/Juice/juicea07-2.png" alt="Searching reviews for Jim's email"><figcaption>Hunting the reviews for Jim's address.</figcaption></figure>
+  <figure><img src="images/Juice/juicea07-3.png" alt="Jim's email found: jim@juice-sh.op"><figcaption>Found it: <code>jim@juice-sh.op</code>.</figcaption></figure>
+  <p>Logging in with <code>jim@juice-sh.op'--</code> and any password:</p>
+  <figure><img src="images/Juice/juicea07-4.png" alt="Logged in as Jim"><figcaption>Successfully logged in, achievement earned. Now let's reset Jim's password properly.</figcaption></figure>
+
+  <h3><span class="chlabel">Challenge</span>Reset Jim's Password <span class="chstars">(&#9733;&#9733;&#9733;)</span></h3>
+  <p>This is our first challenge highlighting a real A07 - Authentication Failure. If you followed along and
+  did the previous challenge, log out as Jim to start this one.</p>
+  <p>Go to the login page and choose the <strong>Forgot your password?</strong> option.</p>
+  <figure><img src="images/Juice/juicea07-5.png" alt="Forgot password page"><figcaption>The forgot-password page.</figcaption></figure>
+  <p>We notice something interesting right away: when we enter a valid registered user's email, their
+  <strong>security question</strong> is shown to us. We obviously don't know Jim's answer, but we can see
+  it's asking for a middle name - and we may also have noticed a theme, that a lot of the users on this
+  site are named after famous media franchises.</p>
+  <p>This challenge has now become an <strong>OSINT (Open Source Intelligence)</strong> problem. What if we
+  Google or research Jim the way we'd investigate an employee at a company for a report? From that Green
+  Smoothie review, Jim mentions "Fresh out of a replicator."</p>
+  <figure><img src="images/Juice/juicea07-6.png" alt="Jim's review mentioning a replicator"><figcaption>"Fresh out of a replicator."</figcaption></figure>
+  <figure><img src="images/Juice/juicea07-7.png" alt="Replicator reference"><figcaption>If we didn't know, replicators were made famous by Star Trek / Stargate.</figcaption></figure>
+  <p>We can find another review, on the OWASP Juice Shop Holographic Sticker: "Looks spacy on Bones' new
+  tricorder!"</p>
+  <figure><img src="images/Juice/juicea07-8.png" alt="Bones tricorder review"><figcaption>"Bones" and "tricorder" - now it's unmistakably Star Trek.</figcaption></figure>
+  <p>This might be a bit overkill at this point, especially for fans of the show, but by piecing all these
+  reviews together - who and what Jim references - we can paint a picture of his friends, family, job, and
+  world. Now that we know "Jim" is the nickname of James Kirk, we can look up his relatives.</p>
+  <figure><img src="images/Juice/juicea07-10.png" alt="James Kirk's family - eldest sibling's middle name is Samuel"><figcaption>His eldest sibling's middle name is <strong>Samuel</strong>.</figcaption></figure>
+  <p>Once we enter that in, along with our new password, we get...</p>
+  <figure><img src="images/Juice/juicea07-9.png" alt="Reset Jim's Password solved"><figcaption>An achievement! Well done.</figcaption></figure>
+
+  <div class="note insight">
+    <span class="lbl">why security questions are a weak factor</span>
+    The flaw isn't a code bug - it's the <em>design choice</em> to gate a password reset behind a
+    knowledge-based question. The "secret" (a relative's middle name) is an OSINT-able fact, not a secret at
+    all. Anyone who can identify the account holder can research the answer and seize the account. The fix
+    is to drop security questions and use a time-limited reset token sent to a verified channel, like an
+    email link.
+  </div>
+
+  <table class="finding">
+    <tr><th>Title</th><td>Account Takeover via Knowledge-Based Security Question</td></tr>
+    <tr><th>Category</th><td>Authentication Failures &middot; OWASP A07:2025 &middot; CWE-640 (Weak Password-Recovery Mechanism)</td></tr>
+    <tr><th>Severity</th><td><strong>High</strong> - full account takeover of any user whose identity can be researched.</td></tr>
+    <tr><th>How discovered</th><td>The forgot-password flow reveals a user's security question by email and accepts an OSINT-derivable answer to set a new password.</td></tr>
+    <tr><th>Impact</th><td>Any account (including staff) can be taken over by researching public information about the account holder.</td></tr>
+    <tr><th>Remediation</th><td>Remove security questions; use time-limited, single-use reset tokens delivered to a verified email/phone; never reveal whether an email is registered.</td></tr>
+  </table>
+
+  <h3><span class="chlabel">Challenge</span>Password Strength <span class="chstars">(&#9733;&#9733;)</span></h3>
+  <p>This is our second A07 example, and a completely different attack. We've logged in as <code>admin</code>
+  before via injection (just like Bender and Jim), but as the challenge states: <strong>no SQLi</strong> this
+  time. This one only works because the admin chose a weak password.</p>
+  <p>First, let's intercept the <code>POST</code> for logging in as admin, with Burp and FoxyProxy.</p>
+  <figure><img src="images/Juice/juicea072-1.png" alt="Intercepting the admin login POST"><figcaption>Capture <code>POST /rest/user/login</code> for <code>admin@juice-sh.op</code>.</figcaption></figure>
+
+  <h4>Method A - Burp Intruder</h4>
+  <p>Burp Intruder can help us brute-force our way into finding a user's (or admin's) password.</p>
+  <figure><img src="images/Juice/juicea072-2.png" alt="Burp Intruder setup"><figcaption>Setting up the Intruder positions and payload.</figcaption></figure>
+  <ul>
+    <li><strong>Step 1 (red arrow)</strong> - highlight the password value inside the double quotes.</li>
+    <li><strong>Step 2 (orange)</strong> - press <strong>Add &sect;</strong>. This wraps the value in
+    markers so Intruder knows where to insert each payload.</li>
+    <li><strong>Step 3 (green)</strong> - load in your payload wordlist.</li>
+    <li><strong>Step 4 (pink)</strong> - start the attack!</li>
+  </ul>
+  <p>Once we get a hit with a <code>2xx</code> status code - a successful login returns a token, so it's
+  also a noticeably longer response than the <code>401</code> failures - we've found our match and can log
+  in with it.</p>
+  <div class="note warn">
+    <span class="lbl">Community Edition throttling</span>
+    If you have Burp Community Edition (like I sadly do), Intruder is throttled hard. I recommend not using
+    giant password lists for these challenges. Start as simple as possible, and if you're still not getting
+    hits, it's often faster to scroll a short common-password list yourself.
+  </div>
+
+  <h4>Method B - ffuf</h4>
+  <p>ffuf isn't throttled, so it rips through the same list far faster:</p>
+  <pre><code><span class="p">$</span> ffuf -w /usr/share/wordlists/fern-wifi/common.txt \
+  -X POST -H "Content-Type: application/json" \
+  -d '{"email":"admin@juice-sh.op","password":"FUZZ"}' \
+  -u http://localhost:3000/rest/user/login \
+  -mc 200 -c</code></pre>
+  <p><code>FUZZ</code> is where each password gets substituted, and <code>-mc 200</code> shows only the
+  successful login, so the one line ffuf prints is the answer.</p>
+  <figure><img src="images/Juice/juicea072-complete.png" alt="Password Strength solved"><figcaption>Cracked, logged in, solved.</figcaption></figure>
+  <p>To be honest, I tried about seven other lists before <code>/usr/share/wordlists/fern-wifi/common.txt</code>
+  worked. In retrospect, I probably could have guessed the password myself due to how simple it was... which
+  is really the whole point of the challenge.</p>
+
+  <div class="note insight">
+    <span class="lbl">the real lesson: targeted beats giant</span>
+    A giant frequency wordlist can churn for a long time and still miss, because a weak <em>admin</em>
+    password is usually built from the word "admin" itself, which those lists bury deep. A tiny,
+    context-aware list (the account name plus common suffixes) often lands it instantly. The skill isn't
+    "grab the biggest list" - it's reasoning about <em>who</em> you're attacking. Also worth noting: the
+    login has no lockout or rate-limiting, which is what makes brute-forcing viable in the first place.
+  </div>
+
+  <table class="finding">
+    <tr><th>Title</th><td>Weak Administrator Password &amp; No Anti-Automation</td></tr>
+    <tr><th>Category</th><td>Authentication Failures &middot; OWASP A07:2025 &middot; CWE-521 (Weak Password Requirements) / CWE-307</td></tr>
+    <tr><th>Severity</th><td><strong>High</strong> - full administrator compromise via unimpeded brute-force.</td></tr>
+    <tr><th>How discovered</th><td>Brute-forcing <code>admin@juice-sh.op</code> against a common-password list returned a 200 with a token; no lockout ever triggered.</td></tr>
+    <tr><th>Impact</th><td>An attacker recovers the admin password offline-fast and gains full administrative access.</td></tr>
+    <tr><th>Remediation</th><td>Enforce a strong password policy, add rate-limiting and account lockout on failed logins, and require MFA for privileged accounts.</td></tr>
+  </table>
 
   <!-- ==================== A08 - Software or Data Integrity Failures ==================== -->
   <h2 id="a08">A08 - Software or Data Integrity Failures</h2>
@@ -369,11 +690,10 @@ Fix 4:  this.sanitizer.bypassSecurityTrustStyle(queryParam)</code></pre>
   <h2 id="a10">A10 - Mishandling of Exceptional Conditions</h2>
   <p class="secmeta">Challenge: <strong>Error Handling</strong> &nbsp;&middot;&nbsp; Difficulty: <span class="stars">&#9733;</span> &nbsp;&middot;&nbsp; OWASP: <a href="vulns.html" class="risk">A10:2025</a> &middot; CWE-209</p>
 
-  <h3><span class="chlabel">Challenge</span>Error Handling</h3>
-  <p>Heads-up on numbering: in the older 2021 list, verbose errors lived under Security Misconfiguration
-  (A05:2021). The 2025 Top 10 adds a dedicated category - <strong>Mishandling of Exceptional
-  Conditions</strong> (A10:2025) - that this finding maps to more precisely, though it still overlaps with
-  Security Misconfiguration.</p>
+  <h3><span class="chlabel">Challenge</span>Error Handling <span class="chstars">(&#9733;)</span></h3>
+  <p>A quick note on numbering: the 2025 Top 10 has a dedicated category - <strong>Mishandling of
+  Exceptional Conditions</strong> (A10:2025) - that this finding maps to precisely, though it still
+  overlaps with Security Misconfiguration.</p>
   <p>When testing for A05 Injection, I actually completed this challenge first, before the SQLi one. In the
   email field, we can prove the app mishandles errors by entering a single quote and anything for a
   password:</p>
@@ -407,9 +727,9 @@ Fix 4:  this.sanitizer.bypassSecurityTrustStyle(queryParam)</code></pre>
   </table>
 
   <hr style="border:none; border-top:3px solid var(--gold); margin:46px 0 24px;">
-  <p style="color:var(--text-3)">This write-up is a work in progress - sections A01 (Broken Access
-  Control), A05 (Injection), and A10 (Mishandling of Exceptional Conditions) are complete, with the
-  remaining OWASP Top 10:2025 categories added as they're finished.</p>
+  <p style="color:var(--text-3)">This write-up is a work in progress - A01 through A07 and A10 are complete;
+  A08 (Software &amp; Data Integrity Failures - Unsigned JWT) and A09 (Security Logging &amp; Alerting
+  Failures - Access Log) are added as they're finished.</p>
 
 </main>
 

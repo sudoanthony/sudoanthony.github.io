@@ -29,6 +29,7 @@
     <nav id="tocNav">
       <a href="#summary" data-toc>Categories</a>
       <a href="#recon" data-toc>Recon &amp; Scanning</a>
+      <a href="#vuln-scanners" data-toc>Vulnerability Scanners</a>
       <a href="#web" data-toc>Web &amp; Proxies</a>
       <a href="#network" data-toc>Networking &amp; Access</a>
       <a href="#mobile-static" data-toc>Mobile: Static</a>
@@ -55,6 +56,7 @@
       <h2>Categories</h2>
       <ul>
         <li><strong>Recon &amp; scanning:</strong> <a href="#nmap">nmap</a>, <a href="#gobuster">gobuster</a>.</li>
+        <li><strong>Vulnerability scanners:</strong> <a href="#nessus">Nessus</a>, <a href="#openvas">OpenVAS</a>.</li>
         <li><strong>Web &amp; proxies:</strong> <a href="#burp">Burp Suite</a>, <a href="#mitmproxy">mitmproxy</a>.</li>
         <li><strong>Networking &amp; access:</strong> <a href="#netcat">netcat</a>, <a href="#ssh">ssh</a> (local port forwarding).</li>
         <li><strong>Mobile static:</strong> <a href="#jadx">jadx</a>, <a href="#apktool">apktool</a>, <a href="#mobsf">MobSF</a>.</li>
@@ -87,6 +89,29 @@
           <div class="tc-row"><span class="os">DIR</span> <code>gobuster dir -u URL -w LIST -x php,html,txt --exclude-length N</code></div>
           <div class="tc-row"><span class="os">VHOST</span> <code>gobuster vhost -u http://DOMAIN -w LIST --append-domain</code></div>
           <div class="tc-seen">seen in <a href="writeup-nexus.html">Nexus</a></div>
+        </div>
+
+      </div>
+    </section>
+
+    <!-- ============ Vulnerability Scanners ============ -->
+    <section id="vuln-scanners" class="concept-block">
+      <p class="kicker">Match hosts against known CVEs and misconfigurations</p>
+      <h2>Vulnerability Scanners</h2>
+      <div class="toolgrid">
+
+        <div class="toolcard cat-recon" id="nessus">
+          <div class="tc-head"><span class="tc-glyph">ns</span><span class="tc-name">Nessus</span><span class="tc-cat">vuln scanner</span></div>
+          <p class="tc-what">Tenable's vulnerability scanner. Fingerprints a host and matches it against a huge plugin feed of known CVEs, missing patches, and misconfigurations, then rates each finding. The <strong>Essentials</strong> tier is free for up to 16 IPs. Great for breadth &mdash; but treat the output as leads and verify each one by hand before you rate it.</p>
+          <div class="tc-row"><span class="os">WIN / LINUX</span> installer from tenable.com (Essentials needs a free activation code)</div>
+          <div class="tc-row"><span class="os">UI</span> browse <code>https://localhost:8834</code>, then run a <em>Basic Network Scan</em> against a target</div>
+        </div>
+
+        <div class="toolcard cat-recon" id="openvas">
+          <div class="tc-head"><span class="tc-glyph">ov</span><span class="tc-name">OpenVAS</span><span class="tc-cat">vuln scanner</span></div>
+          <p class="tc-what">The free, open-source counterpart to Nessus, now part of Greenbone Vulnerability Management (GVM). Runs a feed of network vulnerability tests (NVTs) against your targets from a web UI. Heavier to stand up, but no license and fully self-hosted.</p>
+          <div class="tc-row"><span class="os">LINUX</span> <code>sudo apt install gvm</code> then <code>sudo gvm-setup</code> (Kali) &mdash; note the admin password it prints</div>
+          <div class="tc-row"><span class="os">RUN</span> <code>sudo gvm-start</code>, then browse <code>https://127.0.0.1:9392</code> and build a Target + Task</div>
         </div>
 
       </div>
