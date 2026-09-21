@@ -3,8 +3,8 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>OWASP Mobile Top 10 (2024) - Android pentest methodology</title>
-<meta name="description" content="A hands-on Android mobile penetration testing methodology walked through the OWASP Mobile Top 10 (2024) and MASVS/MASTG, using the intentionally vulnerable apps AllSafe and InsecureBankv2 as live examples: static analysis, traffic and cert pinning, storage, crypto, auth, platform IPC, injection, and reverse engineering.">
+<title>OWASP Mobile Top 10 2024 - Android pentest methodology</title>
+<meta name="description" content="A hands-on Android mobile penetration testing methodology walked through the OWASP Mobile Top 10 2024 and MASVS/MASTG, using the intentionally vulnerable apps AllSafe and InsecureBankv2 as live examples: static analysis, traffic and cert pinning, storage, crypto, auth, platform IPC, injection, and reverse engineering.">
 <link rel="stylesheet" href="style.css">
 <style>
   /* Sub-section headers (Concept, Case 1/2/3, Report...): frost blue + a divider so
@@ -57,7 +57,7 @@
     <img class="wu-icon" src="images/icons/allsafe.png" alt="" onerror="this.style.display='none'">
     <h1>OWASP Mobile Top 10 2024: Android App Pentest Methodology</h1>
   </div>
-  <p>A hands-on mobile penetration testing walkthrough, mapped to the OWASP Mobile Top 10 (2024)
+  <p>A hands-on mobile penetration testing walkthrough, mapped to the OWASP Mobile Top 10 2024
   and MASVS/MASTG, demonstrated through the intentionally vulnerable apps
   <strong>AllSafe</strong> and <strong>InsecureBankv2</strong>.</p>
 
@@ -82,7 +82,7 @@
   <figcaption>AllSafe app icon and menu as seen in a Pixel 5 emulator via Android Studio.</figcaption>
 
   <p>AllSafe is the <strong>primary target</strong> of this guide, but documenting a clean example of every
-  OWASP Mobile Top 10 (2024) risk takes more than one app, so two others help out.
+  OWASP Mobile Top 10 2024 risk takes more than one app, so two others help out.
   <strong>InsecureBankv2</strong> ships a real backend, which lets us show what AllSafe can't: cleartext
   credentials on the wire and a server that trusts client-supplied data (M5, M4).
   <strong>AndroGoat</strong> ships a correctly implemented certificate-pinning screen, so we can practice
@@ -115,7 +115,7 @@
   <!-- ==================== Methodology ==================== -->
   <h2>Methodology</h2>
   <p>Each chapter becomes a theme, mapped to its MASVS group and the
-  <a href="android.html#owasp-top-10">OWASP Mobile Top 10</a> (2024):</p>
+  <a href="android.html#owasp-top-10">OWASP Mobile Top 10</a> 2024:</p>
   <ul>
     <li><strong>Recon &amp; Static Analysis</strong> will cover hardcoded secrets, insecure logging, exported components, and risky manifest flags (MASVS-CODE, MASVS-PRIVACY; M2, M6, M8).</li>
     <li><strong>Traffic &amp; Cert Pinning</strong> will cover cleartext traffic, TLS interception, and certificate-pinning bypass (MASVS-NETWORK; M5).</li>
@@ -507,7 +507,7 @@
   <div class="note">
     <span class="lbl">Set-up guide coming later</span>
     For an in-depth install and set-up guide, I plan a future write-up covering Windows and Linux. For now,
-    this write-up focuses on pentesting methodology and examples of the OWASP Mobile Top 10 (2024). Stay
+    this write-up focuses on pentesting methodology and examples of the OWASP Mobile Top 10 2024. Stay
     tuned.
   </div>
 

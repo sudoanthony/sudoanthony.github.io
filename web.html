@@ -1,0 +1,264 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Web &amp; Environments - Concepts - Anthony</title>
+<meta name="description" content="Web pentest environment concepts - how apps are run and hosted (native / npm start vs Docker vs VMs vs orchestration vs serverless), and the content-discovery tools (gobuster, feroxbuster, ffuf, and the rest) used to find hidden paths and endpoints.">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<nav class="nav"><div class="wrap">
+  <a class="brand" href="index.html">~/sudoanthony</a>
+  <div class="links">
+    <a href="writeups.html">write-ups</a>
+    <a href="vulns.html">vulns</a>
+    <a href="concepts.html">concepts</a>
+    <a href="tools.html">tools</a>
+    <a href="https://github.com/sudoanthony">github</a>
+  </div>
+</div></nav>
+
+<div class="concept-wrap">
+<div class="concept-layout">
+
+  <!-- ==================== SIDEBAR (scrollspy) ==================== -->
+  <aside class="concept-toc">
+    <p class="toc-label">Web &amp; Environments</p>
+    <nav id="tocNav">
+      <a href="#hosting" data-toc>Running &amp; hosting apps</a>
+      <a href="#content-discovery" data-toc>Content-discovery tools</a>
+    </nav>
+  </aside>
+
+  <!-- ==================== CONTENT ==================== -->
+  <div class="concept-content">
+
+    <p style="margin-bottom:4px"><a href="concepts.html" style="color:var(--text-3);font-size:13.5px">&larr; concepts</a></p>
+    <h1>Web &amp; Environments</h1>
+    <p class="concept-intro">
+      Two things that quietly shape a web engagement: <em>how</em> the target app is being run, and
+      <em>how</em> you go looking for the parts of it that aren't linked anywhere. The same code behaves
+      and fails differently depending on whether it's a raw process, a container, or a fleet of them - and
+      the tool you reach for to map its hidden surface depends on the shape of what you're hunting. Both
+      of these came up the hard way testing Juice Shop.
+    </p>
+
+    <!-- ============ Running & hosting apps ============ -->
+    <section id="hosting" class="concept-block">
+      <p class="kicker">Where your app actually runs</p>
+      <h2>Running &amp; hosting apps</h2>
+
+      <div class="concept-sub">
+        <span class="sub-lbl">what it is</span>
+        <p>"Hosting" just means where and how a program is executed. The same app can run as a bare process
+        on your laptop, inside a sealed container, on a whole virtual computer, or spread across a cluster
+        of machines - and each choice trades off simplicity, isolation, resource cost, and how well it
+        survives being hammered. For a tester, that last part matters: a fragile setup falls over under a
+        scan, a sturdy one shrugs it off.</p>
+      </div>
+
+      <div class="concept-sub">
+        <span class="sub-lbl">run it directly (native / <code>npm start</code>)</span>
+        <p>The app runs straight on a host using a language runtime you installed there -
+        <code>npm start</code>, <code>python app.py</code>, <code>./binary</code>. Simplest option and
+        best for <em>developing</em>, since you can edit code and watch logs live. Downsides: it's tied to
+        that host's exact versions (the classic "works on my machine"), shares the machine's resources with
+        no isolation, and dev-mode builds are heavier and less stable. If it crashes, nothing brings it
+        back - which is exactly what kept happening to Juice Shop under a directory scan.</p>
+      </div>
+
+      <div class="concept-sub">
+        <span class="sub-lbl">virtual machines (VMs)</span>
+        <p>A VM emulates an <em>entire computer</em> - its own kernel and operating system - on top of yours
+        through a hypervisor (VirtualBox, VMware, KVM). You get strong isolation and can run a completely
+        different OS (your Kali VM, an Android emulator). The cost is weight: gigabytes of RAM and disk and
+        a slow boot, because you're running a second full OS.</p>
+      </div>
+
+      <div class="concept-sub">
+        <span class="sub-lbl">containers (Docker)</span>
+        <p>A container packages an app with its exact runtime and libraries into an <strong>image</strong>,
+        but instead of booting a whole OS it <em>shares the host's kernel</em>. That makes it far lighter
+        than a VM - megabytes, and it starts in seconds - while still isolated from the host. The image runs
+        identically anywhere, which kills "works on my machine." Prebuilt production images (like
+        <code>bkimminich/juice-shop</code>) are sturdier than a dev <code>npm start</code>, support memory
+        limits and <code>--restart</code> auto-recovery, and are disposable: nuke it and redeploy a clean
+        instance in seconds.</p>
+      </div>
+
+      <div class="concept-sub">
+        <span class="sub-lbl">orchestration &amp; serverless</span>
+        <p><strong>Kubernetes / orchestration</strong> runs and scales <em>many</em> containers across many
+        machines, handling restarts, load-balancing, and rollouts automatically - what most real production
+        web apps run on today. <strong>Serverless / PaaS</strong> (AWS Lambda, Cloud Run, Vercel, Heroku)
+        goes further: you hand over just the code and the platform runs and scales it, even down to zero when
+        idle. There's no server for you to manage - but a different attack surface, like event/injection into
+        functions and misconfigured cloud IAM roles.</p>
+      </div>
+
+      <div class="concept-sub">
+        <span class="sub-lbl">why this matters when testing</span>
+        <p>The runtime shapes both behavior and fragility. A dev <code>npm start</code> can OOM-crash under a
+        scan flood, while the same app's production Docker image takes the load and, with
+        <code>--restart=unless-stopped</code>, heals itself - so on a delicate lab target you throttle hard,
+        and on a robust production target you can push more (but "don't DoS the client" always holds). It
+        also matters <em>after</em> you land a shell: are you inside a container (you may need to escape it to
+        reach the real host) or on bare metal (root really is root)? A quick <code>ls -la /.dockerenv</code>
+        and <code>cat /proc/1/cgroup</code> answers that.</p>
+      </div>
+
+      <div class="seen-in">
+        <span class="lbl">seen in</span>
+        <a href="writeup-juiceshop.html">Juice Shop</a> - a dev <code>npm start</code> kept OOM-crashing under
+        directory brute-forcing; switching to the official Docker image with <code>--restart=unless-stopped</code>
+        gave a stable, self-healing target. <a href="writeup-nexus.html">Nexus</a> - checked
+        <code>/.dockerenv</code> and <code>/proc/1/cgroup</code> to confirm a bare-metal host before escalating.
+      </div>
+    </section>
+
+    <!-- ============ Content-discovery tools ============ -->
+    <section id="content-discovery" class="concept-block">
+      <p class="kicker">Finding hidden paths, files &amp; endpoints</p>
+      <h2>Content-discovery tools</h2>
+
+      <div class="concept-sub">
+        <span class="sub-lbl">what it is</span>
+        <p>Directory / content brute-forcing (also called forced browsing or content discovery) fires a
+        wordlist of candidate paths at a target to find pages, files, and endpoints that aren't linked
+        anywhere - an admin panel, a backup file, a hidden API, a log directory. It's core recon on any web
+        target, and the tools below all do the same basic job; they differ in <em>how</em> they do it.</p>
+      </div>
+
+      <div class="concept-sub">
+        <span class="sub-lbl">the tools, and when each wins</span>
+        <div class="tool-grid">
+          <div class="tool-card">
+            <p class="tn">feroxbuster</p>
+            <p class="td">Fast Rust scanner, <strong>recursive by default</strong> - finds a directory then
+            automatically digs <em>inside</em> it, surfacing nested paths (<code>/support</code> &rarr;
+            <code>/support/logs</code>) in one run. Also auto-extracts links from responses and can save/resume
+            state. Best default for directory/content discovery.</p>
+          </div>
+          <div class="tool-card">
+            <p class="tn">gobuster</p>
+            <p class="td">Fast Go scanner. <strong>Flat</strong> (single-level) directory brute-forcing, but it
+            also has dedicated <code>vhost</code> and <code>dns</code> subdomain modes the others lack. Simple
+            and reliable; the pick when you specifically need virtual-host or DNS enumeration. No recursion, so
+            nested paths need a second scan.</p>
+          </div>
+          <div class="tool-card">
+            <p class="tn">ffuf</p>
+            <p class="td">"Fuzz Faster U Fool" - the Swiss-army fuzzer. Put the <code>FUZZ</code> keyword
+            <em>anywhere</em>: a path, a URL parameter, a header, or a JSON body. Best for parameter fuzzing and
+            brute-forcing POST logins, with rich filtering by size/status/words/regex (<code>-fs</code>,
+            <code>-mc</code>). Hugely flexible; less "point-and-recurse" than ferox.</p>
+          </div>
+          <div class="tool-card">
+            <p class="tn">dirb / dirbuster</p>
+            <p class="td">The old classics. <code>dirb</code> is a simple CLI with a built-in wordlist;
+            <code>dirbuster</code> is its Java GUI with recursion. Still work, but largely superseded by the
+            speed of the Go/Rust tools.</p>
+          </div>
+          <div class="tool-card">
+            <p class="tn">wfuzz</p>
+            <p class="td">The original flexible web fuzzer (Python) and the conceptual ancestor of ffuf - same
+            <code>FUZZ</code>-keyword idea for params, paths, and headers. Slower than ffuf, which has mostly
+            replaced it, but still capable.</p>
+          </div>
+          <div class="tool-card">
+            <p class="tn">dirsearch</p>
+            <p class="td">Python path brute-forcer with smart defaults - good built-in lists and automatic
+            extension handling. A popular, low-friction middle ground.</p>
+          </div>
+        </div>
+      </div>
+
+      <div class="concept-sub">
+        <span class="sub-lbl">how to choose (and not DoS the target)</span>
+        <p>Match the tool to the shape of the hunt: <strong>nested directory/content discovery &rarr;
+        feroxbuster</strong> (recursion); <strong>parameter, header, or POST-body fuzzing &rarr; ffuf</strong>;
+        <strong>virtual-host or DNS subdomain enumeration &rarr; gobuster</strong>. And whatever the tool,
+        two things decide whether you find it <em>and</em> keep the target alive: right-size the
+        <strong>wordlist</strong> (a small curated list first, escalate to raft/medium only when it comes up
+        empty), and <strong>throttle</strong> to the target's fragility (low threads, add a delay, and exclude
+        giant responses so you don't re-pull them to death). And know the ceiling: against a SPA, every unknown
+        path returns the same catch-all, so filter by response length (<code>--exclude-length</code> /
+        <code>-fs</code>) rather than status code - but the catch-all also <em>hides</em> real routes. A server
+        path like <code>/support/logs</code> whose parent (<code>/support</code>) is only a client-side route
+        returns the catch-all at that parent, so scanners filter it as 404-like and never recurse in. Sometimes
+        brute-forcing legitimately can't surface a path, and you fall back to reasoning and known-path
+        intuition (logs live under an admin/support area).</p>
+      </div>
+
+      <div class="seen-in">
+        <span class="lbl">seen in</span>
+        <a href="writeup-nexus.html">Nexus</a> - gobuster <code>vhost</code> mode found the <code>git.</code> and
+        <code>billing.</code> subdomains, and ffuf brute-forced a login. <a href="writeup-juiceshop.html">Juice
+        Shop</a> - the SPA catch-all defeated status-based scans (filter by length instead) and even
+        <em>hid</em> <code>/support/logs</code> from recursion, since its parent <code>/support</code> returns
+        the catch-all and gets filtered - so the log path had to be reasoned, not brute-forced; ffuf cracked the
+        admin password against <code>/rest/user/login</code>.
+      </div>
+    </section>
+
+  </div>
+</div>
+</div>
+
+<footer class="foot"><div class="wrap" style="display:flex;gap:18px;flex-wrap:wrap">
+  <a href="index.html">home</a>
+  <a href="writeups.html">write-ups</a>
+  <a href="vulns.html">vulns</a>
+  <a href="concepts.html">concepts</a>
+  <a href="https://github.com/sudoanthony">github</a>
+</div></footer>
+
+<script>
+  const tocLinks = Array.from(document.querySelectorAll('#tocNav a'));
+  const sections = tocLinks
+    .map(a => document.getElementById(a.getAttribute('href').slice(1)))
+    .filter(Boolean);
+
+  function setActive(id) {
+    tocLinks.forEach(a => a.classList.toggle('active', a.getAttribute('href') === '#' + id));
+  }
+
+  const observer = new IntersectionObserver((entries) => {
+    const visible = entries.filter(e => e.isIntersecting);
+    if (visible.length) {
+      visible.sort((a, b) => a.boundingClientRect.top - b.boundingClientRect.top);
+      setActive(visible[0].target.id);
+    }
+  }, { root: null, rootMargin: '-96px 0px -70% 0px', threshold: 0 });
+
+  sections.forEach(sec => observer.observe(sec));
+
+  tocLinks.forEach(a => {
+    a.addEventListener('click', (e) => {
+      e.preventDefault();
+      const id = a.getAttribute('href').slice(1);
+      const target = document.getElementById(id);
+      if (!target) return;
+      setActive(id);
+      history.pushState(null, '', '#' + id);
+      target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    });
+  });
+
+  if (location.hash) {
+    const id = location.hash.slice(1);
+    const target = document.getElementById(id);
+    if (target) {
+      setActive(id);
+      requestAnimationFrame(() => target.scrollIntoView({ block: 'start' }));
+    }
+  } else if (sections.length) {
+    setActive(sections[0].id);
+  }
+</script>
+
+<script src="lightbox.js"></script>
+</body>
+</html>

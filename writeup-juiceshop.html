@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>OWASP Top 10 (2025) - Juice Shop web app pentest</title>
+<title>OWASP Top 10:2025 - Juice Shop web app pentest</title>
 <meta name="description" content="A hands-on web application penetration testing methodology walked through the OWASP Top 10:2025 using the intentionally vulnerable OWASP Juice Shop: broken access control, injection (SQLi and XSS), mishandling of exceptional conditions, and more - worked examples with screenshots and a severity-rated finding for every vulnerability.">
 <link rel="stylesheet" href="style.css">
 <style>
@@ -60,7 +60,7 @@
 
   <div class="wu-head">
     <img class="wu-icon" src="images/icons/juice.png" alt="" onerror="this.style.display='none'">
-    <h1>OWASP Top 10 (2025): OWASP Juice Shop Web App Pentest</h1>
+    <h1>OWASP Top 10:2025 - OWASP Juice Shop Web App Pentest</h1>
   </div>
   <p>A hands-on web application penetration testing walkthrough, mapped to the current
   <strong>OWASP Top 10:2025</strong> and demonstrated through the intentionally vulnerable
@@ -678,13 +678,165 @@ Fix 4:  this.sanitizer.bypassSecurityTrustStyle(queryParam)</code></pre>
 
   <!-- ==================== A08 - Software or Data Integrity Failures ==================== -->
   <h2 id="a08">A08 - Software or Data Integrity Failures</h2>
-  <p class="secmeta">Challenge: <strong>Unsigned JWT</strong> &nbsp;&middot;&nbsp; Difficulty: <span class="stars">&#9733;&#9733;&#9733;&#9733;</span> &nbsp;&middot;&nbsp; OWASP: <a href="vulns.html" class="risk">A08:2025</a></p>
-  <p class="todo">TODO: Forge an <code>alg:none</code> JWT to bypass signature verification. Write-up to follow.</p>
+  <p class="secmeta">Challenge: <strong>Unsigned JWT</strong> &nbsp;&middot;&nbsp; OWASP: <a href="vulns.html" class="risk">A08:2025</a> &middot; CWE-347</p>
+
+  <h3><span class="chlabel">Challenge</span>Unsigned JWT <span class="chstars">(&#9733;&#9733;&#9733;&#9733;&#9733;)</span></h3>
+  <p>The goal is to forge an essentially <em>unsigned</em> JWT that impersonates the non-existing user
+  <code>jwtn3d@juice-sh.op</code>.</p>
+
+  <h4>Step 1 - Log in and grab the JWT</h4>
+  <p>For some reason I like logging in as Bender, so we'll do that again (via the SQLi trick from A05). On
+  any authenticated request our token rides in the <code>Authorization: Bearer &lt;token&gt;</code> header,
+  and it's also stored locally. Grab it from DevTools &rarr; Storage &rarr; Local Storage &rarr;
+  <code>http://127.0.0.1:3000</code> &rarr; copy the <code>token</code> value.</p>
+  <figure><img src="images/Juice/juicea08-1.png" alt="JWT in local storage"><figcaption>The token, broken into its three parts on the right.</figcaption></figure>
+
+  <h4>Step 2 - Decode it</h4>
+  <p>Paste the token into <a href="https://jwt.io" target="_blank">jwt.io</a> to see its structure.</p>
+  <figure><img src="images/Juice/juicea08-2.png" alt="Decoded JWT at jwt.io"><figcaption>Header shows <code>"alg":"RS256"</code>; the payload holds a <code>data</code> object with our email.</figcaption></figure>
+
+  <div class="note insight">
+    <span class="lbl">what we're actually attacking</span>
+    RS256 is <em>asymmetric</em>: the server signs tokens with a private key and verifies them with a public
+    key, so we can't forge a valid signature. The trick isn't to fake the signature - it's to make the server
+    <em>not check one</em>. The JWT spec includes an algorithm literally called <code>none</code>, meaning
+    "this token is unsigned." A server that honors <code>alg:none</code> accepts a token with no signature and
+    trusts whatever payload we wrote. The token's integrity depends on the client-supplied <code>alg</code>
+    field - which we control.
+  </div>
+
+  <h4>Step 3 - Rewrite the payload</h4>
+  <p>In the decoded payload there's an <code>email</code> field (currently <code>bender@juice-sh.op</code>).
+  That's what we replace with the challenge's non-existing user, <code>jwtn3d@juice-sh.op</code>.</p>
+
+  <h4>Step 4 - Forge it by hand</h4>
+  <p>A JWT is literally <code>base64url(header) . base64url(payload) . signature</code> - and if the
+  signature is left empty, it becomes an <code>alg:none</code> token. So we just base64url-encode two JSON
+  objects and join them with dots; no key needed, because "none" means "don't verify."</p>
+  <div class="note warn">
+    <span class="lbl">gotcha</span>
+    Make sure CyberChef uses the <strong>URL-safe alphabet</strong> (<code>A-Za-z0-9-_</code>) on
+    <em>To Base64</em>, or it adds <code>=</code> padding that breaks the token. (In my screenshots I forgot
+    this at first - so double-check it, and make sure the final token ends in a bare dot.)
+  </div>
+  <p><strong>Header</strong> - <code>{"typ":"JWT","alg":"none"}</code>:</p>
+  <figure><img src="images/Juice/juicea08-3.png" alt="Header base64url encoded"><figcaption>&rarr; <code>eyJ0eXAiOiJKV1QiLCJhbGciOiJub25lIn0</code></figcaption></figure>
+  <p><strong>Payload</strong> (with the email replaced):</p>
+  <figure><img src="images/Juice/juicea08-4.png" alt="Payload base64url encoded"><figcaption>The edited payload JSON, base64url-encoded.</figcaption></figure>
+  <figure><img src="images/Juice/juicea08-6.png" alt="CyberChef To Base64 recipe"><figcaption>The CyberChef recipe - <em>To Base64</em> with the URL-safe alphabet, no padding.</figcaption></figure>
+  <p>Then assemble by hand - header, dot, payload, dot, and <strong>nothing after the last dot</strong>
+  (that empty slot is the missing signature):</p>
+  <pre><code>eyJ0eXAiOiJKV1QiLCJhbGciOiJub25lIn0.eyJkYXRhIjp7...MTkwOX0.</code></pre>
+
+  <h4>Step 5 - Deliver it</h4>
+  <p>Paste the forged token into a <code>whoami</code> request's <code>Authorization: Bearer</code> in Burp
+  Repeater, or just overwrite the <code>token</code> in Local Storage and reload. I used the localStorage
+  route since it's a bit faster, though Burp gives you more freedom and a clearer view of the data.</p>
+  <figure><img src="images/Juice/juicea08-5.png" alt="Delivering the forged token"><figcaption>Swapping in the forged, unsigned token.</figcaption></figure>
+  <figure><img src="images/Juice/juicea08-complete.png" alt="Unsigned JWT challenge solved"><figcaption>Reload - achievement fires. The server accepted an unsigned token for a user that doesn't exist.</figcaption></figure>
+
+  <table class="finding">
+    <tr><th>Title</th><td>JWT Signature Not Verified (<code>alg:none</code> accepted)</td></tr>
+    <tr><th>Category</th><td>Software or Data Integrity Failures &middot; OWASP A08:2025 &middot; CWE-347 (Improper Verification of Cryptographic Signature)</td></tr>
+    <tr><th>Severity</th><td><strong>Critical</strong> - full authentication bypass and identity forgery; any user, including admin, can be impersonated with no credentials.</td></tr>
+    <tr><th>How discovered</th><td>Decoded the RS256 token, rebuilt it with <code>alg:none</code> and a chosen email, left the signature empty - and the server accepted it.</td></tr>
+    <tr><th>Why it works</th><td>The server trusts the client-supplied <code>alg</code> header. Setting it to <code>none</code> tells the server the token is unsigned, so it skips signature verification entirely.</td></tr>
+    <tr><th>Impact</th><td>An attacker forges tokens for arbitrary or non-existent users, bypassing authentication and authorization completely.</td></tr>
+    <tr><th>Remediation</th><td>Never accept <code>alg:none</code>. Pin the expected algorithm server-side (e.g. only RS256) and reject any token whose header algorithm differs; verify every signature against the trusted key.</td></tr>
+  </table>
 
   <!-- ==================== A09 - Security Logging & Alerting Failures ==================== -->
   <h2 id="a09">A09 - Security Logging &amp; Alerting Failures</h2>
-  <p class="secmeta">Challenge: <strong>Access Log</strong> &nbsp;&middot;&nbsp; Difficulty: <span class="stars">&#9733;&#9733;&#9733;&#9733;</span> &nbsp;&middot;&nbsp; OWASP: <a href="vulns.html" class="risk">A09:2025</a></p>
-  <p class="todo">TODO: Access the server's access-log file (logs exposed rather than protected and monitored). Write-up to follow.</p>
+  <p class="secmeta">Challenge: <strong>Access Log</strong> &nbsp;&middot;&nbsp; OWASP: <a href="vulns.html" class="risk">A09:2025</a> &middot; CWE-532</p>
+  <p style="color:var(--text-4);font-size:13.5px;margin-top:-4px">concept: <a href="web.html#hosting">running &amp; hosting apps</a> &amp; <a href="web.html#content-discovery">content-discovery tools</a></p>
+
+  <h3><span class="chlabel">Challenge</span>Access Log <span class="chstars">(&#9733;&#9733;&#9733;&#9733;)</span></h3>
+  <p>The goal is to gain access to any of the server's access log files. We've already explored everything
+  obvious on the site, so instead of typing random paths and hoping for a catch, directory brute-forcing is
+  the right call here - it maps out pages we can't see or aren't meant to reach (like the <code>/ftp</code>
+  and <code>/score-board</code> paths we found before).</p>
+  <figure><img src="images/Juice/juicea09-1.png" alt="gobuster wildcard warning"><figcaption>gobuster stops before it really starts.</figcaption></figure>
+  <p>gobuster nets us this message:</p>
+  <pre><code>the server returns a status code that matches the provided options for non existing urls.
+http://localhost:3000/8b63ecd0-... =&gt; 200 (Length: 9608). Please exclude the response length...</code></pre>
+  <p>gobuster's default trick is to treat real pages as 200 and missing ones as 404. But with Juice Shop
+  being an SPA, that's useless - the server answers 200 to <em>everything</em>, even the random UUID gobuster
+  tested. So it tells us to filter.</p>
+
+  <h4>What is an SPA?</h4>
+  <p>An SPA (Single-Page App) is exactly what it sounds like - an app that lives on one page. They're
+  everywhere on the modern web: click around Gmail, Google Maps, Facebook, X, Discord, YouTube, or Juice
+  Shop and the page updates instantly without a full reload. They're usually built on one of the three big
+  frameworks - Angular (what Juice Shop uses), React, or Vue.</p>
+  <p>A traditional site is an MPA (multi-page app), where every link asks the server for a new HTML page and
+  the browser reloads, with the server doing the rendering. In an SPA, the server sends one HTML shell plus a
+  big JavaScript bundle a single time; after that, JS rewrites the page in our browser as we use it, and the
+  server just serves that bundle and hands back raw JSON from API endpoints.</p>
+  <p>That means our real attack surface is the <strong>API</strong> - the <code>/rest</code> and
+  <code>/api</code> endpoints the SPA calls - plus the shipped JS bundle itself, which is fully readable in
+  the browser and often leaks hidden routes, endpoints, and logic. That's how the <code>/score-board</code>
+  and the DOM XSS sink turned up.</p>
+  <figure><img src="images/Juice/juicea09-3.png" alt="The API attack surface"><figcaption>In an SPA the real surface is the API and the JS bundle.</figcaption></figure>
+
+  <h4>Two problems, and the fixes</h4>
+  <p>First, the wordlists small enough not to crash our <code>npm start</code> instance didn't recurse into
+  subdirectories. Second, bigger wordlists crashed the dev server outright, no matter what filters and
+  throttling I added.</p>
+  <figure><img src="images/Juice/juicea09-2.png" alt="Juice Shop crashing under the scan"><figcaption>The dev server buckling under a heavier scan.</figcaption></figure>
+  <p>Every problem is a learning opportunity, so I switched two things: from <strong>npm to Docker</strong>
+  (the production image is far sturdier under load and self-heals with <code>--restart=unless-stopped</code>),
+  and from <strong>gobuster to feroxbuster</strong> (recursive by default, so it digs into directories it
+  finds instead of scanning one flat level). I broke both comparisons down in depth on the
+  <a href="web.html">Web &amp; environments concept page</a> - Docker vs npm, and every content-discovery
+  tool.</p>
+
+  <h4>Back to dirbusting - and a wall</h4>
+  <p>Even after the scan, feroxbuster gave us a pile of real paths but <strong>no <code>/support</code></strong>.
+  Visiting it manually, it's there - so why isn't the tool <em>designed</em> to find pages finding it?</p>
+  <figure><img src="images/Juice/juicea09-4.png" alt="feroxbuster results with no /support"><figcaption>Real paths surface, but <code>/support</code> is nowhere to be seen.</figcaption></figure>
+  <p>The answer is the very first line feroxbuster printed:
+  <code>Auto-filtering found 404-like response and created new filter</code>. It measured the SPA's catch-all
+  page (9393 bytes) and filtered anything matching it - which it has to, or every non-existent path would
+  show up as 200. But here's the catch that took me a while to see: <strong><code>/support</code> by itself
+  returns that same catch-all.</strong> It's an Angular client-side route, not a real server directory, so
+  the server just hands back the same index shell it gives for garbage. Feroxbuster (correctly) filtered it
+  as 404-like - which means it never treated <code>/support</code> as a real directory, and so never
+  recursed into it to find <code>/support/logs</code>.</p>
+
+  <h4>So how were we supposed to find it?</h4>
+  <p>We already knew from <code>/ftp</code> that Juice Shop serves raw directory listings for real server
+  paths, and logs usually live under a support / admin / operations area. So instead of fighting the
+  scanner, we reasoned it out and requested <code>http://localhost:3000/support/logs</code> directly. It
+  returned a browsable listing of access logs - not the catch-all shell.</p>
+  <figure><img src="images/Juice/juicea09-5.png" alt="/support/logs directory listing"><figcaption>A browsable listing of access logs at <code>/support/logs</code>.</figcaption></figure>
+  <p>Open (download) a log file, then return to the shop for the achievement.</p>
+  <figure><img src="images/Juice/juicea09-complete.png" alt="Access Log challenge solved"><figcaption>Solved.</figcaption></figure>
+
+  <div class="note insight">
+    <span class="lbl">lesson: a SPA's catch-all hides real routes</span>
+    A SPA's catch-all doesn't just create false positives you filter away - it can <em>hide</em> real deep
+    routes, because their parent looks like a client-side route and gets filtered. When brute-forcing is
+    structurally defeated like this, your own reasoning beats any directory-busting tool. There's even a
+    breadcrumb: the <code>incident-support.kdbx</code> file in <code>/ftp</code> has "support" in its name,
+    which is the (admittedly thin) hint toward the <code>/support</code> path.
+  </div>
+
+  <div class="note">
+    <span class="lbl">my honest opinion on this one</span>
+    I enjoyed learning and writing up the pieces here, but I didn't really like the challenge itself.
+    Completing it means guessing that <code>/support</code> is a path <em>and</em> guessing again that
+    <code>/support/logs</code> is where logs live. Yeah, you can infer it from findings across the site, but
+    it's a bit of a stretch.
+  </div>
+
+  <table class="finding">
+    <tr><th>Title</th><td>Exposed Server Access Logs</td></tr>
+    <tr><th>Category</th><td>Security Logging &amp; Alerting Failures &middot; OWASP A09:2025 &middot; CWE-532 / CWE-200</td></tr>
+    <tr><th>Severity</th><td><strong>Medium</strong> - access logs are readable by any unauthenticated user; logs routinely contain session tokens, emails, internal paths, and user activity. Rises to High if they carry live credentials/tokens.</td></tr>
+    <tr><th>How discovered</th><td>Directory enumeration was defeated by the SPA catch-all (the <code>/support</code> parent is filtered as 404-like); reasoned that logs sit under a support/admin area and requested <code>/support/logs</code> directly, which returned a browsable listing.</td></tr>
+    <tr><th>Impact</th><td>Log contents leak request data an attacker can weaponize (tokens in URLs, emails, endpoints) and map user activity; the deeper failure is logs being web-exposed rather than protected and monitored.</td></tr>
+    <tr><th>Remediation</th><td>Never serve log files over HTTP; store them outside the web root with restricted filesystem permissions; monitor and alert on access; strip sensitive data from logs.</td></tr>
+  </table>
 
   <!-- ==================== A10 - Mishandling of Exceptional Conditions ==================== -->
   <h2 id="a10">A10 - Mishandling of Exceptional Conditions</h2>
@@ -727,9 +879,35 @@ Fix 4:  this.sanitizer.bypassSecurityTrustStyle(queryParam)</code></pre>
   </table>
 
   <hr style="border:none; border-top:3px solid var(--gold); margin:46px 0 24px;">
-  <p style="color:var(--text-3)">This write-up is a work in progress - A01 through A07 and A10 are complete;
-  A08 (Software &amp; Data Integrity Failures - Unsigned JWT) and A09 (Security Logging &amp; Alerting
-  Failures - Access Log) are added as they're finished.</p>
+  <h2 id="conclusion">Conclusion</h2>
+  <p>That's the full <strong>OWASP Top 10:2025</strong> - every category demonstrated end to end against
+  Juice Shop, each exploited by hand, explained down to its root cause, and written up as a severity-rated
+  finding. The point was never just to collect achievements; it was to build a repeatable methodology and a
+  report format I can reuse on a real client engagement.</p>
+
+  <p>The through-line across all ten is how <em>ordinary</em> most of them are. Almost none needed an exotic
+  exploit - they came down to a handful of recurring mistakes:</p>
+  <ul>
+    <li><strong>Trusting the client.</strong> Registration validation (A06) and the JWT signature (A08) were
+    both enforced where the attacker sits. Anything the client decides, the attacker decides.</li>
+    <li><strong>Leaving sensitive things reachable.</strong> A confidential document (A04), the server access
+    logs (A09), and a retired B2B interface (A02) were all just... served, to anyone who asked.</li>
+    <li><strong>Weak and guessable credentials.</strong> A brute-forceable admin password and an OSINT-able
+    reset question (A07) - no exploit, just bad secrets.</li>
+    <li><strong>Not owning your dependencies.</strong> A known-vulnerable library shipped straight through
+    (A03).</li>
+    <li><strong>Injection and access control</strong> - the classics - via SQLi and DOM XSS (A05) and basket
+    IDOR (A01), plus verbose errors leaking internals (A10).</li>
+  </ul>
+
+  <p>A few habits mattered more than any single trick: <strong>severity is what a finding actually
+  authorizes</strong>, not how scary it sounds (a lab doc is Medium; a real one is High); <strong>scanners
+  give you recall, you provide precision</strong> - triaging 19 "highs" down to the one that matters beats
+  dumping all 19; and <strong>the environment shapes the attack</strong> - a SPA's catch-all can defeat
+  brute-forcing entirely, and a dev server falls over under load that a Docker image shrugs off. When the
+  tools hit a wall, reasoning is what got through.</p>
+
+  <p>Ten categories, ten findings, one methodology. On to the next target.</p>
 
 </main>
 
