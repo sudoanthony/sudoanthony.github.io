@@ -1,0 +1,284 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Windows / Active Directory - Concepts - Anthony</title>
+<meta name="description" content="Windows and Active Directory attack concepts: access tokens and dangerous privileges, SeBackupPrivilege abuse, the NTDS.dit domain database, and Pass-the-Hash - what each is, why it matters, and how to defend.">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<nav class="nav"><div class="wrap">
+  <a class="brand" href="index.html">~/sudoanthony</a>
+  <div class="links">
+    <a href="writeups.html">write-ups</a>
+    <a href="vulns.html">vulns</a>
+    <a href="concepts.html">concepts</a>
+    <a href="tools.html">tools</a>
+    <a href="https://github.com/sudoanthony">github</a>
+  </div>
+</div></nav>
+
+<div class="concept-wrap">
+<div class="concept-layout">
+
+  <aside class="concept-toc">
+    <p class="toc-label">Windows / Active Directory</p>
+    <nav id="tocNav">
+      <a href="#tokens" data-toc>Access tokens &amp; privileges</a>
+      <a href="#sebackupprivilege" data-toc>SeBackupPrivilege</a>
+      <a href="#ntds" data-toc>NTDS.dit</a>
+      <a href="#pass-the-hash" data-toc>Pass-the-Hash</a>
+    </nav>
+  </aside>
+
+  <div class="concept-content">
+
+    <p style="margin-bottom:4px"><a href="concepts.html" style="color:var(--text-3);font-size:13.5px">&larr; concepts</a></p>
+    <h1>Windows / Active Directory</h1>
+    <p class="concept-intro">
+      Most Windows and AD compromises are not exploits - they are legitimate features and rights being used
+      exactly as designed, just by the wrong person. These four concepts chain together into the classic
+      easy-box path: a privilege you shouldn't have lets you read the file that holds every password hash,
+      and a hash is all Windows needs to log you in. They came up on <a href="writeup-baby.html">Baby</a>.
+    </p>
+
+    <!-- ============ Access tokens & privileges ============ -->
+    <section id="tokens" class="concept-block">
+      <p class="kicker">What a Windows account is actually allowed to do</p>
+      <h2>Access tokens &amp; privileges</h2>
+
+      <div class="concept-sub">
+        <span class="sub-lbl">what it is</span>
+        <p>Every process on Windows runs with an <strong>access token</strong> that describes who you are:
+        your user SID, the SIDs of every group you belong to, and a list of <strong>privileges</strong>.
+        Privileges are specific rights that sit <em>outside</em> normal file/object ACLs - things like "back
+        up any file" or "debug any process". You can see your own with <code>whoami /priv</code> and your
+        groups with <code>whoami /groups</code>.</p>
+      </div>
+
+      <div class="concept-sub">
+        <span class="sub-lbl">the dangerous ones</span>
+        <p>A handful of privileges are effectively "local admin" if you hold them, because they can be turned
+        into full control:</p>
+        <p style="margin-top:8px"><code>SeBackupPrivilege</code> / <code>SeRestorePrivilege</code> - read /
+        write <em>any</em> file regardless of ACL (covered below). <code>SeDebugPrivilege</code> - open any
+        process, including LSASS, to read credentials from memory. <code>SeImpersonatePrivilege</code> /
+        <code>SeAssignPrimaryTokenPrivilege</code> - impersonate another token, the basis of the "Potato"
+        family of attacks that commonly hit service accounts. <code>SeTakeOwnershipPrivilege</code>,
+        <code>SeLoadDriverPrivilege</code>, and <code>SeTcbPrivilege</code> round out the list.</p>
+      </div>
+
+      <div class="concept-sub">
+        <span class="sub-lbl">why it matters</span>
+        <p>These privileges are usually granted through <strong>group membership</strong>, not assigned
+        directly. Backup Operators grants <code>SeBackupPrivilege</code>; many service accounts carry
+        <code>SeImpersonatePrivilege</code>. So a seemingly "standard" user who happens to be in the wrong
+        group is one command away from the whole machine. The first move after any Windows foothold is
+        <code>whoami /priv</code> and <code>whoami /groups</code>.</p>
+      </div>
+
+      <div class="concept-sub">
+        <span class="sub-lbl">hardening / remediation</span>
+        <p>Least privilege: audit who is in powerful groups (Backup Operators, Server Operators, Print
+        Operators, DnsAdmins), and don't hand backup/debug/impersonate rights to normal user accounts. On a
+        domain controller, membership in any of those groups should be treated as Domain Admin.</p>
+      </div>
+
+      <div class="seen-in">
+        <span class="lbl">seen in</span>
+        <a href="writeup-baby.html">Baby</a> - a standard user in Backup Operators held
+        <code>SeBackupPrivilege</code>, visible straight away from <code>whoami /priv</code>.
+      </div>
+    </section>
+
+    <!-- ============ SeBackupPrivilege ============ -->
+    <section id="sebackupprivilege" class="concept-block">
+      <p class="kicker">Read any file, including the ones with the passwords</p>
+      <h2>SeBackupPrivilege</h2>
+
+      <div class="concept-sub">
+        <span class="sub-lbl">what it is</span>
+        <p><code>SeBackupPrivilege</code> exists so backup software can copy every file on a system, even ones
+        the operator has no ACL access to. It grants <strong>read access to any file, full stop</strong>.
+        That is fine for a trusted backup job, and a disaster when a normal user has it, because "any file"
+        includes the files that store credentials.</p>
+      </div>
+
+      <div class="concept-sub">
+        <span class="sub-lbl">how it's abused on a DC</span>
+        <p>The target is <code>C:\Windows\NTDS\NTDS.dit</code> (the AD database) plus the <code>SYSTEM</code>
+        registry hive (the key that decrypts it). The hive copies out with a plain
+        <code>reg save HKLM\SYSTEM system.hive</code>, but <code>NTDS.dit</code> is a live database and is
+        locked, so a direct copy fails with "being used by another process". The fix is a
+        <strong>Volume Shadow Copy</strong>: a frozen snapshot of the volume where the file isn't locked.</p>
+        <pre><code>:: diskshadow script - snapshot C: and mount it as Z:
+set context persistent nowriters
+add volume c: alias cdrive
+create
+expose %cdrive% z:</code></pre>
+        <p style="margin-top:8px">Then read the file out of the snapshot in <strong>backup mode</strong>
+        (<code>/b</code>), which is what tells Windows to honor the backup privilege and skip the ACL:</p>
+        <pre><code>diskshadow /s script.txt
+robocopy /b Z:\Windows\NTDS . ntds.dit</code></pre>
+      </div>
+
+      <div class="concept-sub">
+        <span class="sub-lbl">why it works</span>
+        <p>The privilege is "read any file" by design - there is no bug to patch. Backup mode on the copy
+        tool is the switch that invokes the right. The shadow copy only exists to get around the file lock on
+        a database that is always open.</p>
+      </div>
+
+      <div class="concept-sub">
+        <span class="sub-lbl">hardening / remediation</span>
+        <p>On a domain controller, treat Backup Operators (and <code>SeBackupPrivilege</code>) as equivalent
+        to Domain Admin. Remove normal users, scope backup rights to dedicated service accounts, and
+        monitor/alert on shadow-copy creation and direct access to the NTDS directory.</p>
+      </div>
+
+      <div class="seen-in">
+        <span class="lbl">seen in</span>
+        <a href="writeup-baby.html">Baby</a> - shadow-copied the volume with <code>diskshadow</code> and
+        pulled <code>NTDS.dit</code> + <code>SYSTEM</code> out with <code>robocopy /b</code>.
+      </div>
+    </section>
+
+    <!-- ============ NTDS.dit ============ -->
+    <section id="ntds" class="concept-block">
+      <p class="kicker">The Active Directory database - every domain hash</p>
+      <h2>NTDS.dit</h2>
+
+      <div class="concept-sub">
+        <span class="sub-lbl">what it is</span>
+        <p><code>NTDS.dit</code> is the Active Directory database, stored on every domain controller at
+        <code>C:\Windows\NTDS\</code>. It holds all domain objects, and crucially the <strong>password hashes
+        and Kerberos keys for every account in the domain</strong> - users, computers, service accounts,
+        Administrator, and <code>krbtgt</code>. The hashes are encrypted with a boot key kept in the
+        <code>SYSTEM</code> hive, which is why you need both files.</p>
+      </div>
+
+      <div class="concept-sub">
+        <span class="sub-lbl">why it matters</span>
+        <p>Dumping it is total domain compromise. You get the Administrator hash (instant Pass-the-Hash), and
+        the <code>krbtgt</code> hash, which allows forging <strong>Golden Tickets</strong> - arbitrary
+        Kerberos tickets that persist even after passwords are reset. It is the single highest-value file in
+        an AD environment.</p>
+      </div>
+
+      <div class="concept-sub">
+        <span class="sub-lbl">how it's read</span>
+        <p>Offline, with Impacket's <code>secretsdump</code> given the database and the boot key:</p>
+        <pre><code>impacket-secretsdump -ntds ntds.dit -system system.hive LOCAL</code></pre>
+        <p style="margin-top:8px">The same tool can pull hashes <em>over the wire</em> (DCSync) if you
+        already hold replication rights on the domain, no file copy needed.</p>
+      </div>
+
+      <div class="concept-sub">
+        <span class="sub-lbl">hardening / remediation</span>
+        <p>The file is only reachable by SYSTEM, administrators, or accounts with backup rights, so the
+        defense is guarding those paths (see SeBackupPrivilege above). Detection matters most here: alert on
+        shadow-copy creation, direct NTDS file access, and DCSync-style replication from non-DC hosts.</p>
+      </div>
+
+      <div class="seen-in">
+        <span class="lbl">seen in</span>
+        <a href="writeup-baby.html">Baby</a> - <code>NTDS.dit</code> + <code>SYSTEM</code> dumped offline with
+        <code>secretsdump</code> to recover every domain hash.
+      </div>
+    </section>
+
+    <!-- ============ Pass-the-Hash ============ -->
+    <section id="pass-the-hash" class="concept-block">
+      <p class="kicker">You don't need the password, just its hash</p>
+      <h2>Pass-the-Hash</h2>
+
+      <div class="concept-sub">
+        <span class="sub-lbl">what it is</span>
+        <p>Windows NTLM authentication proves you know a password by proving you hold its <strong>NT hash</strong>
+        - the plaintext is never sent and never needed. So an attacker who has recovered an account's NT hash
+        can authenticate <em>as</em> that account directly, with no cracking. The hash is the credential.</p>
+      </div>
+
+      <div class="concept-sub">
+        <span class="sub-lbl">how it's used</span>
+        <p>Most Windows tooling accepts a hash in place of a password:</p>
+        <pre><code>evil-winrm -i IP -u Administrator -H &lt;nthash&gt;
+impacket-wmiexec -hashes :&lt;nthash&gt; Administrator@IP
+nxc smb IP -u Administrator -H &lt;nthash&gt;</code></pre>
+      </div>
+
+      <div class="concept-sub">
+        <span class="sub-lbl">why it works</span>
+        <p>NTLM is a challenge-response built on the hash, not the plaintext, so holding the hash is
+        cryptographically equivalent to knowing the password for that protocol. This is a design property of
+        NTLM, which is why the whole industry is pushing toward Kerberos and hardening the places hashes live.</p>
+      </div>
+
+      <div class="concept-sub">
+        <span class="sub-lbl">hardening / remediation</span>
+        <p>Protect hash material at the source (LSASS memory, <code>NTDS.dit</code>) and shrink where it ends
+        up: limit which machines privileged accounts log on to (so their hashes aren't left on workstations),
+        enable Credential Guard and the Protected Users group, tier administrative accounts, and disable NTLM
+        where Kerberos can be used instead.</p>
+      </div>
+
+      <div class="seen-in">
+        <span class="lbl">seen in</span>
+        <a href="writeup-baby.html">Baby</a> - the Administrator NT hash from <code>NTDS.dit</code> used with
+        <code>evil-winrm -H</code> for an Administrator shell, no password.
+      </div>
+    </section>
+
+  </div>
+</div>
+</div>
+
+<footer class="foot"><div class="wrap" style="display:flex;gap:18px;flex-wrap:wrap">
+  <a href="index.html">home</a>
+  <a href="writeups.html">write-ups</a>
+  <a href="vulns.html">vulns</a>
+  <a href="concepts.html">concepts</a>
+  <a href="https://github.com/sudoanthony">github</a>
+</div></footer>
+
+<script>
+  const tocLinks = Array.from(document.querySelectorAll('#tocNav a'));
+  const sections = tocLinks
+    .map(a => document.getElementById(a.getAttribute('href').slice(1)))
+    .filter(Boolean);
+  function setActive(id) {
+    tocLinks.forEach(a => a.classList.toggle('active', a.getAttribute('href') === '#' + id));
+  }
+  const observer = new IntersectionObserver((entries) => {
+    const visible = entries.filter(e => e.isIntersecting);
+    if (visible.length) {
+      visible.sort((a, b) => a.boundingClientRect.top - b.boundingClientRect.top);
+      setActive(visible[0].target.id);
+    }
+  }, { root: null, rootMargin: '-96px 0px -70% 0px', threshold: 0 });
+  sections.forEach(sec => observer.observe(sec));
+  tocLinks.forEach(a => {
+    a.addEventListener('click', (e) => {
+      e.preventDefault();
+      const id = a.getAttribute('href').slice(1);
+      const target = document.getElementById(id);
+      if (!target) return;
+      setActive(id);
+      history.pushState(null, '', '#' + id);
+      target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    });
+  });
+  if (location.hash) {
+    const id = location.hash.slice(1);
+    const target = document.getElementById(id);
+    if (target) { setActive(id); requestAnimationFrame(() => target.scrollIntoView({ block: 'start' })); }
+  } else if (sections.length) {
+    setActive(sections[0].id);
+  }
+</script>
+
+<script src="lightbox.js"></script>
+</body>
+</html>

@@ -23,6 +23,19 @@
 
 const WRITEUPS = [
   {
+    title:      "Baby",
+    url:        "writeup-baby.html",
+    platform:   "HackTheBox",
+    team:       "red",
+    difficulty: "Easy",
+    os:         "Windows",
+    category:   "AD",
+    icon:       "images/icons/baby.png",
+    date:       "2026-10-10",
+    summary:    "Windows Active Directory box: anonymous LDAP leaks an initial password in a user's description field; a forced password change gives a WinRM foothold; SeBackupPrivilege (Backup Operators) is abused via a Volume Shadow Copy to extract NTDS.dit, then secretsdump and Pass-the-Hash land Administrator.",
+    tags:       ["ldap-anon-enum", "exposed-credentials", "password-must-change", "sebackupprivilege", "pass-the-hash", "priv-esc"]
+  },
+  {
     title:      "Abducted",
     url:        "writeup-abducted.html",
     platform:   "HackTheBox",
@@ -267,9 +280,10 @@ const VULNS = [
     cat:   "priv-esc",
     sev:   "crit",
     ext:   "",
-    blurb: "Turning a foothold user into root through a local misconfiguration.",
+    blurb: "Turning a foothold user into root, Administrator, or SYSTEM through a local misconfiguration or over-privileged right.",
     deepdive: "",
     uses: [
+      { writeup: "Baby", url: "writeup-baby.html", ctx: "SeBackupPrivilege (Backup Operators) used to shadow-copy and read NTDS.dit, then Pass-the-Hash as Administrator" },
       { writeup: "Abducted", url: "writeup-abducted.html", ctx: "writable systemd drop-in dir + polkit rule to restart smbd -> ExecStartPre SetUID bash" },
       { writeup: "Biohazard", url: "writeup-biohazard.html", ctx: "operator re-auths to root with a reused password" },
       { writeup: "Nexus", url: "writeup-nexus.html", ctx: "symlink planted in user-writable staging dir; root systemd timer follows it and writes SSH key into /root/.ssh/authorized_keys" }
@@ -281,9 +295,10 @@ const VULNS = [
     cat:   "auth",
     sev:   "high",
     ext:   "CWE-522",
-    blurb: "Credentials recoverable by a low-priv user and reused across accounts - obfuscated configs, key files, shared passwords.",
+    blurb: "Credentials recoverable by a low-priv user and reused across accounts - obfuscated configs, key files, shared passwords, directory attributes.",
     deepdive: "",
     uses: [
+      { writeup: "Baby", url: "writeup-baby.html", ctx: "anonymous LDAP read exposes an initial password stored in a user's AD description field" },
       { writeup: "Abducted", url: "writeup-abducted.html", ctx: "rclone-obfuscated backup password revealed and reused for scott's SSH" },
       { writeup: "Biohazard", url: "writeup-biohazard.html", ctx: "creds hidden behind an encoding chain, then key files on FTP" },
       { writeup: "Nexus", url: "writeup-nexus.html", ctx: "DB password in git commit history reused for SSH and Gitea login; live .env password reused by jones for system login" }
@@ -419,6 +434,54 @@ const VULNS = [
     deepdive: "",
     uses: [
       { writeup: "OWASP Top 10:2025", url: "writeup-juiceshop.html", ctx: "forged an alg:none JWT with an empty signature, base64url-encoded by hand, impersonating the non-existent user jwtn3d@juice-sh.op" }
+    ]
+  },
+  {
+    id:    "ldap-anon-enum",
+    name:  "Anonymous LDAP enumeration",
+    cat:   "auth",
+    sev:   "med",
+    ext:   "CWE-200",
+    blurb: "A domain controller that allows unauthenticated (anonymous) LDAP binds lets anyone on the network dump the directory - users, groups, and attribute values. World-readable fields like description routinely leak secrets. Fix: disable anonymous binds and audit attributes for sensitive data.",
+    deepdive: "",
+    uses: [
+      { writeup: "Baby", url: "writeup-baby.html", ctx: "anonymous ldapsearch against baby.vl dumps all users; Teresa Bell's description field holds an initial password" }
+    ]
+  },
+  {
+    id:    "password-must-change",
+    name:  "Known password + forced-change bypass",
+    cat:   "auth",
+    sev:   "med",
+    ext:   "CWE-620",
+    blurb: "An account flagged 'user must change password at next logon' returns STATUS_PASSWORD_MUST_CHANGE, which confirms the supplied password is correct. The flag blocks login but not a network password change (SMB/kpasswd), so an attacker who knows the current password can set a new one and authenticate. Fix: use unique, random initial passwords with short expiry.",
+    deepdive: "",
+    uses: [
+      { writeup: "Baby", url: "writeup-baby.html", ctx: "Caroline.Robinson returns PASSWORD_MUST_CHANGE with the leaked password; smbpasswd -r sets a new one for a WinRM foothold" }
+    ]
+  },
+  {
+    id:    "sebackupprivilege",
+    name:  "SeBackupPrivilege / Backup Operators to DC compromise",
+    cat:   "priv-esc",
+    sev:   "crit",
+    ext:   "CWE-250 · CWE-269",
+    blurb: "SeBackupPrivilege grants read access to any file regardless of ACL. On a domain controller that includes NTDS.dit (every domain hash) and the SYSTEM hive (its boot key). A Volume Shadow Copy unlocks the live database, robocopy /b reads it in backup mode, and secretsdump recovers the hashes offline. Backup Operators effectively equals Domain Admin. Fix: keep standard users out of Backup Operators and restrict backup rights to dedicated, monitored accounts.",
+    deepdive: "",
+    uses: [
+      { writeup: "Baby", url: "writeup-baby.html", ctx: "Backup Operators member creates a shadow copy with diskshadow and copies NTDS.dit + SYSTEM out in backup mode, then secretsdump" }
+    ]
+  },
+  {
+    id:    "pass-the-hash",
+    name:  "Pass-the-Hash (NTLM)",
+    cat:   "auth",
+    sev:   "crit",
+    ext:   "CWE-294 · CWE-522",
+    blurb: "NTLM authentication proves knowledge of a password via its NT hash and never needs the plaintext, so an attacker holding a recovered NT hash can authenticate as that user directly, no cracking required. Fix: protect hash material (LSASS, NTDS.dit), limit privileged logons, and prefer Kerberos with modern protections.",
+    deepdive: "",
+    uses: [
+      { writeup: "Baby", url: "writeup-baby.html", ctx: "Administrator NT hash from NTDS.dit used with evil-winrm -H for an Administrator shell, no password" }
     ]
   }
 ];

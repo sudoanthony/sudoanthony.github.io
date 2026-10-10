@@ -32,6 +32,7 @@
       <a href="#vuln-scanners" data-toc>Vulnerability Scanners</a>
       <a href="#web" data-toc>Web &amp; Proxies</a>
       <a href="#network" data-toc>Networking &amp; Access</a>
+      <a href="#ad" data-toc>Active Directory / Windows</a>
       <a href="#mobile-static" data-toc>Mobile: Static</a>
       <a href="#mobile-runtime" data-toc>Mobile: Device &amp; Runtime</a>
       <a href="#mobile-re" data-toc>Reverse Engineering &amp; Signing</a>
@@ -59,6 +60,7 @@
         <li><strong>Vulnerability scanners:</strong> <a href="#nessus">Nessus</a>, <a href="#openvas">OpenVAS</a>.</li>
         <li><strong>Web &amp; proxies:</strong> <a href="#burp">Burp Suite</a>, <a href="#mitmproxy">mitmproxy</a>.</li>
         <li><strong>Networking &amp; access:</strong> <a href="#netcat">netcat</a>, <a href="#ssh">ssh</a> (local port forwarding).</li>
+        <li><strong>Active Directory / Windows:</strong> <a href="#dig">dig</a>, <a href="#ldapsearch">ldapsearch</a>, <a href="#netexec">netexec</a>, <a href="#smbpasswd">smbpasswd</a>, <a href="#evil-winrm">evil-winrm</a>, <a href="#impacket">Impacket</a>, <a href="#diskshadow">diskshadow + robocopy</a>.</li>
         <li><strong>Mobile static:</strong> <a href="#jadx">jadx</a>, <a href="#apktool">apktool</a>, <a href="#mobsf">MobSF</a>.</li>
         <li><strong>Mobile device &amp; runtime:</strong> <a href="#android-studio">Android Studio</a>, <a href="#adb">adb</a> (with <code>am</code> and <code>content</code>), <a href="#frida">Frida</a>, <a href="#objection">objection</a>.</li>
         <li><strong>Reverse engineering &amp; signing:</strong> <a href="#apksigner">apksigner</a>, <a href="#zipalign">zipalign</a>, <a href="#keytool">keytool</a>, <a href="#ghidra">Ghidra</a>, <a href="#radare2">radare2</a>.</li>
@@ -162,6 +164,74 @@
           <div class="tc-row"><span class="os">SHELL</span> <code>ssh user@TARGET</code></div>
           <div class="tc-row"><span class="os">TUNNEL</span> <code>ssh -L 3000:127.0.0.1:3000 user@TARGET</code> &nbsp;&mdash; run from <em>your</em> box; now browse <code>127.0.0.1:3000</code> to hit the target's internal service</div>
           <div class="tc-seen">seen in <a href="writeup-biohazard.html">Biohazard</a>, <a href="writeup-nexus.html">Nexus</a></div>
+        </div>
+
+      </div>
+    </section>
+
+    <!-- ============ Active Directory / Windows ============ -->
+    <section id="ad" class="concept-block">
+      <p class="kicker">Enumerate and attack Active Directory / Windows</p>
+      <h2>Active Directory / Windows</h2>
+      <div class="toolgrid">
+
+        <div class="toolcard cat-recon" id="dig">
+          <div class="tc-head"><span class="tc-glyph">dig</span><span class="tc-name">dig</span><span class="tc-cat">dns lookup</span></div>
+          <p class="tc-what">DNS lookup tool. On a Windows domain the DC is usually the DNS server, so an NS query against it reveals the domain and the DC's hostname - the first thing to add to <code>/etc/hosts</code>.</p>
+          <div class="tc-row"><span class="os">LINUX</span> <code>sudo apt install dnsutils</code></div>
+          <div class="tc-row"><span class="os">CMD</span> <code>dig ns DOMAIN @DC_IP</code></div>
+          <div class="tc-seen">seen in <a href="writeup-baby.html">Baby</a></div>
+        </div>
+
+        <div class="toolcard cat-recon" id="ldapsearch">
+          <div class="tc-head"><span class="tc-glyph">ld</span><span class="tc-name">ldapsearch</span><span class="tc-cat">ldap enum</span></div>
+          <p class="tc-what">Queries an LDAP directory. Against a DC that allows <strong>anonymous binds</strong> it dumps every user, group, and attribute - and world-readable fields like <code>description</code> often leak secrets. Filter output to just the account names to build a spray list.</p>
+          <div class="tc-row"><span class="os">LINUX</span> <code>sudo apt install ldap-utils</code></div>
+          <div class="tc-row"><span class="os">DUMP</span> <code>ldapsearch -x -H ldap://IP -b "DC=x,DC=y" "(objectClass=user)"</code></div>
+          <div class="tc-seen">seen in <a href="writeup-baby.html">Baby</a> &middot; concept: <a href="windows-ad.html">AD concepts</a></div>
+        </div>
+
+        <div class="toolcard cat-recon" id="netexec">
+          <div class="tc-head"><span class="tc-glyph">nxc</span><span class="tc-name">netexec</span><span class="tc-cat">ad swiss-army</span></div>
+          <p class="tc-what">The successor to CrackMapExec (<code>nxc</code>). Validates credentials across SMB/WinRM/LDAP/etc., sprays passwords, lists shares and users, and flags things like <code>STATUS_PASSWORD_MUST_CHANGE</code> vs <code>LOGON_FAILURE</code>. The go-to for "do these creds work, and where?"</p>
+          <div class="tc-row"><span class="os">LINUX</span> <code>pipx install netexec</code> (or <code>apt install netexec</code>)</div>
+          <div class="tc-row"><span class="os">AUTH</span> <code>nxc smb IP -u user -p pass</code></div>
+          <div class="tc-row"><span class="os">SPRAY</span> <code>nxc smb IP -u users.txt -p 'Pass123!' --continue-on-success</code></div>
+          <div class="tc-seen">seen in <a href="writeup-baby.html">Baby</a></div>
+        </div>
+
+        <div class="toolcard cat-recon" id="smbpasswd">
+          <div class="tc-head"><span class="tc-glyph">sp</span><span class="tc-name">smbpasswd</span><span class="tc-cat">password change</span></div>
+          <p class="tc-what">Changes an SMB/AD account password over the network with <code>-r</code> (remote). Key when an account returns <em>password must change</em>: you know the current password, so you set a new one and log in. Impacket's <code>changepasswd</code> (kpasswd/ldap) does the same.</p>
+          <div class="tc-row"><span class="os">LINUX</span> ships with <code>samba-common-bin</code> / smbclient</div>
+          <div class="tc-row"><span class="os">CMD</span> <code>smbpasswd -r IP -U user</code> &nbsp;(prompts old then new)</div>
+          <div class="tc-seen">seen in <a href="writeup-baby.html">Baby</a></div>
+        </div>
+
+        <div class="toolcard cat-runtime" id="evil-winrm">
+          <div class="tc-head"><span class="tc-glyph">ew</span><span class="tc-name">evil-winrm</span><span class="tc-cat">winrm shell</span></div>
+          <p class="tc-what">Interactive WinRM (5985) shell for Windows. Authenticate with a password (<code>-p</code>) or, for <strong>Pass-the-Hash</strong>, with just the NT hash (<code>-H</code>) - no plaintext needed. Also handy <code>upload</code>/<code>download</code> built in.</p>
+          <div class="tc-row"><span class="os">LINUX</span> <code>gem install evil-winrm</code> (or <code>apt install evil-winrm</code>)</div>
+          <div class="tc-row"><span class="os">PASS</span> <code>evil-winrm -i IP -u user -p pass</code></div>
+          <div class="tc-row"><span class="os">HASH</span> <code>evil-winrm -i IP -u Administrator -H &lt;nthash&gt;</code></div>
+          <div class="tc-seen">seen in <a href="writeup-baby.html">Baby</a> &middot; concept: <a href="windows-ad.html#pass-the-hash">Pass-the-Hash</a></div>
+        </div>
+
+        <div class="toolcard cat-recon" id="impacket">
+          <div class="tc-head"><span class="tc-glyph">ip</span><span class="tc-name">Impacket</span><span class="tc-cat">python ad toolkit</span></div>
+          <p class="tc-what">A suite of Python scripts for Windows network protocols. <code>secretsdump</code> extracts hashes from a dumped <code>NTDS.dit</code> + <code>SYSTEM</code> hive (or live over the wire); <code>wmiexec</code>/<code>psexec</code> give remote execution (both accept a hash for PtH); <code>changepasswd</code> resets passwords.</p>
+          <div class="tc-row"><span class="os">LINUX</span> <code>pipx install impacket</code> (binaries prefixed <code>impacket-</code>)</div>
+          <div class="tc-row"><span class="os">DUMP</span> <code>impacket-secretsdump -ntds ntds.dit -system system.hive LOCAL</code></div>
+          <div class="tc-seen">seen in <a href="writeup-baby.html">Baby</a> &middot; concept: <a href="windows-ad.html#ntds">NTDS.dit</a></div>
+        </div>
+
+        <div class="toolcard cat-runtime" id="diskshadow">
+          <div class="tc-head"><span class="tc-glyph">ds</span><span class="tc-name">diskshadow + robocopy</span><span class="tc-cat">VSS backup</span></div>
+          <p class="tc-what">Built-in Windows tools used together to abuse <code>SeBackupPrivilege</code>. <code>diskshadow</code> creates a <strong>Volume Shadow Copy</strong> (a frozen snapshot where locked files like <code>NTDS.dit</code> can be read), and <code>robocopy /b</code> (backup mode) copies them out, bypassing the ACL. A plain <code>reg save</code> grabs the <code>SYSTEM</code> hive.</p>
+          <div class="tc-row"><span class="os">WIN</span> built in (run from the target shell)</div>
+          <div class="tc-row"><span class="os">VSS</span> <code>diskshadow /s script.txt</code> &nbsp;(create + expose snapshot as Z:)</div>
+          <div class="tc-row"><span class="os">COPY</span> <code>robocopy /b Z:\Windows\NTDS . ntds.dit</code></div>
+          <div class="tc-seen">seen in <a href="writeup-baby.html">Baby</a> &middot; concept: <a href="windows-ad.html#sebackupprivilege">SeBackupPrivilege</a></div>
         </div>
 
       </div>

