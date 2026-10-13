@@ -23,6 +23,19 @@
 
 const WRITEUPS = [
   {
+    title:      "Remote",
+    url:        "writeup-remote.html",
+    platform:   "HackTheBox",
+    team:       "red",
+    difficulty: "Easy",
+    os:         "Windows",
+    category:   "Web",
+    icon:       "images/icons/remote.png",
+    date:       "2026-10-13",
+    summary:    "Windows box: an NFS share exported to everyone leaks an Umbraco site backup whose Umbraco.sdf database holds an admin SHA1 hash; cracked, it unlocks the backoffice for an authenticated Umbraco 7.12.4 RCE as the IIS service account, then SeImpersonatePrivilege is abused with PrintSpoofer to reach SYSTEM.",
+    tags:       ["nfs-exposed-share", "exposed-credentials", "umbraco-rce", "seimpersonate", "priv-esc"]
+  },
+  {
     title:      "Knife",
     url:        "writeup-knife.html",
     platform:   "HackTheBox",
@@ -296,6 +309,7 @@ const VULNS = [
     blurb: "Turning a foothold user into root, Administrator, or SYSTEM through a local misconfiguration or over-privileged right.",
     deepdive: "",
     uses: [
+      { writeup: "Remote", url: "writeup-remote.html", ctx: "SeImpersonatePrivilege on the IIS service account abused with PrintSpoofer to spawn a SYSTEM shell" },
       { writeup: "Knife", url: "writeup-knife.html", ctx: "passwordless sudo on Chef's knife (Ruby) abused with knife exec to spawn a root shell" },
       { writeup: "Baby", url: "writeup-baby.html", ctx: "SeBackupPrivilege (Backup Operators) used to shadow-copy and read NTDS.dit, then Pass-the-Hash as Administrator" },
       { writeup: "Abducted", url: "writeup-abducted.html", ctx: "writable systemd drop-in dir + polkit rule to restart smbd -> ExecStartPre SetUID bash" },
@@ -312,6 +326,7 @@ const VULNS = [
     blurb: "Credentials recoverable by a low-priv user and reused across accounts - obfuscated configs, key files, shared passwords, directory attributes.",
     deepdive: "",
     uses: [
+      { writeup: "Remote", url: "writeup-remote.html", ctx: "an NFS backup's Umbraco.sdf leaks the admin SHA1 hash, cracked with john to baconandcheese" },
       { writeup: "Baby", url: "writeup-baby.html", ctx: "anonymous LDAP read exposes an initial password stored in a user's AD description field" },
       { writeup: "Abducted", url: "writeup-abducted.html", ctx: "rclone-obfuscated backup password revealed and reused for scott's SSH" },
       { writeup: "Biohazard", url: "writeup-biohazard.html", ctx: "creds hidden behind an encoding chain, then key files on FTP" },
@@ -520,6 +535,42 @@ const VULNS = [
     deepdive: "",
     uses: [
       { writeup: "Knife", url: "writeup-knife.html", ctx: "james may run Chef's knife (Ruby) as root with NOPASSWD; knife exec -E 'exec \"/bin/sh\"' returns a root shell" }
+    ]
+  },
+  {
+    id:    "nfs-exposed-share",
+    name:  "Exposed NFS share",
+    cat:   "auth",
+    sev:   "high",
+    ext:   "CWE-200 · CWE-732",
+    blurb: "An NFS export opened to everyone lets any host on the network mount it with no authentication. Backups and config dumps left on such a share routinely leak credentials and secrets. Enumerate with showmount -e and mount with mount -t nfs. Fix: restrict exports to specific hosts/users and keep secrets off network-reachable paths.",
+    deepdive: "",
+    uses: [
+      { writeup: "Remote", url: "writeup-remote.html", ctx: "/site_backups exported to everyone; mounted it to find an Umbraco backup with the admin hash in Umbraco.sdf" }
+    ]
+  },
+  {
+    id:    "umbraco-rce",
+    name:  "Umbraco authenticated RCE",
+    cat:   "web",
+    sev:   "high",
+    ext:   "CWE-94 · CVE-2019-25137",
+    blurb: "Umbraco 7.x (through 7.12.4) exposes an authenticated remote code execution flaw in the backoffice: a user with login access can run arbitrary commands on the host, so a single leaked or cracked credential becomes code execution. Fix: patch to a supported release and restrict / MFA-gate backoffice access.",
+    deepdive: "",
+    uses: [
+      { writeup: "Remote", url: "writeup-remote.html", ctx: "admin@htb.local : baconandcheese into Umbraco 7.12.4, then the noraj Umbraco-RCE exploit for a reverse shell as iis apppool\\defaultapppool" }
+    ]
+  },
+  {
+    id:    "seimpersonate",
+    name:  "SeImpersonatePrivilege abuse (Potato attacks)",
+    cat:   "priv-esc",
+    sev:   "crit",
+    ext:   "CWE-250 · CWE-269",
+    blurb: "A service account holding SeImpersonatePrivilege can impersonate a token handed to it. Coerce a SYSTEM service into authenticating to an attacker-controlled named pipe, steal its token, and spawn a process as SYSTEM. The 'Potato' family (PrintSpoofer, JuicyPotato, RoguePotato, GodPotato) automate this; the right variant depends on the Windows version and open ports. Fix: patch Potato vectors, disable the Print Spooler where unneeded, and contain the web app.",
+    deepdive: "",
+    uses: [
+      { writeup: "Remote", url: "writeup-remote.html", ctx: "defaultapppool holds SeImpersonatePrivilege; RogueWinRM failed (5985 in use), PrintSpoofer abused the Print Spooler for a SYSTEM shell" }
     ]
   }
 ];

