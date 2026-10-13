@@ -23,6 +23,19 @@
 
 const WRITEUPS = [
   {
+    title:      "Knife",
+    url:        "writeup-knife.html",
+    platform:   "HackTheBox",
+    team:       "red",
+    difficulty: "Easy",
+    os:         "Linux",
+    category:   "Web",
+    icon:       "images/icons/knife.png",
+    date:       "2026-10-13",
+    summary:    "Linux box: an X-Powered-By header reveals the backdoored PHP 8.1.0-dev build (exploit-db 49933), whose User-Agentt header RCE gives a shell as james; a passwordless sudo rule on Chef's knife binary is then abused with knife exec to spawn a root shell.",
+    tags:       ["php-dev-backdoor", "sudo-abuse", "priv-esc"]
+  },
+  {
     title:      "Baby",
     url:        "writeup-baby.html",
     platform:   "HackTheBox",
@@ -283,6 +296,7 @@ const VULNS = [
     blurb: "Turning a foothold user into root, Administrator, or SYSTEM through a local misconfiguration or over-privileged right.",
     deepdive: "",
     uses: [
+      { writeup: "Knife", url: "writeup-knife.html", ctx: "passwordless sudo on Chef's knife (Ruby) abused with knife exec to spawn a root shell" },
       { writeup: "Baby", url: "writeup-baby.html", ctx: "SeBackupPrivilege (Backup Operators) used to shadow-copy and read NTDS.dit, then Pass-the-Hash as Administrator" },
       { writeup: "Abducted", url: "writeup-abducted.html", ctx: "writable systemd drop-in dir + polkit rule to restart smbd -> ExecStartPre SetUID bash" },
       { writeup: "Biohazard", url: "writeup-biohazard.html", ctx: "operator re-auths to root with a reused password" },
@@ -482,6 +496,30 @@ const VULNS = [
     deepdive: "",
     uses: [
       { writeup: "Baby", url: "writeup-baby.html", ctx: "Administrator NT hash from NTDS.dit used with evil-winrm -H for an Administrator shell, no password" }
+    ]
+  },
+  {
+    id:    "php-dev-backdoor",
+    name:  "PHP 8.1.0-dev backdoor (User-Agentt RCE)",
+    cat:   "web",
+    sev:   "crit",
+    ext:   "CWE-78 · exploit-db 49933",
+    blurb: "The PHP 8.1.0-dev build briefly shipped with a source-code backdoor (March 2021) that executes any command sent in a User-Agentt header, so any server still running that exact build is unauthenticated RCE. It's found by fingerprinting - an X-Powered-By: PHP/8.1.0-dev header gives it away. Fix: never run dev/pre-release builds in production and pin patched stable releases.",
+    deepdive: "",
+    uses: [
+      { writeup: "Knife", url: "writeup-knife.html", ctx: "X-Powered-By: PHP/8.1.0-dev spotted via curl -I; the User-Agentt backdoor gives a pseudo-shell, upgraded to a reverse shell as james" }
+    ]
+  },
+  {
+    id:    "sudo-abuse",
+    name:  "Passwordless sudo on an interpreter-backed binary",
+    cat:   "priv-esc",
+    sev:   "high",
+    ext:   "CWE-250 · CWE-269",
+    blurb: "A sudo rule that lets a user run a program as root is equivalent to full root when that program can execute arbitrary code - interpreters (ruby, python) and many tools (find, vim, less) can spawn a shell. GTFOBins catalogues the exact one-liners. Fix: scope sudo to specific, non-shelling commands and keep admin tooling off user accounts.",
+    deepdive: "",
+    uses: [
+      { writeup: "Knife", url: "writeup-knife.html", ctx: "james may run Chef's knife (Ruby) as root with NOPASSWD; knife exec -E 'exec \"/bin/sh\"' returns a root shell" }
     ]
   }
 ];

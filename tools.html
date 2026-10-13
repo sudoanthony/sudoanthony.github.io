@@ -56,7 +56,7 @@
       <p class="kicker">By the job it does</p>
       <h2>Categories</h2>
       <ul>
-        <li><strong>Recon &amp; scanning:</strong> <a href="#nmap">nmap</a>, <a href="#gobuster">gobuster</a>.</li>
+        <li><strong>Recon &amp; scanning:</strong> <a href="#nmap">nmap</a>, <a href="#gobuster">gobuster</a>, <a href="#curl">curl</a>.</li>
         <li><strong>Vulnerability scanners:</strong> <a href="#nessus">Nessus</a>, <a href="#openvas">OpenVAS</a>.</li>
         <li><strong>Web &amp; proxies:</strong> <a href="#burp">Burp Suite</a>, <a href="#mitmproxy">mitmproxy</a>.</li>
         <li><strong>Networking &amp; access:</strong> <a href="#netcat">netcat</a>, <a href="#ssh">ssh</a> (local port forwarding).</li>
@@ -91,6 +91,14 @@
           <div class="tc-row"><span class="os">DIR</span> <code>gobuster dir -u URL -w LIST -x php,html,txt --exclude-length N</code></div>
           <div class="tc-row"><span class="os">VHOST</span> <code>gobuster vhost -u http://DOMAIN -w LIST --append-domain</code></div>
           <div class="tc-seen">seen in <a href="writeup-nexus.html">Nexus</a></div>
+        </div>
+
+        <div class="toolcard cat-recon" id="curl">
+          <div class="tc-head"><span class="tc-glyph">crl</span><span class="tc-name">curl</span><span class="tc-cat">http client</span></div>
+          <p class="tc-what">Command-line HTTP client. Beyond fetching pages, <code>-I</code> grabs just the response <strong>headers</strong> - the fastest way to fingerprint a server. A giveaway banner like <code>X-Powered-By</code> or <code>Server</code> often points straight at a known vulnerability.</p>
+          <div class="tc-row"><span class="os">LINUX</span> ships on virtually every system (<code>apt install curl</code>)</div>
+          <div class="tc-row"><span class="os">HEADERS</span> <code>curl -I http://TARGET</code></div>
+          <div class="tc-seen">seen in <a href="writeup-knife.html">Knife</a></div>
         </div>
 
       </div>

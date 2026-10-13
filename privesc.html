@@ -29,6 +29,7 @@
     <nav id="tocNav">
       <a href="#scheduled-jobs" data-toc>Scheduled jobs</a>
       <a href="#symlink" data-toc>Symlink attacks</a>
+      <a href="#sudo-abuse" data-toc>Sudo abuse</a>
       <a href="#tools" data-toc>Tools</a>
     </nav>
   </aside>
@@ -169,6 +170,62 @@
         <a href="writeup-nexus.html">Nexus</a> - symlinked the root timer's staging path to
         <code>/root/.ssh</code>, so the next sync wrote a controlled <code>authorized_keys</code>
         into root's home and opened a direct SSH login as root.
+      </div>
+    </section>
+
+    <!-- ============ Sudo abuse ============ -->
+    <section id="sudo-abuse" class="concept-block">
+      <p class="kicker">A sudo rule that runs code equals root</p>
+      <h2>Sudo abuse</h2>
+
+      <div class="concept-sub">
+        <span class="sub-lbl">what it is</span>
+        <p>Admins hand out <code>sudo</code> rules so a user can run one specific program with elevated
+        rights, often <code>NOPASSWD</code>. The trap: if that program can be made to <strong>execute
+        arbitrary code</strong>, running it as root hands you a root shell. The first check on any Linux
+        foothold is <code>sudo -l</code>.</p>
+      </div>
+
+      <div class="concept-sub">
+        <span class="sub-lbl">which binaries are dangerous</span>
+        <p>Anything that can spawn a shell, run a script, read/write arbitrary files, or load code. That
+        includes interpreters (<code>ruby</code>, <code>python</code>, <code>perl</code>), editors
+        (<code>vim</code>, <code>less</code>, <code>man</code>), and many everyday tools (<code>find</code>,
+        <code>awk</code>, <code>tar</code>, <code>nmap</code>). Vendor CLIs count too: Chef's
+        <code>knife</code> is built on Ruby, so <code>knife exec</code> runs Ruby as root.</p>
+      </div>
+
+      <div class="concept-sub">
+        <span class="sub-lbl">how it works</span>
+        <p>Look the binary up on <a href="https://gtfobins.github.io" target="_blank">GTFOBins</a> under its
+        "Sudo" function; it gives the exact one-liner. The pattern is always "make the trusted program run a
+        shell for you". For a Ruby-backed tool like knife:</p>
+        <pre><code>sudo knife exec -E 'exec "/bin/sh"'</code></pre>
+        <p style="margin-top:8px">and generic examples of the same idea:</p>
+        <pre><code>sudo find . -exec /bin/sh \; -quit
+sudo vim -c ':!/bin/sh'
+sudo python3 -c 'import os; os.system("/bin/sh")'</code></pre>
+      </div>
+
+      <div class="concept-sub">
+        <span class="sub-lbl">why it works</span>
+        <p>Sudo elevates the <em>process</em>, and it has no idea what that process will do once it is running
+        as root. A program that can launch a child shell or evaluate code simply uses the root context it was
+        handed. The flaw is the rule, not the binary.</p>
+      </div>
+
+      <div class="concept-sub">
+        <span class="sub-lbl">hardening / remediation</span>
+        <p>Treat a sudo rule on any code-capable program as equivalent to full root. Scope rules to specific,
+        argument-locked commands that cannot shell out, avoid <code>NOPASSWD</code> on general-purpose tools,
+        and keep admin/vendor CLIs off standard user accounts.</p>
+      </div>
+
+      <div class="seen-in">
+        <span class="lbl">seen in</span>
+        <a href="writeup-knife.html">Knife</a> - james could run Chef's <code>knife</code> as root with
+        <code>NOPASSWD</code>; <code>knife exec</code> ran a Ruby <code>exec "/bin/sh"</code> for an instant
+        root shell.
       </div>
     </section>
 
