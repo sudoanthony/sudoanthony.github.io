@@ -23,6 +23,19 @@
 
 const WRITEUPS = [
   {
+    title:      "Kobold",
+    url:        "writeup-kobold.html",
+    platform:   "HackTheBox",
+    team:       "red",
+    difficulty: "Easy",
+    os:         "Linux",
+    category:   "Web",
+    icon:       "images/icons/Kobold.png",
+    date:       "2026-10-21",
+    summary:    "Linux box: an unauthenticated MCPJam RCE on a hidden HTTPS vhost lands a shell as ben, a writable PHP file leaks a DB password that is reused into the Arcane dashboard, and Arcane's root-level Docker control is abused with a host-mount container escape to root.",
+    tags:       ["unauth-rce", "writable-php-poison", "exposed-credentials", "docker-container-escape", "priv-esc"]
+  },
+  {
     title:      "Remote",
     url:        "writeup-remote.html",
     platform:   "HackTheBox",
@@ -314,7 +327,8 @@ const VULNS = [
       { writeup: "Baby", url: "writeup-baby.html", ctx: "SeBackupPrivilege (Backup Operators) used to shadow-copy and read NTDS.dit, then Pass-the-Hash as Administrator" },
       { writeup: "Abducted", url: "writeup-abducted.html", ctx: "writable systemd drop-in dir + polkit rule to restart smbd -> ExecStartPre SetUID bash" },
       { writeup: "Biohazard", url: "writeup-biohazard.html", ctx: "operator re-auths to root with a reused password" },
-      { writeup: "Nexus", url: "writeup-nexus.html", ctx: "symlink planted in user-writable staging dir; root systemd timer follows it and writes SSH key into /root/.ssh/authorized_keys" }
+      { writeup: "Nexus", url: "writeup-nexus.html", ctx: "symlink planted in user-writable staging dir; root systemd timer follows it and writes SSH key into /root/.ssh/authorized_keys" },
+      { writeup: "Kobold", url: "writeup-kobold.html", ctx: "Arcane drives Docker as root; a container run as User 0 with / mounted to /host drops a SUID rootbash for a root shell" }
     ]
   },
   {
@@ -330,7 +344,8 @@ const VULNS = [
       { writeup: "Baby", url: "writeup-baby.html", ctx: "anonymous LDAP read exposes an initial password stored in a user's AD description field" },
       { writeup: "Abducted", url: "writeup-abducted.html", ctx: "rclone-obfuscated backup password revealed and reused for scott's SSH" },
       { writeup: "Biohazard", url: "writeup-biohazard.html", ctx: "creds hidden behind an encoding chain, then key files on FTP" },
-      { writeup: "Nexus", url: "writeup-nexus.html", ctx: "DB password in git commit history reused for SSH and Gitea login; live .env password reused by jones for system login" }
+      { writeup: "Nexus", url: "writeup-nexus.html", ctx: "DB password in git commit history reused for SSH and Gitea login; live .env password reused by jones for system login" },
+      { writeup: "Kobold", url: "writeup-kobold.html", ctx: "PrivateBin's conf.php leaks a plaintext DB password (ComplexP@sswordAdmin1928) that is reused to log into the Arcane dashboard" }
     ]
   },
   {
@@ -571,6 +586,42 @@ const VULNS = [
     deepdive: "",
     uses: [
       { writeup: "Remote", url: "writeup-remote.html", ctx: "defaultapppool holds SeImpersonatePrivilege; RogueWinRM failed (5985 in use), PrintSpoofer abused the Print Spooler for a SYSTEM shell" }
+    ]
+  },
+  {
+    id:    "unauth-rce",
+    name:  "Unauthenticated remote code execution",
+    cat:   "web",
+    sev:   "crit",
+    ext:   "CWE-306 · CVE-2026-23744",
+    blurb: "An endpoint whose job is to run a command (or connect to a server by spawning a process) is exposed with no authentication, so anyone who can reach it executes arbitrary code. Pre-auth, network-reachable, and often bound to 0.0.0.0, these are as direct as RCE gets - severity turns only on what user the process runs as. Fix: require authentication on command-capable endpoints, don't bind dev/inspection tooling to all interfaces, and keep such services off reachable networks.",
+    deepdive: "",
+    uses: [
+      { writeup: "Kobold", url: "writeup-kobold.html", ctx: "MCPJam Inspector v1.4.2 on mcp.kobold.htb - /api/mcp/connect spawns a process from attacker-supplied command/args with no auth (exploit-db 52625), caught as a shell for ben" }
+    ]
+  },
+  {
+    id:    "writable-php-poison",
+    name:  "Writable app source (code injection)",
+    cat:   "web",
+    sev:   "high",
+    ext:   "CWE-732 · CWE-94",
+    blurb: "When a low-privilege account can write to the scripts an application executes, appending code to one of those files turns the app into an execution primitive running in the app's context - including any mounts or files that context can reach but the attacker cannot. Classic uses: read a config the app can see but you can't, or pivot across a container boundary. Fix: app code must be owned by a separate account and never writable by the runtime/user that triggers it.",
+    deepdive: "",
+    uses: [
+      { writeup: "Kobold", url: "writeup-kobold.html", ctx: "ben can write PrivateBin's .php files in /srv/data; appending file_get_contents to purge_limiter.php leaks the container-only /srv/cfg/conf.php back to a readable path" }
+    ]
+  },
+  {
+    id:    "docker-container-escape",
+    name:  "Docker container escape (host mount)",
+    cat:   "priv-esc",
+    sev:   "crit",
+    ext:   "CWE-250 · CWE-269",
+    blurb: "Control of the Docker daemon - via the docker group, access to docker.sock, or a management UI that owns it - is root-equivalent. Any container launched can run as UID 0 and bind-mount the host's filesystem (/ to /host), so an attacker reads or writes anything on the host: drop a SUID root bash, add an SSH key, or read /etc/shadow. Fix: treat the Docker socket as a crown jewel, restrict who can create containers or mount host paths, and never expose a Docker-management app without strong auth.",
+    deepdive: "",
+    uses: [
+      { writeup: "Kobold", url: "writeup-kobold.html", ctx: "the Arcane dashboard drives Docker as root; a container run as User 0 with / mounted to /host and a command dropping a SUID /tmp/rootbash yields root on the host" }
     ]
   }
 ];

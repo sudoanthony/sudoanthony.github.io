@@ -30,6 +30,7 @@
       <a href="#scheduled-jobs" data-toc>Scheduled jobs</a>
       <a href="#symlink" data-toc>Symlink attacks</a>
       <a href="#sudo-abuse" data-toc>Sudo abuse</a>
+      <a href="#container-escape" data-toc>Container escape</a>
       <a href="#tools" data-toc>Tools</a>
     </nav>
   </aside>
@@ -226,6 +227,71 @@ sudo python3 -c 'import os; os.system("/bin/sh")'</code></pre>
         <a href="writeup-knife.html">Knife</a> - james could run Chef's <code>knife</code> as root with
         <code>NOPASSWD</code>; <code>knife exec</code> ran a Ruby <code>exec "/bin/sh"</code> for an instant
         root shell.
+      </div>
+    </section>
+
+    <section id="container-escape" class="concept-block">
+      <p class="kicker">Control of Docker is control of the host</p>
+      <h2>Container escape</h2>
+
+      <div class="concept-sub">
+        <span class="sub-lbl">what it is</span>
+        <p>Containers share the host kernel; the isolation is a set of namespaces and permissions, not a real
+        boundary like a VM. If you can talk to the <strong>Docker daemon</strong> - through the
+        <code>docker</code> group, direct access to <code>/var/run/docker.sock</code>, or a management app that
+        owns it - you are effectively <strong>root on the host</strong>, because you can launch a container
+        that runs as UID 0 and bind-mounts the host's filesystem.</p>
+      </div>
+
+      <div class="concept-sub">
+        <span class="sub-lbl">the host-mount escape</span>
+        <p>The move is always the same: start a container as <strong>user 0</strong>, mount the host root
+        (<code>/</code>) into the container (say at <code>/host</code>), and then read or write anything on the
+        host. Two reliable finishers:</p>
+        <pre><code><span class="c"># drop a SUID root bash onto the host, then use it from any low-priv shell</span>
+cp /host/bin/bash /host/tmp/rootbash &amp;&amp; chmod +s /host/tmp/rootbash
+/tmp/rootbash -p
+
+<span class="c"># or, straight from the CLI when you're in the docker group</span>
+docker run -v /:/host -u 0 -it ALPINE_IMAGE chroot /host sh</code></pre>
+        <p style="margin-top:8px">The same thing works through a <strong>Docker-management UI</strong> (Arcane,
+        Portainer, Dockge): its "create container" form just exposes the image, the command, the user, and the
+        volume mounts. Set user <code>0</code>, mount <code>/</code> to <code>/host</code>, and the command
+        becomes your payload.</p>
+      </div>
+
+      <div class="concept-sub">
+        <span class="sub-lbl">seeing into other containers (mount namespaces)</span>
+        <p>Each container gets its own <strong>mount namespace</strong> - its own view of what's mounted and
+        where. <code>findmnt</code> only shows <em>your</em> namespace, so to learn how another container maps
+        host paths, read the kernel's per-process mount table:</p>
+        <pre><code>grep KEYWORD /proc/*/mountinfo 2&gt;/dev/null | sort -u</code></pre>
+        <p style="margin-top:8px">That reveals lines like <code>/host/data/cfg &rarr; /srv/cfg (ro)</code>, which
+        tell you exactly which host directory backs a container path - useful for finding a writable data mount
+        whose code runs with access to a read-only config you can't reach directly.</p>
+      </div>
+
+      <div class="concept-sub">
+        <span class="sub-lbl">why it works</span>
+        <p>The Docker daemon runs as root, and it does whatever an authorized client asks - including
+        "mount the host and run as root." There is no privilege check between "can talk to Docker" and
+        "is root on the host"; they are the same thing. A web app that holds the socket inherits that power
+        wholesale, so one app credential becomes full host compromise.</p>
+      </div>
+
+      <div class="concept-sub">
+        <span class="sub-lbl">hardening / remediation</span>
+        <p>Treat the Docker socket and <code>docker</code> group membership as root. Keep humans out of the
+        group, don't mount <code>docker.sock</code> into containers, and gate any management UI behind strong
+        auth and MFA with tight limits on who can create containers or mount host paths. Rootless Docker and
+        user-namespace remapping reduce the blast radius when exposure is unavoidable.</p>
+      </div>
+
+      <div class="seen-in">
+        <span class="lbl">seen in</span>
+        <a href="writeup-kobold.html">Kobold</a> - the Arcane dashboard drove Docker as root; a container run
+        as User 0 with <code>/</code> mounted to <code>/host</code> dropped a SUID <code>rootbash</code> on the
+        host. The PrivateBin container's mounts were read out of <code>/proc/*/mountinfo</code> first.
       </div>
     </section>
 

@@ -32,6 +32,7 @@
       <a href="#vuln-scanners" data-toc>Vulnerability Scanners</a>
       <a href="#web" data-toc>Web &amp; Proxies</a>
       <a href="#network" data-toc>Networking &amp; Access</a>
+      <a href="#host-enum" data-toc>Container &amp; Host Enum</a>
       <a href="#ad" data-toc>Active Directory / Windows</a>
       <a href="#mobile-static" data-toc>Mobile: Static</a>
       <a href="#mobile-runtime" data-toc>Mobile: Device &amp; Runtime</a>
@@ -56,7 +57,8 @@
       <p class="kicker">By the job it does</p>
       <h2>Categories</h2>
       <ul>
-        <li><strong>Recon &amp; scanning:</strong> <a href="#nmap">nmap</a>, <a href="#gobuster">gobuster</a>, <a href="#curl">curl</a>.</li>
+        <li><strong>Recon &amp; scanning:</strong> <a href="#nmap">nmap</a>, <a href="#gobuster">gobuster</a>, <a href="#feroxbuster">feroxbuster</a>, <a href="#ffuf">ffuf</a>, <a href="#curl">curl</a>.</li>
+        <li><strong>Container &amp; host enum:</strong> <a href="#mountinfo">findmnt / mountinfo</a>, <a href="#netstat">netstat</a>.</li>
         <li><strong>Vulnerability scanners:</strong> <a href="#nessus">Nessus</a>, <a href="#openvas">OpenVAS</a>.</li>
         <li><strong>Web &amp; proxies:</strong> <a href="#burp">Burp Suite</a>, <a href="#mitmproxy">mitmproxy</a>.</li>
         <li><strong>Networking &amp; access:</strong> <a href="#netcat">netcat</a>, <a href="#ssh">ssh</a> (local port forwarding).</li>
@@ -64,7 +66,7 @@
         <li><strong>Mobile static:</strong> <a href="#jadx">jadx</a>, <a href="#apktool">apktool</a>, <a href="#mobsf">MobSF</a>.</li>
         <li><strong>Mobile device &amp; runtime:</strong> <a href="#android-studio">Android Studio</a>, <a href="#adb">adb</a> (with <code>am</code> and <code>content</code>), <a href="#frida">Frida</a>, <a href="#objection">objection</a>.</li>
         <li><strong>Reverse engineering &amp; signing:</strong> <a href="#apksigner">apksigner</a>, <a href="#zipalign">zipalign</a>, <a href="#keytool">keytool</a>, <a href="#ghidra">Ghidra</a>, <a href="#radare2">radare2</a>.</li>
-        <li><strong>Utilities:</strong> <a href="#sqlite3">sqlite3</a>, <a href="#python">Python</a>, <a href="#wsl">WSL</a>, <a href="#cyberchef">CyberChef</a>.</li>
+        <li><strong>Utilities:</strong> <a href="#sqlite3">sqlite3</a>, <a href="#jq">jq</a>, <a href="#python">Python</a>, <a href="#wsl">WSL</a>, <a href="#cyberchef">CyberChef</a>.</li>
         <li><strong>Targets:</strong> <a href="#allsafe">AllSafe</a>, <a href="#androgoat">AndroGoat</a>, <a href="#insecurebankv2">InsecureBankv2</a>.</li>
       </ul>
     </section>
@@ -90,7 +92,24 @@
           <div class="tc-row"><span class="os">LINUX</span> <code>sudo apt install gobuster</code></div>
           <div class="tc-row"><span class="os">DIR</span> <code>gobuster dir -u URL -w LIST -x php,html,txt --exclude-length N</code></div>
           <div class="tc-row"><span class="os">VHOST</span> <code>gobuster vhost -u http://DOMAIN -w LIST --append-domain</code></div>
-          <div class="tc-seen">seen in <a href="writeup-nexus.html">Nexus</a></div>
+          <div class="tc-row"><span class="os">TLS</span> <code>gobuster vhost -u https://DOMAIN -k --append-domain -w LIST</code></div>
+          <div class="tc-seen">seen in <a href="writeup-nexus.html">Nexus</a>, <a href="writeup-kobold.html">Kobold</a></div>
+        </div>
+
+        <div class="toolcard cat-recon" id="feroxbuster">
+          <div class="tc-head"><span class="tc-glyph">fx</span><span class="tc-name">feroxbuster</span><span class="tc-cat">content brute-forcer</span></div>
+          <p class="tc-what">Fast, recursive content and API discovery. Walks a wordlist against a URL, follows discovered directories automatically, and extracts links from responses. The status-code filters (<code>-C 404,403</code>) cut the noise so the real endpoints - and the <strong>401s</strong> that reveal an auth-gated API - stand out.</p>
+          <div class="tc-row"><span class="os">LINUX</span> <code>sudo apt install feroxbuster</code></div>
+          <div class="tc-row"><span class="os">API</span> <code>feroxbuster -u http://TARGET/api -w LIST -t 50 -C 404,403</code></div>
+          <div class="tc-seen">seen in <a href="writeup-kobold.html">Kobold</a></div>
+        </div>
+
+        <div class="toolcard cat-recon" id="ffuf">
+          <div class="tc-head"><span class="tc-glyph">ff</span><span class="tc-name">ffuf</span><span class="tc-cat">fuzzer</span></div>
+          <p class="tc-what">General-purpose web fuzzer. <code>FUZZ</code> marks where each wordlist entry gets injected - a path, a parameter, or a JSON body value - so the same tool does content discovery and credential spraying. Filter on a known failure string (<code>-fr</code>) to surface only the hits.</p>
+          <div class="tc-row"><span class="os">LINUX</span> <code>sudo apt install ffuf</code></div>
+          <div class="tc-row"><span class="os">LOGIN</span> <code>ffuf -w LIST -u URL -X POST -H "Content-Type: application/json" -d '{"username":"u","password":"FUZZ"}' -fr "Invalid"</code></div>
+          <div class="tc-seen">seen in <a href="writeup-kobold.html">Kobold</a></div>
         </div>
 
         <div class="toolcard cat-recon" id="curl">
@@ -98,7 +117,7 @@
           <p class="tc-what">Command-line HTTP client. Beyond fetching pages, <code>-I</code> grabs just the response <strong>headers</strong> - the fastest way to fingerprint a server. A giveaway banner like <code>X-Powered-By</code> or <code>Server</code> often points straight at a known vulnerability.</p>
           <div class="tc-row"><span class="os">LINUX</span> ships on virtually every system (<code>apt install curl</code>)</div>
           <div class="tc-row"><span class="os">HEADERS</span> <code>curl -I http://TARGET</code></div>
-          <div class="tc-seen">seen in <a href="writeup-knife.html">Knife</a></div>
+          <div class="tc-seen">seen in <a href="writeup-knife.html">Knife</a>, <a href="writeup-kobold.html">Kobold</a></div>
         </div>
 
       </div>
@@ -172,6 +191,31 @@
           <div class="tc-row"><span class="os">SHELL</span> <code>ssh user@TARGET</code></div>
           <div class="tc-row"><span class="os">TUNNEL</span> <code>ssh -L 3000:127.0.0.1:3000 user@TARGET</code> &nbsp;&mdash; run from <em>your</em> box; now browse <code>127.0.0.1:3000</code> to hit the target's internal service</div>
           <div class="tc-seen">seen in <a href="writeup-biohazard.html">Biohazard</a>, <a href="writeup-nexus.html">Nexus</a></div>
+        </div>
+
+      </div>
+    </section>
+
+    <!-- ============ Container & Host Enum ============ -->
+    <section id="host-enum" class="concept-block">
+      <p class="kicker">Map the host and the containers on it</p>
+      <h2>Container &amp; Host Enum</h2>
+      <div class="toolgrid">
+
+        <div class="toolcard cat-recon" id="mountinfo">
+          <div class="tc-head"><span class="tc-glyph">mnt</span><span class="tc-name">findmnt / mountinfo</span><span class="tc-cat">mount enum</span></div>
+          <p class="tc-what">Map the filesystem layout, including Docker's bind mounts. <code>findmnt</code> shows <em>your</em> mount namespace; to see how another container maps host paths, read the kernel's per-process mount table at <code>/proc/*/mountinfo</code>. That reveals which host directory backs a container path (and whether it's <code>rw</code> or <code>ro</code>) - the key to finding a writable data mount whose code can reach a read-only config.</p>
+          <div class="tc-row"><span class="os">LINUX</span> ships with util-linux (<code>findmnt</code>) and procfs</div>
+          <div class="tc-row"><span class="os">MINE</span> <code>grep KEYWORD /proc/*/mountinfo 2&gt;/dev/null | sort -u</code></div>
+          <div class="tc-seen">seen in <a href="writeup-kobold.html">Kobold</a></div>
+        </div>
+
+        <div class="toolcard cat-recon" id="netstat">
+          <div class="tc-head"><span class="tc-glyph">ns</span><span class="tc-name">netstat</span><span class="tc-cat">port enum</span></div>
+          <p class="tc-what">Lists listening sockets and the processes behind them - the fast way to find services bound only to <code>localhost</code> that an external scan can't see (a DB, an internal admin port). Confirms, for example, whether a leaked MySQL password even has a reachable server. <code>ss -tulpn</code> is the modern equivalent.</p>
+          <div class="tc-row"><span class="os">LINUX</span> <code>sudo apt install net-tools</code> (or use <code>ss</code>)</div>
+          <div class="tc-row"><span class="os">LISTEN</span> <code>netstat -tulpn 2&gt;/dev/null</code></div>
+          <div class="tc-seen">seen in <a href="writeup-kobold.html">Kobold</a></div>
         </div>
 
       </div>
@@ -460,6 +504,14 @@
           <div class="tc-row"><span class="os">LINUX</span> <code>sudo apt install sqlite3</code></div>
           <div class="tc-row"><span class="os">CMD</span> <code>sqlite3 app.db ".tables"</code> &middot; <code>select * from t;</code></div>
           <div class="tc-seen">seen in <a href="writeup-allsafe.html">OWASP Mobile Top 10 2024</a></div>
+        </div>
+
+        <div class="toolcard cat-util" id="jq">
+          <div class="tc-head"><span class="tc-glyph">jq</span><span class="tc-name">jq</span><span class="tc-cat">json processor</span></div>
+          <p class="tc-what">Command-line JSON parser. Turns a wall of API output into exactly the fields you want - the fastest way to read an <code>openapi.json</code> and list every route an API exposes, or pull one value out of a response.</p>
+          <div class="tc-row"><span class="os">LINUX</span> <code>sudo apt install jq</code></div>
+          <div class="tc-row"><span class="os">ROUTES</span> <code>curl -s http://TARGET/api/openapi.json | jq '.paths | keys'</code></div>
+          <div class="tc-seen">seen in <a href="writeup-kobold.html">Kobold</a></div>
         </div>
 
         <div class="toolcard cat-util" id="python">

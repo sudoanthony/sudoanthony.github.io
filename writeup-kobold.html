@@ -1,0 +1,338 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Kobold - HackTheBox writeup</title>
+<meta name="description" content="HackTheBox Kobold (Easy, Linux): an unauthenticated RCE in an MCPJam Inspector instance hiding on an HTTPS virtual host lands a shell as ben; ben can write to the PrivateBin container's PHP source, so poisoning one file leaks the app config and a database password, which logs into Arcane - and since Arcane drives Docker as root, a container that mounts the host filesystem drops a SUID root bash for full compromise.">
+<link rel="canonical" href="https://sudoanthony.github.io/writeup-kobold.html">
+<meta property="og:type" content="article">
+<meta property="og:site_name" content="~/sudoanthony">
+<meta property="og:title" content="Kobold - HackTheBox (Easy, Linux)">
+<meta property="og:description" content="An unauthenticated MCPJam RCE on a hidden HTTPS vhost gives a foothold; a writable PHP file leaks a DB password that logs into Arcane, which drives Docker as root - a host-mount container escape finishes the box.">
+<meta property="og:url" content="https://sudoanthony.github.io/writeup-kobold.html">
+<meta property="og:image" content="https://sudoanthony.github.io/images/kobold-og.png">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="Kobold - HackTheBox (Easy, Linux)">
+<meta name="twitter:description" content="MCPJam unauth RCE on a hidden HTTPS vhost, a writable PHP file that leaks a DB password into Arcane, then a Docker host-mount container escape to root.">
+<meta name="twitter:image" content="https://sudoanthony.github.io/images/kobold-og.png">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<nav class="nav"><div class="wrap">
+  <a class="brand" href="index.html">~/sudoanthony</a>
+  <div class="links">
+    <a href="writeups.html">write-ups</a>
+    <a href="vulns.html">vulns</a>
+    <a href="concepts.html">concepts</a>
+    <a href="tools.html">tools</a>
+    <a href="https://github.com/sudoanthony">github</a>
+  </div>
+</div></nav>
+
+<main class="wrap" style="padding-top:44px">
+
+  <div class="wu-head">
+    <img class="wu-icon" src="images/icons/Kobold.png" alt="" onerror="this.style.display='none'">
+    <h1>Kobold</h1>
+  </div>
+
+  <div class="meta">
+    <span class="badge htb">HackTheBox</span>
+    <span class="badge easy">Easy</span>
+    <span class="badge red-team">red team</span>
+    <span class="sep">|</span>
+    <span>Linux &middot; web &middot; Docker</span>
+    <span class="sep">|</span>
+    <span>21 Oct 2026</span>
+  </div>
+
+  <div class="tldr">
+    <span class="lbl">tl;dr</span>
+    <p>Kobold's showpiece is <strong>Arcane</strong>, a Docker management dashboard on port 3552, but it is
+    locked behind a login we don't have. The real way in is an <strong>unauthenticated RCE</strong> in an
+    <strong>MCPJam Inspector</strong> instance hiding on an HTTPS virtual host we almost walked past, landing a
+    shell as <code>ben</code>. From there, <code>ben</code> can <strong>write to the PHP source</strong> of the
+    PrivateBin container's data directory, so poisoning one file makes the app leak its own config and hand us
+    a <strong>database password</strong>. That password logs into Arcane, and since Arcane drives Docker as
+    <strong>root</strong>, we spin up a container that mounts the host filesystem and drop a
+    <strong>SUID root bash</strong> to own the box.</p>
+  </div>
+
+  <div class="tags">
+    <a class="tag" href="vulns.html#unauth-rce">unauth-rce</a>
+    <a class="tag" href="vulns.html#writable-php-poison">writable-php-poison</a>
+    <a class="tag" href="vulns.html#exposed-credentials">exposed-credentials</a>
+    <a class="tag" href="vulns.html#docker-container-escape">docker-container-escape</a>
+    <a class="tag" href="vulns.html#priv-esc">priv-esc</a>
+  </div>
+
+  <hr>
+
+  <!-- ==================== 01 ==================== -->
+  <h2><span class="num">01</span>Enumeration</h2>
+
+  <p>Full port and service scan first:</p>
+  <pre><code><span class="p">$</span> nmap -sCV -p- -T4 --min-rate 5000 <span class="o">10.129.245.50</span></code></pre>
+  <figure><img src="images/Kobold/kobold01.png" alt="nmap showing SSH, HTTP, HTTPS, and a Golang server on 3552"><figcaption>22 (SSH), 80 + 443 (nginx, both redirecting to <code>https://kobold.htb/</code>), and a <strong>Golang net/http server on 3552</strong>. The cert's SAN covers <code>kobold.htb</code> and <code>*.kobold.htb</code> - note the wildcard.</figcaption></figure>
+
+  <p>The redirect tells us to work by hostname, so we add <code>kobold.htb</code> to <code>/etc/hosts</code> and
+  load the site. Port 80/443 is a "Kobold Operations Suite" marketing page, still "Coming Soon":</p>
+  <figure><img src="images/Kobold/kobold02.png" alt="Kobold Operations Suite landing page"><figcaption>A container-management suite pitch. The footer leaks an email, <code>admin@kobold.htb</code>, which we note for later.</figcaption></figure>
+
+  <p>The Golang server on <strong>3552</strong> is the interesting one. It serves an <strong>Arcane</strong>
+  login portal, "Sign in to manage your containers":</p>
+  <figure><img src="images/Kobold/kobold03.png" alt="Arcane login portal on port 3552"><figcaption>Arcane - an open-source Docker management dashboard, similar in spirit to Portainer or Dockge.</figcaption></figure>
+
+  <p>Arcane is on GitHub, so we check which version this is against the latest release:</p>
+  <figure><img src="images/Kobold/kobold04.png" alt="Arcane GitHub repo showing latest release v2.16.1"><figcaption>Latest is <strong>v2.16.1</strong>; the portal reports <code>1.13.0</code>. An old build, so every fix published since then is fair game against it.</figcaption></figure>
+
+  <p>Reading Arcane's Security Advisories, the standout is <strong>CVE-2026-23520</strong>, a command injection
+  in the updater's container lifecycle labels:</p>
+  <figure><img src="images/Kobold/kobold05.png" alt="GitHub advisory for CVE-2026-23520, command injection in Arcane lifecycle labels"><figcaption>Critical RCE, but note the prerequisite: a <em>low-privilege authenticated user</em> who can create projects. We have no account yet, so this is parked, not usable.</figcaption></figure>
+
+  <div class="note insight">
+    <span class="lbl">the gate we have to beat first</span>
+    Almost every Arcane advisory assumes we are <em>already authenticated</em>. The default credentials
+    (<code>arcane</code> / <code>arcane-admin</code>) are rejected, so they were changed on first login. Our
+    first job isn't an exploit - it's getting a credential, which means the way in is somewhere else on the
+    box.
+  </div>
+
+  <hr>
+
+  <!-- ==================== 02 ==================== -->
+  <h2><span class="num">02</span>Mapping the Arcane API</h2>
+
+  <p>With no obvious login, we study the API. Capturing a login attempt in Burp shows us exactly how the
+  endpoint expects to be called, which doubles as a template for a credential-spray tool:</p>
+  <figure><img src="images/Kobold/kobold06.png" alt="Burp Repeater showing a POST to /api/auth/login with a JSON body and 401 Invalid username or password"><figcaption>A <code>POST /api/auth/login</code> with a JSON body <code>{"username":"...","password":"..."}</code>; failure returns <strong>401 "Invalid username or password"</strong> - a clean filter string for <code>ffuf</code>.</figcaption></figure>
+
+  <p>For completeness we brute-force the API surface with <code>feroxbuster</code> against <code>/api</code>:</p>
+  <pre><code><span class="p">$</span> feroxbuster -u http://<span class="o">10.129.245.50</span>:3552/api -w .../api/api-endpoints.txt -t 50 -C 404,403</code></pre>
+  <figure><img src="images/Kobold/kobold07.png" alt="feroxbuster against /api returning many endpoints, most 401"><figcaption>A huge API, but nearly everything useful (<code>/api/users</code>, <code>/api/container-registries</code>, <code>/api/environments/...</code>) returns <strong>401</strong>. The public <code>/api/openapi.json</code> and <code>/api/docs</code> describe every route, but authorization is the wall.</figcaption></figure>
+
+  <p>A spray against <code>admin@kobold.htb</code> with rockyou gets us nothing, and none of the credentialless
+  advisories apply. We are stuck on authentication - which usually means we are enumerating the wrong surface.</p>
+
+  <hr>
+
+  <!-- ==================== 03 ==================== -->
+  <h2><span class="num">03</span>The virtual host we almost missed</h2>
+
+  <p>The nmap cert told us about <code>*.kobold.htb</code>, so there should be virtual hosts to find. Our first
+  <code>gobuster vhost</code> run over <strong>HTTP</strong> came back with nothing but error 400s:</p>
+  <figure><img src="images/Kobold/kobold08.png" alt="gobuster vhost over HTTP finding only 400 responses"><figcaption>Over plain <code>http://kobold.htb</code> every candidate is a 400. Easy to read as "no vhosts here" and move on.</figcaption></figure>
+
+  <p>The miss here is on us: the service that actually carries the certificate is on <strong>443</strong>, not
+  80, and the whole site redirects to HTTPS. Re-running the scan against <code>https://</code> with
+  <code>-k</code> (skip cert validation) immediately changes the picture:</p>
+  <pre><code><span class="p">$</span> gobuster vhost -u https://kobold.htb -k --append-domain -w .../subdomains-top1million-110000.txt -t 50</code></pre>
+  <figure><img src="images/Kobold/kobold09.png" alt="gobuster vhost over HTTPS with -k finding bin.kobold.htb and mcp.kobold.htb"><figcaption>Two real vhosts appear: <strong>bin.kobold.htb</strong> and <strong>mcp.kobold.htb</strong>, both 200.</figcaption></figure>
+
+  <div class="note insight">
+    <span class="lbl">valuable reminder: enumerate on the port that holds the cert</span>
+    We skipped over enumerating <strong>443</strong> and nearly wrote off vhosts entirely. When a host serves
+    both 80 and 443 and the TLS certificate (here with a <code>*.kobold.htb</code> SAN) lives on 443, that is
+    the port to point vhost discovery at - over <code>https</code> with <code>-k</code>. The certificate is a
+    map of what the server expects to answer for.
+  </div>
+
+  <p>Both go into <code>/etc/hosts</code>:</p>
+  <figure><img src="images/Kobold/kobold10.png" alt="/etc/hosts with bin.kobold.htb and mcp.kobold.htb added"><figcaption><code>bin</code> and <code>mcp</code> added alongside <code>kobold.htb</code>.</figcaption></figure>
+
+  <p>Visiting each: <strong>bin.kobold.htb</strong> is <strong>PrivateBin 2.0.2</strong> (a pastebin), and
+  <strong>mcp.kobold.htb</strong> is <strong>MCPJam Inspector v1.4.2</strong>.</p>
+  <figure><img src="images/Kobold/kobold11.png" alt="PrivateBin 2.0.2 paste created"><figcaption>PrivateBin 2.0.2 on <code>bin.kobold.htb</code>. It has a version-specific LFI (CVE-2025-64714) but that needs a separate write primitive to reach RCE, so we note it and keep moving.</figcaption></figure>
+
+  <hr>
+
+  <!-- ==================== 04 ==================== -->
+  <h2><span class="num">04</span>Foothold - unauthenticated RCE in MCPJam</h2>
+
+  <p>MCPJam Inspector <strong>v1.4.2</strong> is the lead. It has a public exploit
+  (<a href="https://www.exploit-db.com/exploits/52625" target="_blank">exploit-db 52625</a>,
+  <strong>CVE-2026-23744</strong>): the <code>/api/mcp/connect</code> endpoint takes a <code>command</code> and
+  <code>args</code> and spawns a process with <strong>no authentication</strong> (CWE-306, missing
+  authentication for a critical function). Fixed in 1.4.3 - this build is vulnerable.</p>
+
+  <p>We set up the PoC, start a listener, and fire it to execute a reverse shell:</p>
+  <pre><code><span class="p">$</span> nc -lvnp 4444                  <span class="c"># listener on Kali</span>
+<span class="p">$</span> python3 ./mcpjam_rce.py -t http://mcp.kobold.htb -c '&lt;reverse-shell&gt;'</code></pre>
+
+  <div class="note insight">
+    <span class="lbl">why this is the finding, and how bad it really is</span>
+    An endpoint whose entire job is "run this command" reachable with <em>no credentials</em> is as direct as
+    RCE gets. Severity here is <strong>critical</strong>: it is pre-auth, network-reachable (the service binds
+    <code>0.0.0.0</code>), and lands code execution as the user running MCPJam. The only thing holding it back
+    from "own the host outright" is that the shell comes back as an unprivileged user, not root.
+  </div>
+
+  <p>The listener catches a shell as <strong>ben</strong>, and the user flag is in his home directory
+  <span style="color:var(--text-4)">[flag omitted]</span>. Foothold complete.</p>
+
+  <hr>
+
+  <!-- ==================== 05 ==================== -->
+  <h2><span class="num">05</span>Enumeration as ben</h2>
+
+  <p>Standard first checks: <code>whoami</code>, <code>id</code>, <code>groups</code>, writable locations, and
+  any low-hanging credentials. <code>ben</code>'s home is empty - no <code>.bash_history</code>, no
+  <code>.ssh</code> keys. Reading <code>/etc/group</code> and <code>/etc/passwd</code> turns up the detail that
+  shapes the rest of the box:</p>
+  <figure><img src="images/Kobold/kobold12.png" alt="/etc/group showing operator:ben,alice and docker:alice"><figcaption>A second human user, <strong>alice</strong>, shares the <code>operator</code> group with <code>ben</code> - and alice is also in the <strong>docker</strong> group. Membership of <code>docker</code> is effectively root.</figcaption></figure>
+
+  <p>Looking at running processes, Arcane and the Docker stack run as <strong>root</strong>:</p>
+  <figure><img src="images/Kobold/kobold13.png" alt="ps output showing arcane_linux_amd64, dockerd and containerd running as root"><figcaption><code>arcane_linux_amd64</code>, <code>dockerd</code>, and <code>containerd</code> all under <code>root</code>, plus the <code>php-fpm</code> and <code>nginx</code> that serve PrivateBin.</figcaption></figure>
+
+  <div class="note insight">
+    <span class="lbl">reading the shape of the box</span>
+    Three things line up: the one app we <em>cannot</em> reach is Arcane; there's a user (alice) in the
+    <code>docker</code> group; and Arcane controls Docker as root. The intended path is almost certainly
+    "get into Arcane, then abuse its root-level control of Docker." So the next question is where a credential
+    for Arcane might be hiding.
+  </div>
+
+  <p>In <code>/privatebin-data/data</code> there are PrivateBin's <code>.php</code> files
+  (<code>purge_limiter.php</code>, <code>salt.php</code>, <code>traffic_limiter.php</code>). Reading them shows
+  nothing secret, but the important discovery is a <strong>permission</strong> one:
+  <code>ben</code> can <strong>write</strong> to these files. If we can inject PHP into a file the app
+  executes, we can make PrivateBin run code for us.</p>
+
+  <hr>
+
+  <!-- ==================== 06 ==================== -->
+  <h2><span class="num">06</span>Leaking the PrivateBin config</h2>
+
+  <p>PrivateBin runs in a container, so before poisoning anything we map what the container can actually see.
+  <code>findmnt</code> only shows our own (host) namespace, so we read the container's mounts out of
+  <code>/proc/*/mountinfo</code>:</p>
+  <pre><code><span class="p">$</span> grep privatebin /proc/*/mountinfo 2&gt;/dev/null | sort -u</code></pre>
+  <figure><img src="images/Kobold/kobold14.png" alt="mountinfo showing host /privatebin-data paths mapped into the container"><figcaption>The host-to-container mapping: <code>/privatebin-data/cfg</code> &rarr; <code>/srv/cfg</code> (read-only), <code>/privatebin-data/data</code> &rarr; <code>/srv/data</code> (<strong>read-write</strong>), and the certs. The config we can't read directly from the host (<code>cfg</code>) lives at <code>/srv/cfg</code> inside the container.</figcaption></figure>
+
+  <div class="note insight">
+    <span class="lbl">the primitive, in one line</span>
+    We can write to <code>/srv/data</code> (as <code>ben</code> on the host, that's
+    <code>/privatebin-data/data</code>), and the PHP app <em>runs</em> files from there with the container's
+    view of the filesystem - which includes the read-only <code>/srv/cfg</code> we can't reach from the host.
+    So: append PHP to a data file that copies <code>/srv/cfg/conf.php</code> back into <code>/srv/data</code>,
+    where we <em>can</em> read it.
+  </div>
+
+  <p>We keep a copy of the original <code>purge_limiter.php</code> first (so it can be restored), then append a
+  line that lists <code>/srv/cfg</code> and writes its <code>conf.php</code> into a world-readable
+  <code>leak.txt</code>:</p>
+  <pre><code><span class="p">$</span> printf '\nfile_put_contents("/srv/data/leak.txt", print_r(scandir("/srv/cfg"), true) . "\n== CONF ==\n" . @file_get_contents("/srv/cfg/conf.php"));\n' &gt;&gt; /privatebin-data/data/purge_limiter.php</code></pre>
+  <figure><img src="images/Kobold/kobold15.png" alt="purge_limiter.php with the appended PHP leak payload"><figcaption>The payload appended to the end of <code>purge_limiter.php</code>, after its original <code>$GLOBALS['purge_limiter']</code> line so the file stays syntactically clean.</figcaption></figure>
+
+  <p>The payload runs whenever PrivateBin executes that file, so we just submit any paste to
+  <code>bin.kobold.htb</code> to trigger it, then read the result on the host:</p>
+  <pre><code><span class="p">$</span> cat /privatebin-data/data/leak.txt</code></pre>
+  <figure><img src="images/Kobold/kobold16.png" alt="leak.txt showing scandir found conf.php and the start of its contents"><figcaption>It worked - <code>scandir</code> confirms <code>conf.php</code> and the file's contents follow.</figcaption></figure>
+
+  <p>The config carries three database blocks, but most are commented out (lines starting with <code>;</code>).
+  Only one is live:</p>
+  <figure><img src="images/Kobold/kobold17.png" alt="conf.php showing an active MySQL block with pwd ComplexP@sswordAdmin1928 and commented-out decoys"><figcaption>The <strong>uncommented</strong> MySQL block holds <code>usr = "privatebin"</code> and <code>pwd = "ComplexP@sswordAdmin1928"</code>. The other blocks (with <code>Z3r0P4ss</code>) are commented decoys.</figcaption></figure>
+
+  <div class="note insight">
+    <span class="lbl">read the comments, not just the keys</span>
+    Two blocks share the same username, but a leading <code>;</code> disables a line in INI-style config. The
+    live block even has a note about "migrating to a new server," which is exactly the kind of in-progress
+    change that leaves a working password sitting in plaintext. We take the uncommented one first.
+  </div>
+
+  <hr>
+
+  <!-- ==================== 07 ==================== -->
+  <h2><span class="num">07</span>Credential reuse - dead ends, then Arcane</h2>
+
+  <p>We add the password to our list and try it everywhere. Local accounts first: <code>su alice</code>,
+  <code>su root</code>, and SSH as alice or root all reject it:</p>
+  <figure><img src="images/Kobold/kobold18.png" alt="ssh as alice failing with permission denied"><figcaption>SSH and <code>su</code> for alice and root all fail. There's no MySQL listening either (no 3306 in <code>netstat</code>), so the password is only useful as a reused secret.</figcaption></figure>
+
+  <p>That leaves the one service we could never get into. The Arcane default username is <code>arcane</code>,
+  and pairing it with the leaked password finally logs us in:</p>
+  <figure><img src="images/Kobold/kobold19.png" alt="Arcane dashboard logged in, showing Local Docker over the docker.sock and the privatebin image in use"><figcaption>Into the Arcane dashboard. It manages <strong>Local Docker</strong> over <code>unix:///var/run/docker.sock</code>, with the <code>privatebin/nginx-fpm-alpine:2.0.2</code> and <code>mysql</code> images available.</figcaption></figure>
+
+  <hr>
+
+  <!-- ==================== 08 ==================== -->
+  <h2><span class="num">08</span>Privilege escalation - container escape to root</h2>
+
+  <p>Arcane runs as root and controls Docker, which means any container it launches runs as root and can be
+  told to mount the host's filesystem. We borrow the image already on the box and create a new container with
+  three deliberate settings: run as <strong>user 0</strong>, mount the host root at <code>/host</code>, and a
+  command that drops a <strong>SUID root bash</strong> onto the host's <code>/tmp</code>.</p>
+  <figure><img src="images/Kobold/kobold20.png" alt="Arcane Create Container form with command copying bash to a SUID root binary, working dir slash, user 0"><figcaption>Basic tab: image <code>privatebin/nginx-fpm-alpine:2.0.2</code>, <strong>User 0</strong>, working dir <code>/</code>, and the command <code>/bin/sh -c "cp /host/bin/bash /host/tmp/rootbash &amp;&amp; chmod +s /host/tmp/rootbash"</code>.</figcaption></figure>
+  <figure><img src="images/Kobold/kobold21.png" alt="Arcane Create Container volumes tab mounting host root to /host"><figcaption>Volumes tab: <code>/</code> &rarr; <code>/host</code>. The format is <code>HOST_PATH:CONTAINER_PATH</code>, so the host's entire root filesystem appears inside the container at <code>/host</code>.</figcaption></figure>
+
+  <p>Arcane also gives us an interactive shell straight into the container we just created, which confirms we
+  are root with the host mounted:</p>
+  <figure><img src="images/Kobold/kobold22.png" alt="container shell showing whoami root and ls / with host directory present"><figcaption><code>whoami</code> is <strong>root</strong>, and <code>/host</code> is the real filesystem - <code>/host/root</code> is the actual root home.</figcaption></figure>
+
+  <p>From the container's root shell we can read anything through <code>/host</code>, including the root flag:</p>
+  <pre><code>/host # cat /host/root/root.txt    <span class="c"># [flag omitted]</span></code></pre>
+  <figure><img src="images/Kobold/kobold23.png" alt="root.txt read through the host mount, flag value redacted"><figcaption>Root flag read through the host mount <span style="color:var(--text-4)">[redacted]</span>. (The SUID <code>rootbash</code> the command dropped is the same win from the <code>ben</code> shell: <code>/tmp/rootbash -p</code> gives a root shell on the host directly.) Box owned.</figcaption></figure>
+
+  <hr>
+
+  <!-- ==================== 09 ==================== -->
+  <h2><span class="num">09</span>Root cause &amp; remediation</h2>
+  <table style="width:100%; border-collapse:collapse; font-size:14.5px; margin:6px 0 8px">
+    <tbody>
+      <tr style="border-bottom:1px solid var(--border)">
+        <td style="padding:11px 12px 11px 0; color:var(--text); width:40%"><strong>Unauthenticated RCE in MCPJam Inspector</strong><br><span style="color:var(--text-4);font-size:13px">v1.4.2 / CVE-2026-23744 / CWE-306</span></td>
+        <td style="padding:11px 0; color:var(--text-3)">Patch to 1.4.3+, require authentication on <code>/api/mcp/connect</code>, and never bind a dev/inspection tool to <code>0.0.0.0</code> on a reachable host. Tools that run commands by design must not be exposed.</td>
+      </tr>
+      <tr style="border-bottom:1px solid var(--border)">
+        <td style="padding:11px 12px 11px 0; color:var(--text)"><strong>User-writable application source</strong></td>
+        <td style="padding:11px 0; color:var(--text-3)">The <code>ben</code> account could write to PHP the app executes. App code and data must be owned by a separate, locked-down account; the web/runtime user should never have write access to the scripts it runs.</td>
+      </tr>
+      <tr style="border-bottom:1px solid var(--border)">
+        <td style="padding:11px 12px 11px 0; color:var(--text)"><strong>Plaintext DB password in config, reused</strong></td>
+        <td style="padding:11px 0; color:var(--text-3)">Keep secrets out of world-/user-readable config, use a secrets manager, and never reuse one service's password for another (here it unlocked Arcane). Rotate anything that touched a readable file.</td>
+      </tr>
+      <tr>
+        <td style="padding:11px 12px 11px 0; color:var(--text)"><strong>Root-level Docker control from a web app</strong></td>
+        <td style="padding:11px 0; color:var(--text-3)">A Docker-management UI with access to <code>docker.sock</code> is root-equivalent, so one app credential equals host compromise. Gate it behind strong auth/MFA, restrict who can create containers or mount host paths, and treat the Docker socket as a crown jewel.</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <hr>
+
+  <!-- ==================== 10 ==================== -->
+  <h2><span class="num">10</span>Takeaways</h2>
+  <p>Kobold is rated <strong>Easy</strong>, but it plays closer to a <strong>Medium</strong> in my opinion -
+  the chain is long and each link depends on reading the last one correctly: a hidden vhost, an unauth RCE, a
+  filesystem-permission quirk, a PHP injection that leaks a config, a reused password, and finally a container
+  escape. None of the steps are individually hard, but stringing six of them together with the right severity
+  read at each stage is more than an Easy box usually asks.</p>
+  <p>The lesson I'm burning into my notes is the <strong>443 one</strong>: I enumerated vhosts over HTTP, got
+  nothing, and nearly concluded there were none. The certificate with its <code>*.kobold.htb</code> SAN lived
+  on <strong>443</strong>, and the whole site redirected to HTTPS - so vhost discovery had to run against
+  <code>https://</code> with <code>-k</code>. Point enumeration at the port that holds the cert, and let the
+  certificate tell you what the server expects to answer for.</p>
+  <p>The other pattern worth keeping: when the app you <em>can't</em> reach runs as root and controls Docker,
+  the whole box is really about finding one credential for it. A Docker-management dashboard with the socket is
+  not "a web app" - it is root with a login page.</p>
+
+  <p style="margin-top:32px">
+    <a href="writeups.html">&larr; all write-ups</a> &nbsp;&middot;&nbsp;
+    <a href="vulns.html">techniques used &rarr;</a>
+  </p>
+
+</main>
+
+<footer class="foot"><div class="wrap" style="display:flex;gap:18px;flex-wrap:wrap">
+  <a href="index.html">home</a>
+  <a href="writeups.html">write-ups</a>
+  <a href="vulns.html">vulns</a>
+  <a href="https://github.com/sudoanthony">github</a>
+</div></footer>
+
+<script src="writeup-toc.js"></script>
+<script src="lightbox.js"></script>
+</body>
+</html>
