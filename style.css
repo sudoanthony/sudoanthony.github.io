@@ -201,6 +201,18 @@ figcaption { color: var(--text-4); font-size: 13px; margin-top: 7px; font-family
 .btn.primary:hover { background: rgba(136,192,208,0.1); }
 
 .section-label { font-family: var(--mono); font-size: 12px; text-transform: uppercase; letter-spacing: 1.5px; color: var(--text-4); margin: 0 0 16px; }
+/* two-column layout: machines (THM/HTB) left, practice tracks (Mobile/Web) right */
+.cols { display: flex; gap: 40px; align-items: flex-start; }
+.col { min-width: 0; }
+.col-left { flex: 1 1 auto; }
+.col-right { flex: 0 0 272px; }
+.col .platform-head:first-child { margin-top: 0; }
+@media (max-width: 920px) {
+  .cols { flex-direction: column; gap: 0; }
+  .col-right { flex: 1 1 auto; width: 100%; }
+  .col-right .platform-head:first-child { margin-top: 38px; }
+}
+
 .platform-head { display: flex; align-items: center; gap: 10px; margin: 38px 0 16px; }
 .platform-head .dot { width: 9px; height: 9px; border-radius: 50%; }
 .platform-head .dot.thm { background: var(--thm); }

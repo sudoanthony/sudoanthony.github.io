@@ -96,21 +96,37 @@
     '</a>';
   }
 
+  function groupHtml(p) {
+    const items = sorted.filter(w => w.platform === p);
+    if (!items.length) return "";
+    const pc = platClass(p);
+    const logo = 'images/' + pc + '-logo.' + (pc === 'web' ? 'svg' : 'png');
+    return '<div class="platform-head">' +
+        '<img class="plogo plogo-' + pc + '" src="' + logo + '" alt="' + esc(p) + '" ' +
+          'onerror="this.style.display=\'none\';this.nextElementSibling.style.display=\'inline-flex\'">' +
+        '<span class="plfallback" style="display:none;align-items:center;gap:10px">' +
+          '<span class="dot ' + pc + '"></span><span class="name">' + esc(p) + '</span></span>' +
+        '<span class="count">' + items.length + (items.length===1?' write-up':' write-ups') + '</span>' +
+      '</div>' +
+      '<div class="grid">' + items.map(boxCard).join("") + '</div>';
+  }
+
   function render() {
-    document.getElementById("groups").innerHTML = present.map(p => {
-      const items = sorted.filter(w => w.platform === p);
-      if (!items.length) return "";
-      const pc = platClass(p);
-      const logo = 'images/' + pc + '-logo.' + (pc === 'web' ? 'svg' : 'png');
-      return '<div class="platform-head">' +
-          '<img class="plogo plogo-' + pc + '" src="' + logo + '" alt="' + esc(p) + '" ' +
-            'onerror="this.style.display=\'none\';this.nextElementSibling.style.display=\'inline-flex\'">' +
-          '<span class="plfallback" style="display:none;align-items:center;gap:10px">' +
-            '<span class="dot ' + pc + '"></span><span class="name">' + esc(p) + '</span></span>' +
-          '<span class="count">' + items.length + (items.length===1?' write-up':' write-ups') + '</span>' +
-        '</div>' +
-        '<div class="grid">' + items.map(boxCard).join("") + '</div>';
-    }).join("") || '<p class="empty">No write-ups yet.</p>';
+    // Left column: machine platforms (TryHackMe, HackTheBox, anything unknown).
+    // Right column: the practice/OWASP tracks (Mobile, Web).
+    const isRight = p => { const c = platClass(p); return c === "mobile" || c === "web"; };
+    const leftPlats  = present.filter(p => !isRight(p));
+    const rightPlats = present.filter(isRight);
+    const colHtml = plats => plats.map(groupHtml).join("");
+    const left  = colHtml(leftPlats);
+    const right = colHtml(rightPlats);
+    const html = (left || right)
+      ? '<div class="cols">' +
+          '<div class="col col-left">'  + left  + '</div>' +
+          (right ? '<div class="col col-right">' + right + '</div>' : '') +
+        '</div>'
+      : '<p class="empty">No write-ups yet.</p>';
+    document.getElementById("groups").innerHTML = html;
   }
 
   render();
