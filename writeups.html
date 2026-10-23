@@ -83,7 +83,7 @@
     const osPart = w.os ? osIcon(w.os) + esc(w.os) : "";
     const diffPart = w.difficulty ? '<span class="d-' + dc + '">' + esc(w.difficulty) + '</span>' : '';
     const sub = [diffPart, osPart, (w.category ? esc(w.category) : '')].filter(Boolean).join(' &middot; ');
-    return '<a class="bx ' + platClass(w.platform) + '" href="' + w.url + '">' +
+    return '<a class="bx ' + platClass(w.platform) + ' diff-' + dc + '" href="' + w.url + '">' +
       '<div class="face">' + iconHtml(w) +
         '<div class="nm">' + esc(w.title) + (w.subtitle ? ':' : '') + '</div>' +
         (w.subtitle ? '<div class="nm-sub">' + esc(w.subtitle) + '</div>' : '') +

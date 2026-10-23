@@ -268,6 +268,35 @@ figcaption { color: var(--text-4); font-size: 13px; margin-top: 7px; font-family
   gap: 10px; padding: 14px; transition: border-color .18s;
 }
 .bx:hover .face { border-color: var(--border-2); }
+
+/* difficulty-tinted glow rising from the base of each card, fading out before it
+   reaches the subheader so the "Easy · Linux · Web" line stays readable.
+   --diff is the same hex used for the difficulty label (set per card below). */
+.bx.diff-very-easy { --diff: #9cc3ec; }
+.bx.diff-easy      { --diff: #7fd9bc; }
+.bx.diff-medium    { --diff: #f0b35a; }
+.bx.diff-hard      { --diff: #eb9d9b; }
+.bx.diff-insane    { --diff: #f2f4f6; }
+.bx.diff-practice  { --diff: #9ed8f2; }
+.bx .face::after {
+  content: ""; position: absolute; left: 0; right: 0; bottom: 0;
+  height: 60px; z-index: -1; pointer-events: none;
+  border-radius: 0 0 12px 12px;
+  background: linear-gradient(to top,
+    color-mix(in srgb, var(--diff, var(--border-2)) 30%, transparent) 0%,
+    color-mix(in srgb, var(--diff, var(--border-2)) 10%, transparent) 45%,
+    transparent 80%);
+}
+/* practice cards are a touch softer */
+.bx.diff-practice .face::after {
+  background: linear-gradient(to top,
+    color-mix(in srgb, var(--diff) 22%, transparent) 0%,
+    color-mix(in srgb, var(--diff) 7%, transparent) 45%,
+    transparent 80%);
+}
+/* the taller Mobile/Web faces get a slightly taller band to match */
+.bx.mobile .face::after, .bx.web .face::after { height: 72px; }
+
 .bx.thm .face { border-top: 3px solid var(--thm); }
 .bx.htb .face { border-top: 3px solid var(--htb); }
 .bx.mobile .face { border-top: 3px solid var(--mobile); }
