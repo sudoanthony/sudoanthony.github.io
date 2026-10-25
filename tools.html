@@ -30,6 +30,7 @@
       <a href="#summary" data-toc>Categories</a>
       <a href="#recon" data-toc>Recon &amp; Scanning</a>
       <a href="#vuln-scanners" data-toc>Vulnerability Scanners</a>
+      <a href="#exploitation" data-toc>Exploitation &amp; Cracking</a>
       <a href="#web" data-toc>Web &amp; Proxies</a>
       <a href="#network" data-toc>Networking &amp; Access</a>
       <a href="#host-enum" data-toc>Container &amp; Host Enum</a>
@@ -58,10 +59,11 @@
       <h2>Categories</h2>
       <ul>
         <li><strong>Recon &amp; scanning:</strong> <a href="#nmap">nmap</a>, <a href="#gobuster">gobuster</a>, <a href="#feroxbuster">feroxbuster</a>, <a href="#ffuf">ffuf</a>, <a href="#curl">curl</a>.</li>
-        <li><strong>Container &amp; host enum:</strong> <a href="#mountinfo">findmnt / mountinfo</a>, <a href="#netstat">netstat</a>.</li>
+        <li><strong>Container &amp; host enum:</strong> <a href="#mountinfo">findmnt / mountinfo</a>, <a href="#netstat">netstat</a>, <a href="#mysql">mysql</a>.</li>
         <li><strong>Vulnerability scanners:</strong> <a href="#nessus">Nessus</a>, <a href="#openvas">OpenVAS</a>.</li>
+        <li><strong>Exploitation &amp; cracking:</strong> <a href="#searchsploit">searchsploit</a>, <a href="#metasploit">Metasploit</a>, <a href="#hydra">Hydra</a>.</li>
         <li><strong>Web &amp; proxies:</strong> <a href="#burp">Burp Suite</a>, <a href="#mitmproxy">mitmproxy</a>.</li>
-        <li><strong>Networking &amp; access:</strong> <a href="#netcat">netcat</a>, <a href="#ssh">ssh</a> (local port forwarding).</li>
+        <li><strong>Networking &amp; access:</strong> <a href="#netcat">netcat</a>, <a href="#ssh">ssh</a> (local port forwarding), <a href="#telnet">telnet</a>.</li>
         <li><strong>Active Directory / Windows:</strong> <a href="#dig">dig</a>, <a href="#ldapsearch">ldapsearch</a>, <a href="#netexec">netexec</a>, <a href="#smbpasswd">smbpasswd</a>, <a href="#showmount">showmount/mount</a>, <a href="#evil-winrm">evil-winrm</a>, <a href="#impacket">Impacket</a>, <a href="#diskshadow">diskshadow + robocopy</a>, <a href="#printspoofer">PrintSpoofer</a>, <a href="#john">John the Ripper</a>.</li>
         <li><strong>Mobile static:</strong> <a href="#jadx">jadx</a>, <a href="#apktool">apktool</a>, <a href="#mobsf">MobSF</a>.</li>
         <li><strong>Mobile device &amp; runtime:</strong> <a href="#android-studio">Android Studio</a>, <a href="#adb">adb</a> (with <code>am</code> and <code>content</code>), <a href="#frida">Frida</a>, <a href="#objection">objection</a>.</li>
@@ -146,6 +148,39 @@
       </div>
     </section>
 
+    <!-- ============ Exploitation & Cracking ============ -->
+    <section id="exploitation" class="concept-block">
+      <p class="kicker">Match a version to an exploit, then land it</p>
+      <h2>Exploitation &amp; Cracking</h2>
+      <div class="toolgrid">
+
+        <div class="toolcard cat-recon" id="searchsploit">
+          <div class="tc-head"><span class="tc-glyph">ss</span><span class="tc-name">searchsploit</span><span class="tc-cat">exploit search</span></div>
+          <p class="tc-what">Offline command-line search of the Exploit-DB archive. Once a service and version are fingerprinted, this is the fastest way to see if a public exploit exists. Search broad, then narrow - a hit like "Craft CMS 5.6.16 - RCE" points you straight at the CVE to read up on.</p>
+          <div class="tc-row"><span class="os">LINUX</span> <code>sudo apt install exploitdb</code></div>
+          <div class="tc-row"><span class="os">FIND</span> <code>searchsploit craft cms</code> &middot; <code>searchsploit -m ID</code> to copy locally</div>
+          <div class="tc-seen">seen in <a href="writeup-orion.html">Orion</a></div>
+        </div>
+
+        <div class="toolcard cat-recon" id="metasploit">
+          <div class="tc-head"><span class="tc-glyph">msf</span><span class="tc-name">Metasploit</span><span class="tc-cat">exploit framework</span></div>
+          <p class="tc-what">The exploitation framework. When a CVE has a matching module, it handles the payload, the listener, and a stable Meterpreter session for you. Great for a clean, repeatable foothold - set <code>RHOSTS</code> / <code>LHOST</code>, pick a target, and run. Learn the manual exploit too, so the module isn't a black box.</p>
+          <div class="tc-row"><span class="os">LINUX</span> <code>sudo apt install metasploit-framework</code></div>
+          <div class="tc-row"><span class="os">USE</span> <code>msfconsole</code> &rarr; <code>search &lt;cve&gt;</code> &rarr; <code>use N</code> &rarr; <code>set RHOSTS</code> &rarr; <code>run</code></div>
+          <div class="tc-seen">seen in <a href="writeup-orion.html">Orion</a></div>
+        </div>
+
+        <div class="toolcard cat-recon" id="hydra">
+          <div class="tc-head"><span class="tc-glyph">hy</span><span class="tc-name">Hydra</span><span class="tc-cat">online cracker</span></div>
+          <p class="tc-what">Online (live-service) password brute-forcer. Point it at a protocol with a known username and a wordlist and it tries each password against the real service. Most useful once enumeration hands you a valid username - the hard part is often the name, not the password. Watch for lockout / rate limiting.</p>
+          <div class="tc-row"><span class="os">LINUX</span> <code>sudo apt install hydra</code></div>
+          <div class="tc-row"><span class="os">SSH</span> <code>hydra -l USER -P /usr/share/wordlists/rockyou.txt TARGET ssh</code></div>
+          <div class="tc-seen">seen in <a href="writeup-orion.html">Orion</a></div>
+        </div>
+
+      </div>
+    </section>
+
     <!-- ============ Web & Proxies ============ -->
     <section id="web" class="concept-block">
       <p class="kicker">Sit between the app and its backend</p>
@@ -193,6 +228,14 @@
           <div class="tc-seen">seen in <a href="writeup-biohazard.html">Biohazard</a>, <a href="writeup-nexus.html">Nexus</a></div>
         </div>
 
+        <div class="toolcard cat-recon" id="telnet">
+          <div class="tc-head"><span class="tc-glyph">tn</span><span class="tc-name">telnet</span><span class="tc-cat">raw tcp client</span></div>
+          <p class="tc-what">Ancient plaintext remote-login client, but still handy for poking raw TCP services and the occasional legacy <code>telnetd</code> you find bound to loopback. The <code>-a</code> flag sends your environment during negotiation, which is exactly what the GNU Inetutils <code>telnetd</code> auth bypass (CVE-2026-24061) abuses: <code>env USER='-f root' telnet -a HOST 23</code> makes the daemon run <code>login -f root</code>.</p>
+          <div class="tc-row"><span class="os">LINUX</span> <code>sudo apt install telnet</code></div>
+          <div class="tc-row"><span class="os">CONNECT</span> <code>telnet HOST PORT</code> &middot; <code>env USER='-f root' telnet -a 127.0.0.1 23</code></div>
+          <div class="tc-seen">seen in <a href="writeup-orion.html">Orion</a></div>
+        </div>
+
       </div>
     </section>
 
@@ -216,6 +259,15 @@
           <div class="tc-row"><span class="os">LINUX</span> <code>sudo apt install net-tools</code> (or use <code>ss</code>)</div>
           <div class="tc-row"><span class="os">LISTEN</span> <code>netstat -tulpn 2&gt;/dev/null</code></div>
           <div class="tc-seen">seen in <a href="writeup-kobold.html">Kobold</a></div>
+        </div>
+
+        <div class="toolcard cat-recon" id="mysql">
+          <div class="tc-head"><span class="tc-glyph">sql</span><span class="tc-name">mysql</span><span class="tc-cat">db client</span></div>
+          <p class="tc-what">Command-line MySQL / MariaDB client. Once a foothold leaks DB credentials, connect to the (often loopback-only) server to loot data or check for a privilege path. <code>SHOW GRANTS</code> and <code>secure_file_priv</code> tell you whether <code>FILE</code> privileges could be turned into a read/write primitive on disk.</p>
+          <div class="tc-row"><span class="os">LINUX</span> <code>sudo apt install mariadb-client</code></div>
+          <div class="tc-row"><span class="os">CONNECT</span> <code>mysql -u root -p'PASS' -h 127.0.0.1</code></div>
+          <div class="tc-row"><span class="os">CHECK</span> <code>SHOW GRANTS;</code> &middot; <code>SHOW VARIABLES LIKE 'secure_file_priv';</code></div>
+          <div class="tc-seen">seen in <a href="writeup-orion.html">Orion</a></div>
         </div>
 
       </div>

