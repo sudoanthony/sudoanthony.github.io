@@ -31,6 +31,7 @@
       <a href="#recon" data-toc>Recon &amp; Scanning</a>
       <a href="#vuln-scanners" data-toc>Vulnerability Scanners</a>
       <a href="#exploitation" data-toc>Exploitation &amp; Cracking</a>
+      <a href="#binexp" data-toc>Binary Exploitation</a>
       <a href="#web" data-toc>Web &amp; Proxies</a>
       <a href="#network" data-toc>Networking &amp; Access</a>
       <a href="#host-enum" data-toc>Container &amp; Host Enum</a>
@@ -59,9 +60,10 @@
       <h2>Categories</h2>
       <ul>
         <li><strong>Recon &amp; scanning:</strong> <a href="#nmap">nmap</a>, <a href="#gobuster">gobuster</a>, <a href="#feroxbuster">feroxbuster</a>, <a href="#ffuf">ffuf</a>, <a href="#curl">curl</a>.</li>
-        <li><strong>Container &amp; host enum:</strong> <a href="#mountinfo">findmnt / mountinfo</a>, <a href="#netstat">netstat</a>, <a href="#mysql">mysql</a>.</li>
+        <li><strong>Container &amp; host enum:</strong> <a href="#mountinfo">findmnt / mountinfo</a>, <a href="#netstat">netstat</a>, <a href="#mysql">mysql</a>, <a href="#file">file</a>, <a href="#dpkg">dpkg -S</a>.</li>
         <li><strong>Vulnerability scanners:</strong> <a href="#nessus">Nessus</a>, <a href="#openvas">OpenVAS</a>.</li>
         <li><strong>Exploitation &amp; cracking:</strong> <a href="#searchsploit">searchsploit</a>, <a href="#metasploit">Metasploit</a>, <a href="#hydra">Hydra</a>.</li>
+        <li><strong>Binary exploitation:</strong> <a href="#gdb">gdb / pwndbg</a>, <a href="#checksec">checksec</a>, <a href="#readelf">readelf</a>.</li>
         <li><strong>Web &amp; proxies:</strong> <a href="#burp">Burp Suite</a>, <a href="#mitmproxy">mitmproxy</a>.</li>
         <li><strong>Networking &amp; access:</strong> <a href="#netcat">netcat</a>, <a href="#ssh">ssh</a> (local port forwarding), <a href="#telnet">telnet</a>.</li>
         <li><strong>Active Directory / Windows:</strong> <a href="#dig">dig</a>, <a href="#ldapsearch">ldapsearch</a>, <a href="#netexec">netexec</a>, <a href="#smbpasswd">smbpasswd</a>, <a href="#showmount">showmount/mount</a>, <a href="#evil-winrm">evil-winrm</a>, <a href="#impacket">Impacket</a>, <a href="#diskshadow">diskshadow + robocopy</a>, <a href="#printspoofer">PrintSpoofer</a>, <a href="#john">John the Ripper</a>.</li>
@@ -85,7 +87,7 @@
           <div class="tc-row"><span class="os">WIN</span> <code>winget install Insecure.Nmap</code></div>
           <div class="tc-row"><span class="os">LINUX</span> <code>sudo apt install nmap</code></div>
           <div class="tc-row"><span class="os">CMD</span> <code>nmap -p- -sVC TARGET</code></div>
-          <div class="tc-seen">seen in <a href="writeup-biohazard.html">Biohazard</a>, <a href="writeup-abducted.html">Abducted</a>, <a href="writeup-nexus.html">Nexus</a></div>
+          <div class="tc-seen">seen in <a href="writeup-biohazard.html">Biohazard</a>, <a href="writeup-abducted.html">Abducted</a>, <a href="writeup-nexus.html">Nexus</a>, <a href="writeup-october.html">October</a></div>
         </div>
 
         <div class="toolcard cat-recon" id="gobuster">
@@ -95,7 +97,7 @@
           <div class="tc-row"><span class="os">DIR</span> <code>gobuster dir -u URL -w LIST -x php,html,txt --exclude-length N</code></div>
           <div class="tc-row"><span class="os">VHOST</span> <code>gobuster vhost -u http://DOMAIN -w LIST --append-domain</code></div>
           <div class="tc-row"><span class="os">TLS</span> <code>gobuster vhost -u https://DOMAIN -k --append-domain -w LIST</code></div>
-          <div class="tc-seen">seen in <a href="writeup-nexus.html">Nexus</a>, <a href="writeup-kobold.html">Kobold</a></div>
+          <div class="tc-seen">seen in <a href="writeup-nexus.html">Nexus</a>, <a href="writeup-kobold.html">Kobold</a>, <a href="writeup-october.html">October</a></div>
         </div>
 
         <div class="toolcard cat-recon" id="feroxbuster">
@@ -119,7 +121,7 @@
           <p class="tc-what">Command-line HTTP client. Beyond fetching pages, <code>-I</code> grabs just the response <strong>headers</strong> - the fastest way to fingerprint a server. A giveaway banner like <code>X-Powered-By</code> or <code>Server</code> often points straight at a known vulnerability.</p>
           <div class="tc-row"><span class="os">LINUX</span> ships on virtually every system (<code>apt install curl</code>)</div>
           <div class="tc-row"><span class="os">HEADERS</span> <code>curl -I http://TARGET</code></div>
-          <div class="tc-seen">seen in <a href="writeup-knife.html">Knife</a>, <a href="writeup-kobold.html">Kobold</a></div>
+          <div class="tc-seen">seen in <a href="writeup-knife.html">Knife</a>, <a href="writeup-kobold.html">Kobold</a>, <a href="writeup-october.html">October</a></div>
         </div>
 
       </div>
@@ -175,7 +177,41 @@
           <p class="tc-what">Online (live-service) password brute-forcer. Point it at a protocol with a known username and a wordlist and it tries each password against the real service. Most useful once enumeration hands you a valid username - the hard part is often the name, not the password. Watch for lockout / rate limiting.</p>
           <div class="tc-row"><span class="os">LINUX</span> <code>sudo apt install hydra</code></div>
           <div class="tc-row"><span class="os">SSH</span> <code>hydra -l USER -P /usr/share/wordlists/rockyou.txt TARGET ssh</code></div>
-          <div class="tc-seen">seen in <a href="writeup-orion.html">Orion</a></div>
+          <div class="tc-seen">seen in <a href="writeup-orion.html">Orion</a>, <a href="writeup-october.html">October</a></div>
+        </div>
+
+      </div>
+    </section>
+
+    <!-- ============ Binary Exploitation ============ -->
+    <section id="binexp" class="concept-block">
+      <p class="kicker">Profile a binary, then turn a crash into code execution</p>
+      <h2>Binary Exploitation</h2>
+      <div class="toolgrid">
+
+        <div class="toolcard cat-recon" id="gdb">
+          <div class="tc-head"><span class="tc-glyph">gdb</span><span class="tc-name">gdb + pwndbg</span><span class="tc-cat">debugger</span></div>
+          <p class="tc-what">The GNU debugger, with the <strong>pwndbg</strong> plugin for exploit work. Disassemble <code>main</code> to find the bug (an unbounded <code>strcpy</code>), find the exact offset to the saved return address with a cyclic pattern, and watch <code>EIP</code> become your bytes. Note ASLR always shows <em>off</em> inside gdb - check the real host instead.</p>
+          <div class="tc-row"><span class="os">LINUX</span> <code>sudo apt install gdb</code> + pwndbg</div>
+          <div class="tc-row"><span class="os">OFFSET</span> <code>cyclic 300</code> &rarr; <code>run &lt;pattern&gt;</code> &rarr; <code>cyclic -l $eip</code></div>
+          <div class="tc-row"><span class="os">DISASM</span> <code>disassemble main</code></div>
+          <div class="tc-seen">seen in <a href="writeup-october.html">October</a></div>
+        </div>
+
+        <div class="toolcard cat-recon" id="checksec">
+          <div class="tc-head"><span class="tc-glyph">chk</span><span class="tc-name">checksec</span><span class="tc-cat">mitigation check</span></div>
+          <p class="tc-what">Reads a binary's compiled-in defenses: <strong>stack canary</strong>, <strong>NX</strong>, <strong>PIE</strong>, and RELRO. This is what picks the technique: no canary means the overflow is reachable, NX means no stack shellcode (so <code>ret2libc</code>), and no PIE plus 32-bit means a small ASLR space you can brute-force. Built into pwndbg.</p>
+          <div class="tc-row"><span class="os">LINUX</span> pwndbg <code>checksec</code>, or <code>apt install checksec</code></div>
+          <div class="tc-row"><span class="os">CMD</span> <code>checksec</code> (in pwndbg) &middot; <code>checksec --file=./ovrflw</code></div>
+          <div class="tc-seen">seen in <a href="writeup-october.html">October</a></div>
+        </div>
+
+        <div class="toolcard cat-recon" id="readelf">
+          <div class="tc-head"><span class="tc-glyph">elf</span><span class="tc-name">readelf</span><span class="tc-cat">elf inspector</span></div>
+          <p class="tc-what">Reads ELF structure. For a ret2libc chain it pulls the function offsets you need from the <strong>target's</strong> libc (<code>system</code>, <code>exit</code>), which you add to the live libc base. Pair it with <code>strings -a -t x</code> for the <code>/bin/sh</code> string offset. Offsets differ between libc builds, so always use the target's copy.</p>
+          <div class="tc-row"><span class="os">LINUX</span> ships with binutils</div>
+          <div class="tc-row"><span class="os">SYMS</span> <code>readelf -s libc.so.6 | grep -w system</code></div>
+          <div class="tc-seen">seen in <a href="writeup-october.html">October</a></div>
         </div>
 
       </div>
@@ -216,7 +252,7 @@
           <p class="tc-what">Reads and writes raw TCP/UDP. On an engagement it's most often a <strong>listener</strong> that catches a reverse shell called back from the target after you fire an RCE.</p>
           <div class="tc-row"><span class="os">LINUX</span> <code>sudo apt install netcat-traditional</code> (or <code>ncat</code> from the nmap suite)</div>
           <div class="tc-row"><span class="os">LISTEN</span> <code>nc -lvnp 4444</code> &nbsp;&mdash; wait for the shell on port 4444</div>
-          <div class="tc-seen">seen in <a href="writeup-nexus.html">Nexus</a></div>
+          <div class="tc-seen">seen in <a href="writeup-nexus.html">Nexus</a>, <a href="writeup-october.html">October</a></div>
         </div>
 
         <div class="toolcard cat-recon" id="ssh">
@@ -268,6 +304,22 @@
           <div class="tc-row"><span class="os">CONNECT</span> <code>mysql -u root -p'PASS' -h 127.0.0.1</code></div>
           <div class="tc-row"><span class="os">CHECK</span> <code>SHOW GRANTS;</code> &middot; <code>SHOW VARIABLES LIKE 'secure_file_priv';</code></div>
           <div class="tc-seen">seen in <a href="writeup-orion.html">Orion</a></div>
+        </div>
+
+        <div class="toolcard cat-recon" id="file">
+          <div class="tc-head"><span class="tc-glyph">fil</span><span class="tc-name">file</span><span class="tc-cat">binary id</span></div>
+          <p class="tc-what">Identifies a file by its contents, not its name. On a SUID binary it is the first look: <strong>ELF 32- vs 64-bit</strong>, dynamically vs statically linked, and whether it is <strong>stripped</strong>. "32-bit" is a green light for an ASLR brute-force; "not stripped" means symbols survive for easier <code>gdb</code> work.</p>
+          <div class="tc-row"><span class="os">LINUX</span> ships with file (<code>apt install file</code>)</div>
+          <div class="tc-row"><span class="os">CMD</span> <code>file ./ovrflw</code></div>
+          <div class="tc-seen">seen in <a href="writeup-october.html">October</a></div>
+        </div>
+
+        <div class="toolcard cat-recon" id="dpkg">
+          <div class="tc-head"><span class="tc-glyph">dpk</span><span class="tc-name">dpkg -S</span><span class="tc-cat">package triage</span></div>
+          <p class="tc-what">Asks Debian's package database which package owns a file. The fast way to triage a SUID sweep: every distro binary answers with its package, so a SUID-root binary that <code>dpkg -S</code> <em>disowns</em> (no path found) is one a human planted - almost always the intended privesc. <code>rpm -qf</code> is the Red Hat equivalent.</p>
+          <div class="tc-row"><span class="os">LINUX</span> ships with dpkg on Debian/Ubuntu</div>
+          <div class="tc-row"><span class="os">CMD</span> <code>dpkg -S /usr/local/bin/SUSPECT</code></div>
+          <div class="tc-seen">seen in <a href="writeup-october.html">October</a></div>
         </div>
 
       </div>

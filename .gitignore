@@ -6,3 +6,9 @@
 Anthony-Sciuto-*
 *Resume*.rtf
 *CoverLetter*.rtf
+
+# Private workflow notes - local only, never published
+WRITEUP-PLAYBOOK.md
+
+# Raw Flameshot captures - only the curated <box>NN.png set is published
+images/**/shot-*.png

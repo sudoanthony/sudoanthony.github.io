@@ -23,6 +23,19 @@
 
 const WRITEUPS = [
   {
+    title:      "October",
+    url:        "writeup-october.html",
+    platform:   "HackTheBox",
+    team:       "red",
+    difficulty: "Medium",
+    os:         "Linux",
+    category:   "Web",
+    icon:       "images/icons/october.png",
+    date:       "2026-10-30",
+    summary:    "Linux box: a guessed October CMS backend login and a .php5 Media-manager upload (an extension blacklist bypass) give a www-data shell; the real box is the privesc - a planted SUID-root 32-bit binary with a strcpy overflow, beaten past NX and ASLR with a brute-forced ret2libc chain for root.",
+    tags:       ["weak-credentials", "file-upload-rce", "ret2libc", "priv-esc"]
+  },
+  {
     title:      "Orion",
     url:        "writeup-orion.html",
     platform:   "HackTheBox",
@@ -342,7 +355,8 @@ const VULNS = [
       { writeup: "Biohazard", url: "writeup-biohazard.html", ctx: "operator re-auths to root with a reused password" },
       { writeup: "Nexus", url: "writeup-nexus.html", ctx: "symlink planted in user-writable staging dir; root systemd timer follows it and writes SSH key into /root/.ssh/authorized_keys" },
       { writeup: "Kobold", url: "writeup-kobold.html", ctx: "Arcane drives Docker as root; a container run as User 0 with / mounted to /host drops a SUID rootbash for a root shell" },
-      { writeup: "Orion", url: "writeup-orion.html", ctx: "a loopback GNU Inetutils telnetd (CVE-2026-24061) is abused with USER=-f root to run login -f root and skip authentication for a root shell" }
+      { writeup: "Orion", url: "writeup-orion.html", ctx: "a loopback GNU Inetutils telnetd (CVE-2026-24061) is abused with USER=-f root to run login -f root and skip authentication for a root shell" },
+      { writeup: "October", url: "writeup-october.html", ctx: "a planted SUID-root binary /usr/local/bin/ovrflw with a strcpy overflow is exploited with a brute-forced ret2libc chain for a root shell" }
     ]
   },
   {
@@ -380,10 +394,11 @@ const VULNS = [
     cat:   "web",
     sev:   "high",
     ext:   "CWE-434",
-    blurb: "An upload handler that validates only the stated MIME type allows a PHP webshell labeled image/jpeg to slip through. The file is stored in a web-accessible, PHP-executable directory - visit the URL and the server runs the command. Severity is often high because it gives server-side code execution; authenticated-only lowers the bar only if the credential bar is also low.",
+    blurb: "An upload handler that trusts the stated MIME type, or blacklists only some executable extensions, lets a PHP webshell slip through - labeled image/jpeg, or renamed .php5 when the server still runs it as PHP. The file lands in a web-accessible, PHP-executable directory, so visiting the URL runs the command. Severity is often high because it gives server-side code execution; authenticated-only lowers the bar only if the credential bar is also low. Fix with an allow-list of types and storing uploads where the PHP handler never executes.",
     deepdive: "",
     uses: [
-      { writeup: "Nexus", url: "writeup-nexus.html", ctx: "Krayin CRM TinyMCE upload endpoint (CVE-2026-38526) - PHP shell uploaded as image/jpeg, executed by visiting the stored file path" }
+      { writeup: "Nexus", url: "writeup-nexus.html", ctx: "Krayin CRM TinyMCE upload endpoint (CVE-2026-38526) - PHP shell uploaded as image/jpeg, executed by visiting the stored file path" },
+      { writeup: "October", url: "writeup-october.html", ctx: "October CMS Media manager blocks .php but not .php5; a renamed webshell is uploaded and run as PHP for a www-data shell" }
     ]
   },
   {
@@ -673,6 +688,30 @@ const VULNS = [
     deepdive: "",
     uses: [
       { writeup: "Orion", url: "writeup-orion.html", ctx: "a telnetd on 127.0.0.1:23 running GNU Inetutils 2.7; env USER='-f root' telnet -a 127.0.0.1 23 ran login -f root for a root shell" }
+    ]
+  },
+  {
+    id:    "weak-credentials",
+    name:  "Weak / guessable admin credentials",
+    cat:   "auth",
+    sev:   "high",
+    ext:   "CWE-521 · CWE-307",
+    blurb: "A privileged web account protected by a weak, guessable password with no account lockout. A handful of common pairs gets in, and a verbose login that confirms a valid username first turns the problem into guessing the password alone. Severity tracks what the account authorizes, not the act of guessing - an admin panel that can then run code is High to Critical. Fix: strong password policy, lockout / rate limiting, and MFA on admin logins.",
+    deepdive: "",
+    uses: [
+      { writeup: "October", url: "writeup-october.html", ctx: "the October CMS backend login flash confirms admin is a valid user, then a hand-guessed weak password logs straight into the control panel" }
+    ]
+  },
+  {
+    id:    "ret2libc",
+    name:  "Stack overflow to ret2libc (ASLR brute-force)",
+    cat:   "priv-esc",
+    sev:   "crit",
+    ext:   "CWE-121 · CWE-787",
+    blurb: "An unbounded copy (here strcpy of argv[1]) overflows a stack buffer and overwrites the saved return address. NX blocks stack shellcode, so execution is redirected into existing libc code - a ret2libc chain that calls system(\"/bin/sh\"). ASLR randomizes libc, but on 32-bit the entropy is low enough (~8 bits) to brute-force a fixed guess in a loop. SUID-root on the binary makes the resulting shell root. Fix: bounded copies, a stack canary, and PIE/full ASLR; drop the SUID bit.",
+    deepdive: "",
+    uses: [
+      { writeup: "October", url: "writeup-october.html", ctx: "SUID-root /usr/local/bin/ovrflw: 112-byte offset to EIP, ret2libc (system/exit/\"/bin/sh\") looped against a fixed libc base until ASLR lands, for a root shell" }
     ]
   }
 ];

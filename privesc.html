@@ -31,6 +31,7 @@
       <a href="#symlink" data-toc>Symlink attacks</a>
       <a href="#sudo-abuse" data-toc>Sudo abuse</a>
       <a href="#container-escape" data-toc>Container escape</a>
+      <a href="#ret2libc" data-toc>SUID ret2libc</a>
       <a href="#tools" data-toc>Tools</a>
     </nav>
   </aside>
@@ -292,6 +293,56 @@ docker run -v /:/host -u 0 -it ALPINE_IMAGE chroot /host sh</code></pre>
         <a href="writeup-kobold.html">Kobold</a> - the Arcane dashboard drove Docker as root; a container run
         as User 0 with <code>/</code> mounted to <code>/host</code> dropped a SUID <code>rootbash</code> on the
         host. The PrivateBin container's mounts were read out of <code>/proc/*/mountinfo</code> first.
+      </div>
+    </section>
+
+    <!-- ============ SUID ret2libc ============ -->
+    <section id="ret2libc" class="concept-block">
+      <p class="kicker">Binary exploitation &middot; SUID stack overflow to root</p>
+      <h2>SUID binary exploitation (ret2libc)</h2>
+
+      <div class="concept-sub">
+        <span class="sub-lbl">what it is</span>
+        <p>Sometimes the path to root is not a misconfiguration but a <strong>custom SUID-root binary</strong>
+        with a memory-safety bug. A classic is an unbounded <code>strcpy(buf, argv[1])</code>: send more input
+        than the buffer holds and you overwrite the saved <strong>return address</strong> on the stack, so you
+        choose where the function returns. Because the binary is SUID root, a shell it spawns runs as root.</p>
+      </div>
+
+      <div class="concept-sub">
+        <span class="sub-lbl">how to find it</span>
+        <p>Sweep for SUID binaries (<code>find / -perm -u=s -type f 2&gt;/dev/null</code>) and triage with
+        <code>dpkg -S</code> - a SUID-root binary under <code>/usr/local/bin</code> that no package owns is
+        human-planted. Profile it: <code>file</code> for 32- vs 64-bit, <code>checksec</code> for canary / NX /
+        PIE, and <code>cat /proc/sys/kernel/randomize_va_space</code> for ASLR (gdb always disables it, so
+        check the host).</p>
+      </div>
+
+      <div class="concept-sub">
+        <span class="sub-lbl">beating the mitigations (NX -&gt; ret2libc)</span>
+        <p><strong>No canary</strong> means the overflow reaches the return address uninterrupted.
+        <strong>NX</strong> (non-executable stack) blocks your own shellcode, so you reuse code already in
+        memory: a <strong>ret2libc</strong> chain points the return address at libc's <code>system()</code>,
+        with <code>exit()</code> as a clean return and the address of the <code>"/bin/sh"</code> string as its
+        argument, so the call becomes <code>system("/bin/sh")</code>. Pull the three values from the
+        <em>target's</em> libc with <code>readelf -s</code> and <code>strings -a -t x</code>.</p>
+      </div>
+
+      <div class="concept-sub">
+        <span class="sub-lbl">beating ASLR on 32-bit (brute-force)</span>
+        <p>ASLR randomizes where libc loads, so you cannot hardcode its base - normally you would need an info
+        leak. But on <strong>32-bit</strong> the randomization is weak (around 8 bits of entropy on the libc
+        base), few enough possibilities that you <strong>brute-force</strong> it: bet one fixed base and run
+        the exploit in a loop until libc lands where you guessed. The same bug on 64-bit would need a leak -
+        recognizing "32-bit" from <code>file</code> is what makes the brute-force viable.</p>
+      </div>
+
+      <div class="concept-sub">
+        <span class="sub-lbl">how to defend</span>
+        <p>Don't ship SUID binaries that take untrusted input. If one must exist, drop the SUID bit, replace
+        <code>strcpy</code> with a bounded copy, and compile with a <strong>stack canary</strong>, NX, and
+        <strong>PIE</strong> (full ASLR on the binary itself) so a single overflow is not a straight line to
+        root. Seen in <a href="writeup-october.html">October</a>.</p>
       </div>
     </section>
 
