@@ -218,8 +218,8 @@ figcaption { color: var(--text-4); font-size: 13px; margin-top: 7px; font-family
   .col-right .pgroup:first-child .platform-head { margin-top: 38px; }
 }
 
-.platform-head { display: flex; align-items: center; gap: 10px; margin: 38px 0 16px; }
-.platform-head .dot { width: 9px; height: 9px; border-radius: 50%; }
+.platform-head { display: flex; align-items: center; gap: 10px; margin: 60px 0 16px; }
+.platform-head .dot { width: 9px; height: 9px; border-radius: 50%; flex: none; align-self: center; }
 .platform-head .dot.thm { background: var(--thm); }
 .platform-head .dot.htb { background: var(--htb); }
 .platform-head .dot.mobile { background: var(--mobile); }
@@ -231,6 +231,7 @@ figcaption { color: var(--text-4); font-size: 13px; margin-top: 7px; font-family
 .platform-head .plogo-htb { height: 30px; }
 .platform-head .plogo-mobile { height: 30px; }
 .platform-head .plogo-web { height: 30px; }
+.platform-head .plogo-oss { height: 27px; }
 
 /* ---------- vulns index ---------- */
 .filters { display: flex; flex-wrap: wrap; gap: 7px; margin: 22px 0 30px; }
@@ -591,10 +592,13 @@ img.zoomable { cursor: zoom-in; }
 @media (prefers-reduced-motion: reduce) { .status.open .dot { animation: none; opacity: 1; } }
 
 
-/* writeups.html: Open Source category (grey/white, shares the Mobile/Web column) */
-.platform-head .dot.oss { background: #cbd5e1; }
-.bx.oss .face { border-top: 3px solid #cbd5e1; }
-.bx.diff-oss { --diff: #cbd5e1; }
-.bx.oss .face::after { height: 72px; }
-.bx .sub .d-oss { color: #cbd5e1; }
-.badge.oss { background: rgba(203,213,225,0.14); color: #dbe2ea; }
+/* writeups.html: Open Source category (light grey-white, shares the Mobile/Web column) */
+.platform-head .dot.oss { background: #ebecf0; }
+.bx.oss .face { border-top: 3px solid #ebecf0; }
+.bx.diff-oss { --diff: #ebecf0; }
+.bx.oss .face::after { height: 72px; background: linear-gradient(to top,
+  color-mix(in srgb, var(--diff) 22%, transparent) 0%,
+  color-mix(in srgb, var(--diff) 7%, transparent) 45%,
+  transparent 80%); }
+.bx .sub .d-oss { color: #ebecf0; }
+.badge.oss { background: rgba(235,236,240,0.14); color: #ebecf0; }

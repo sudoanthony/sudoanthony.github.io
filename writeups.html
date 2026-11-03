@@ -105,10 +105,9 @@
 
   function boxCard(w) {
     if (w._oss) {
-      const osub = [w.status ? '<span class="d-oss">' + esc(w.status) + '</span>' : '',
-                    w.type ? esc(w.type) : ''].filter(Boolean).join(' &middot; ');
+      const osub = '<span class="d-oss">bug find and fix</span> &middot; write-up';
       return '<a class="bx oss diff-oss" href="' + w.url + '">' +
-        '<div class="face"><div class="icon">' + ossGlyph() + '</div>' +
+        '<div class="face"><div class="icon"><img src="images/github-mark.png" alt="" style="width:46px;height:46px;object-fit:contain"></div>' +
           '<div class="nm">' + esc(w.cardTitle || w.title) + '</div>' +
           '<div class="sub">' + osub + '</div>' +
         '</div>' +
@@ -140,12 +139,20 @@
     if (!items.length) return "";
     const pc = platClass(p);
     const logo = 'images/' + pc + '-logo.' + (pc === 'web' ? 'svg' : 'png');
-    return '<div class="platform-head">' +
-        '<img class="plogo plogo-' + pc + '" src="' + logo + '" alt="' + esc(p) + '" ' +
+    // THM / HTB / Web logos are wordmarks (they carry their own name); Mobile / Open Source
+    // use an icon, so we show the name text beside it.
+    const wordmark = (pc === 'thm' || pc === 'htb' || pc === 'web');
+    const countTxt = items.length + (p === "Open Source" ? (items.length===1?' contribution':' contributions') : (items.length===1?' write-up':' write-ups'));
+    const head = wordmark
+      ? '<img class="plogo plogo-' + pc + '" src="' + logo + '" alt="' + esc(p) + '" ' +
           'onerror="this.style.display=\'none\';this.nextElementSibling.style.display=\'inline-flex\'">' +
         '<span class="plfallback" style="display:none;align-items:center;gap:10px">' +
-          '<span class="dot ' + pc + '"></span><span class="name">' + esc(p) + '</span></span>' +
-        '<span class="count">' + items.length + (p === "Open Source" ? (items.length===1?' contribution':' contributions') : (items.length===1?' write-up':' write-ups')) + '</span>' +
+          '<span class="dot ' + pc + '"></span><span class="name">' + esc(p) + '</span></span>'
+      : '<img class="plogo plogo-' + pc + '" src="' + logo + '" alt="' + esc(p) + '" ' +
+          'onerror="this.style.display=\'none\'">' +
+        '<span class="name">' + esc(p) + '</span>';
+    return '<div class="platform-head">' + head +
+        '<span class="count">' + countTxt + '</span>' +
       '</div>' +
       '<div class="grid">' + items.map(boxCard).join("") + '</div>';
   }
