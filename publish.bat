@@ -86,3 +86,4 @@ exit /b 0
 echo.
 if defined DBLCLICK pause
 exit /b 1
+pause
