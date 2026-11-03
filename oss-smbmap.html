@@ -100,7 +100,7 @@ multiprocessing.pool.MaybeEncodingError: Error sending result:
     inside it, so when Python reaches for the packing tape it fails. That is the <code>PicklingError</code>.
   </div>
 
-  <figure><img src="images/OpenSource/smbmap/smbmap-pickle-diagram.png" alt="Hand-drawn 3-panel comic explaining pickling, the smbmap bug, and the fix using a moving-company furniture metaphor"><figcaption>My own take on the whole thing. <strong>Pickling</strong>: flat-packing a chair (an <code>SMBConnection</code>) to move it between houses (processes). <strong>The bug</strong>: one part will not come apart (the lambda), so the move jams and the workers pile up on "Authenticating...". <strong>The fix</strong>: merge the two houses into one (threads), so you just carry the chair over whole, no packing, no truck.</figcaption></figure>
+  <figure><img src="images/OpenSource/smbmap/smbmap-pickle-diagram.png" alt="Hand-drawn 3-panel comic explaining pickling, the smbmap bug, and the fix using a moving-company furniture metaphor"><figcaption>My own take on the whole thing. <strong>Pickling</strong>: flat-packing a chair (an <code>SMBConnection</code>) to move it between houses (processes). <strong>The bug</strong>: one part will not come apart (the lambda), so the move jams and the workers pile up on "Authenticating...". <strong>The fix</strong>: merge the two houses into one (threads), so you just carry the chair over whole, no packing, no truck. <strong style="color:var(--text-3)">Hand-drawn by me in Procreate. No AI.</strong></figcaption></figure>
 
   <h2><span class="num">02</span>Root cause</h2>
   <p>smbmap spreads its host connections across worker processes with a
