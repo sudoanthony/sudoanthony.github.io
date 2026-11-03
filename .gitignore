@@ -12,3 +12,6 @@ WRITEUP-PLAYBOOK.md
 
 # Raw Flameshot captures - only the curated <box>NN.png set is published
 images/**/shot-*.png
+
+# editor/script backups
+*.bak

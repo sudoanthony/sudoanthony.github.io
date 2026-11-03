@@ -54,6 +54,7 @@ REM `git diff --cached --quiet` exits 1 when something IS staged.
 git diff --cached --quiet
 if not errorlevel 1 (
   echo Nothing to commit - working tree matches the last commit.
+  if defined DBLCLICK pause
   exit /b 0
 )
 

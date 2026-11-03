@@ -594,6 +594,7 @@ img.zoomable { cursor: zoom-in; }
 
 /* writeups.html: Open Source category (light grey-white, shares the Mobile/Web column) */
 .platform-head .dot.oss { background: #ebecf0; }
+.bx.oss { border-top: 0; padding: 0; }  /* cancel the opensource.html row divider/padding that the shared .oss class leaks onto the card */
 .bx.oss .face { border-top: 3px solid #ebecf0; }
 .bx.diff-oss { --diff: #ebecf0; }
 .bx.oss .face::after { height: 72px; background: linear-gradient(to top,
