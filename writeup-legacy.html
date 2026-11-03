@@ -1,0 +1,320 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Legacy - HackTheBox writeup</title>
+<meta name="description" content="HackTheBox Legacy (Easy, Windows): an unpatched Windows XP host speaking only SMBv1. SMB enumeration confirms null sessions and an ancient dialect, nmap flags MS08-067 and MS17-010, and the MS08-067 Metasploit module (CVE-2008-4250) returns a meterpreter session already running as NT AUTHORITY\SYSTEM - no privilege escalation needed.">
+<link rel="canonical" href="https://sudoanthony.github.io/writeup-legacy.html">
+<meta property="og:type" content="article">
+<meta property="og:site_name" content="~/sudoanthony">
+<meta property="og:title" content="Legacy - HackTheBox (Easy, Windows)">
+<meta property="og:description" content="An unpatched Windows XP box: SMBv1 enumeration, then MS08-067 (CVE-2008-4250) for a meterpreter session that lands straight as SYSTEM.">
+<meta property="og:url" content="https://sudoanthony.github.io/writeup-legacy.html">
+<meta property="og:image" content="https://sudoanthony.github.io/images/legacy-og.png">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="Legacy - HackTheBox (Easy, Windows)">
+<meta name="twitter:description" content="Windows XP, SMBv1, MS08-067 (CVE-2008-4250) straight to SYSTEM.">
+<meta name="twitter:image" content="https://sudoanthony.github.io/images/legacy-og.png">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<nav class="nav"><div class="wrap">
+  <a class="brand" href="index.html">~/sudoanthony</a>
+  <div class="links">
+    <a href="writeups.html">write-ups</a>
+    <a href="opensource.html">open source</a>
+    <a href="vulns.html">vulns</a>
+    <a href="concepts.html">concepts</a>
+    <a href="tools.html">tools</a>
+    <a href="https://github.com/sudoanthony">github</a>
+  </div>
+</div></nav>
+
+<main class="wrap" style="padding-top:44px">
+
+  <div class="wu-head">
+    <img class="wu-icon" src="images/icons/Legacy.png" alt="" onerror="this.style.display='none'">
+    <h1>Legacy</h1>
+  </div>
+
+  <div class="meta">
+    <span class="badge htb">HackTheBox</span>
+    <span class="badge easy">Easy</span>
+    <span class="badge red-team">red team</span>
+    <span class="sep">|</span>
+    <span>Windows XP &middot; SMB &middot; RCE</span>
+    <span class="sep">|</span>
+    <span>03 Nov 2026</span>
+  </div>
+
+  <div class="tldr">
+    <span class="lbl">tl;dr</span>
+    <p>Legacy is a throwback, and that is the whole point. A quick scan shows an unpatched <strong>Windows XP</strong>
+    host speaking only <strong>SMBv1</strong>. We walk our whole SMB enumeration toolkit against it (and hit an
+    smbmap bug worth its own write-up), confirm null sessions and an ancient dialect, then let nmap's vuln
+    scripts do the talking: the box is wide open to <strong>MS08-067 (CVE-2008-4250)</strong>. One Metasploit
+    module later we have a meterpreter session that is <em>already</em> <code>NT AUTHORITY\SYSTEM</code>, so there
+    is no privilege escalation to do. Both flags are a short walk away.</p>
+  </div>
+
+  <div class="tags">
+    <a class="tag" href="vulns.html#smb-rce-ms08067">smb-rce-ms08067</a>
+    <a class="tag" href="vulns.html#legacy-smbv1">legacy-smbv1</a>
+    <a class="tag" href="vulns.html#null-session">null-session</a>
+  </div>
+
+  <hr>
+
+  <!-- ==================== 01 ==================== -->
+  <h2><span class="num">01</span>Enumeration</h2>
+
+  <p>Let's start with an nmap scan of our target.</p>
+  <pre><code><span class="p">$</span> nmap -sCV -p- -T4 --min-rate 5000 <span class="o">10.129.227.181</span>
+PORT    STATE SERVICE      VERSION
+135/tcp open  msrpc        Microsoft Windows RPC
+139/tcp open  netbios-ssn  Microsoft Windows netbios-ssn
+445/tcp open  microsoft-ds Windows XP microsoft-ds
+
+Host script results:
+| smb-os-discovery:
+|   OS: Windows XP (Windows 2000 LAN Manager)
+|   Computer name: legacy
+|   Workgroup: HTB
+| smb-security-mode:
+|   account_used: guest
+|_  message_signing: disabled (dangerous, but default)</code></pre>
+
+  <p>It identified 3 ports: <strong>135</strong>, <strong>139</strong>, and <strong>445</strong>. The machine is
+  also called LEGACY, and from our scan we can see that <code>smb-os-discovery</code> already pegged it as a
+  flavor of <strong>Windows XP</strong>. Out of these ports, the only one we can really footprint is
+  <strong>445</strong>, so let's begin there. We have a lot of tools we can use for this, and I like to reach
+  for several of them to compare the output and keep my mind sharp with a variety.</p>
+
+  <hr>
+
+  <!-- ==================== 02 ==================== -->
+  <h2><span class="num">02</span>Beginning enumeration of 445 (SMB)</h2>
+
+  <h3>Using enum4linux-ng</h3>
+  <p><strong>What it does:</strong> a one-stop SMB/RPC enumeration wrapper. It automatically probes LDAP, SMB,
+  and NetBIOS, checks for null and guest sessions, and tries to pull OS info, shares, users, and the
+  workgroup/domain. Great for a fast overview before you reach for the more surgical tools.</p>
+  <pre><code><span class="p">$</span> enum4linux-ng <span class="o">10.129.227.181</span>
+[+] SMB is accessible on 445/tcp
+[+] SMB over NetBIOS is accessible on 139/tcp
+[+] Got domain/workgroup name: HTB
+[*] Check for anonymous access (null session)
+[+] Server allows authentication via username '' and password ''
+[*] Check for guest access
+[-] Could not establish guest session: STATUS_LOGON_FAILURE
+[+] After merging OS information we have the following result:
+OS: Windows 5.1   (Native LAN manager: Windows 2000 LAN Manager)</code></pre>
+  <p>Two things jump out. The workgroup is <strong>HTB</strong>, and the server happily
+  <strong>allows a null session</strong> (empty username and password) even though guest is refused. "Windows
+  5.1" is just the internal version number for Windows XP, confirming the OS a second way.</p>
+
+  <h3>Using rpcclient</h3>
+  <p><strong>What it does:</strong> a manual MS-RPC client. Over a null or authenticated session it enumerates
+  users, groups, and shares one query at a time (<code>enumdomusers</code>, <code>querydominfo</code>). It is the
+  surgical counterpart to enum4linux's broad sweep.</p>
+  <pre><code><span class="p">$</span> rpcclient -U "" <span class="o">10.129.227.181</span>
+Password for [WORKGROUP\]:
+Cannot connect to server.  Error was NT_STATUS_LOGON_FAILURE</code></pre>
+  <p>Here rpcclient refuses our null session. Notice this seems to disagree with what enum4linux just told us,
+  and that is exactly why I run more than one tool. <code>NT_STATUS_LOGON_FAILURE</code> means the login was
+  rejected, not that the host is unreachable. (For a clean null bind you want <code>rpcclient -U "" -N</code> so
+  it doesn't stop to prompt.) We will see in a moment that a null session really is allowed, so don't take a
+  single tool's "no" as the final word.</p>
+
+  <h3>Using smbmap</h3>
+  <p><strong>What it does:</strong> a share enumerator that shows read/write permissions per share at a glance,
+  plus remote command execution and up/download. Normally my go-to first pass.</p>
+  <p>Running the tool actually surfaced a bug, and the authentication just keeps going and going. I use this tool
+  a lot, so I was a bit disappointed to see it broken like this.</p>
+  <p>Anyways, this turned into its own little side quest. I pulled smbmap from ShawnDEvans' official repo, found
+  the root cause, and sent in a fix. You can read the write-up here:
+  <a href="oss-smbmap.html">smbmap: thread-based pool fix for Python 3.14</a>.</p>
+  <p>Ahem... moving on:</p>
+
+  <h3>Using netexec (nxc)</h3>
+  <p><strong>What it does:</strong> the successor to CrackMapExec. Very good for enumeration and can spider/pull
+  files, validate creds across a whole subnet, and spray passwords. It also prints a tidy one-line fingerprint of
+  the host.</p>
+  <pre><code><span class="p">$</span> nxc smb <span class="o">10.129.227.181</span> --shares
+SMB  10.129.227.181  445  LEGACY  [*] Windows 5.1 x32 (name:LEGACY) (domain:legacy) (signing:False) (SMBv1:True) (Null Auth:True)
+SMB  10.129.227.181  445  LEGACY  [-] Error enumerating shares: ... SMB SessionError: unknown error code: 0x5b</code></pre>
+  <p>That one line is a goldmine: <strong>SMBv1: True</strong>, <strong>signing: False</strong>, and best of all
+  <strong>Null Auth: True</strong>. Since it confirms null auth, let's try a plain null session through nxc:</p>
+  <pre><code><span class="p">$</span> nxc smb <span class="o">10.129.227.181</span> -u '' -p ''
+SMB  10.129.227.181  445  LEGACY  [*] Windows 5.1 x32 (SMBv1:True) (Null Auth:True)
+SMB  10.129.227.181  445  LEGACY  [+] legacy\:</code></pre>
+  <p>It authenticates and we see a <code>legacy</code> share, so let's try connecting to it with our next tool.</p>
+
+  <h3>Using smbclient</h3>
+  <pre><code><span class="p">$</span> smbclient -L //<span class="o">10.129.227.181</span> -N
+session setup failed: NT_STATUS_INVALID_PARAMETER</code></pre>
+  <p>Modern Kali ships a recent Samba, and recent <code>smbclient</code> <strong>dropped SMB1 (NT1) from its
+  default dialects</strong> and sets its minimum protocol to SMB2 or higher. The target offers only SMB1. When
+  the client and server can't agree on a dialect, the session setup dies with <code>INVALID_PARAMETER</code>. The
+  fix in the message is subtle: "invalid parameter" during <em>session setup</em> almost always means
+  negotiation, not your arguments. The SMB dialect is being rejected.</p>
+  <p>This was a similar result to our rpcclient tool. We can see the shares and confirm it's running an old
+  SMBv1, but we can't actually connect to anything. And honestly, that brings us to a good lesson: why keep
+  reaching for the next tool when the information our first ones gave us is already enough? We know it's an
+  ancient, unpatched Windows. Let's point that knowledge somewhere useful.</p>
+
+  <hr>
+
+  <!-- ==================== 03 ==================== -->
+  <h2><span class="num">03</span>Continuing enumeration with nmap</h2>
+
+  <p>nmap can check for known SMB vulnerabilities directly with its vuln scripts:</p>
+  <pre><code><span class="p">$</span> nmap -p445 --script "smb-vuln-*" <span class="o">10.129.227.181</span>
+
+| smb-vuln-ms17-010:
+|   VULNERABLE: Remote Code Execution in Microsoft SMBv1 servers (ms17-010)
+|     IDs:  CVE:CVE-2017-0143   Risk factor: HIGH
+| smb-vuln-ms08-067:
+|   VULNERABLE: Microsoft Windows system vulnerable to remote code execution (MS08-067)
+|     IDs:  CVE:CVE-2008-4250
+|           ...allows remote attackers to execute arbitrary code via a crafted RPC
+|           request that triggers the overflow during path canonicalization.</code></pre>
+  <figure><img src="images/Legacy/shot-20261103-081206.png" alt="nmap smb-vuln scripts reporting MS17-010 and MS08-067 as VULNERABLE"><figcaption>nmap's vuln scripts light up: both <strong>MS17-010</strong> and <strong>MS08-067 (CVE-2008-4250)</strong> come back <strong>VULNERABLE</strong>. On a host this old, that is exactly what we expect.</figcaption></figure>
+  <p>Okay, now we're getting somewhere. The box is vulnerable to a couple of CVEs. For our use case,
+  <strong>CVE-2008-4250 (MS08-067)</strong> is the eye-catching one thanks to the clean path to RCE.</p>
+
+  <div class="note insight">
+    <span class="lbl">how I'd rate this</span>
+    Before we exploit it, sit with the severity, because this is the kind of finding that is easy to under- or
+    over-rate. MS08-067 is <strong>Critical</strong>, and not because a shell is cool. It's a
+    <em>pre-authentication</em> remote code execution bug in a network-facing service, it needs no credentials
+    and no user interaction, and it runs code as the service account (SYSTEM). Every one of those factors pushes
+    severity up. Tie the rating to what the flaw <em>grants</em>, not to how it feels to pop.
+  </div>
+
+  <hr>
+
+  <!-- ==================== 04 ==================== -->
+  <h2><span class="num">04</span>Vulnerability assessment</h2>
+
+  <p>With a named CVE in hand, searchsploit is a quick way to see what payloads exist:</p>
+  <pre><code><span class="p">$</span> searchsploit ms08-067
+Microsoft Windows - 'NetAPI32.dll' Code Execution (Python) (MS08-067)        | windows/remote/40279.py
+Microsoft Windows Server - Service Relative Path Stack Corruption (Metasploit)| windows/remote/16362.rb
+Microsoft Windows Server 2000/2003 - Code Execution (MS08-067)               | windows/remote/7132.py</code></pre>
+  <p>There are standalone Python PoCs, but notice the Metasploit module in the list. searchsploit is a quick way
+  for us to see what we can drive straight from <code>msfconsole</code>, so let's use that.</p>
+
+  <hr>
+
+  <!-- ==================== 05 ==================== -->
+  <h2><span class="num">05</span>Foothold - exploiting MS08-067</h2>
+
+  <p>Firing up msfconsole, we load the MS08-067 module and choose <strong>target 1</strong> for automatic
+  targeting (if it doesn't take, we can specify the exact OS or the closest fit). We set our <code>RHOST</code>
+  (the target) and <code>LHOST</code> (us), and check the payload, which is a reverse TCP shell. Then we run
+  it.</p>
+
+  <figure><img src="images/Legacy/shot-20261103-081228.png" alt="msf search ms08-067 showing the ms08_067_netapi module and target list"><figcaption>Searching in msfconsole surfaces <code>exploit/windows/smb/ms08_067_netapi</code> (rank "great"), with targets from Windows 2000 up through XP SP3. We take <strong>target 1, Automatic Targeting</strong>.</figcaption></figure>
+  <figure><img src="images/Legacy/shot-20261103-081240.png" alt="show options listing RHOSTS, RPORT and the reverse_tcp payload"><figcaption><code>show options</code>: we point <code>RHOSTS</code> at the target and set <code>LHOST</code> to us, keeping the default <code>windows/meterpreter/reverse_tcp</code> payload.</figcaption></figure>
+  <figure><img src="images/Legacy/shot-20261103-081248.png" alt="the module fingerprinting Windows XP SP3, triggering the overflow, and opening a meterpreter session"><figcaption>On <code>run</code> the module fingerprints the box as <strong>Windows XP SP3 English</strong>, triggers the overflow, and opens <strong>Meterpreter session 1</strong>. A quick <code>shell</code> drops us into a Windows XP prompt.</figcaption></figure>
+
+  <p>And we got a meterpreter session!</p>
+
+  <hr>
+
+  <!-- ==================== 06 ==================== -->
+  <h2><span class="num">06</span>Privilege escalation - oh, we're already SYSTEM</h2>
+
+  <p>This is the fun part. Normally this is where the real work of <em>privilege escalation</em> begins, where we
+  orient ourselves, enumerate our privileges, and claw our way up from a low user to admin. But not here.</p>
+
+  <p>A quick check of who we are:</p>
+
+  <figure><img src="images/Legacy/shot-20261103-081141.png" alt="meterpreter getuid returning NT AUTHORITY SYSTEM"><figcaption><code>getuid</code> confirms it: <strong>NT AUTHORITY\SYSTEM</strong>. The foothold and the highest privilege on the box are the same step.</figcaption></figure>
+
+  <p>We're already <code>NT AUTHORITY\SYSTEM</code>, the highest-privilege account on Windows. Here is why that
+  happens with no extra effort: MS08-067 is a flaw in the Windows <strong>Server service</strong>, and that
+  service runs as SYSTEM. When our crafted RPC request triggers code execution <em>inside</em> that service, our
+  code inherits its token. So the same bug that got us a foothold also <em>is</em> our privilege escalation. The
+  foothold and the crown are the same step.</p>
+
+  <p>From here we just saunter over to the user and Administrator desktops and read off our flags. Remember XP
+  keeps profiles under <code>C:\Documents and Settings\</code>, not the modern <code>C:\Users\</code>:</p>
+  <pre><code><span class="p">C:\&gt;</span> type "C:\Documents and Settings\john\Desktop\user.txt"       <span class="c"># [flag omitted]</span>
+<span class="p">C:\&gt;</span> type "C:\Documents and Settings\Administrator\Desktop\root.txt" <span class="c"># [flag omitted]</span></code></pre>
+
+  <figure><img src="images/Legacy/shot-20261103-081121.png" alt="meterpreter listing Documents and Settings showing Administrator and john profiles"><figcaption>Under <code>C:\Documents and Settings</code> sit the <strong>Administrator</strong> and <strong>john</strong> profiles, the XP-era home of our two flags.</figcaption></figure>
+  <figure><img src="images/Legacy/legacy-userflag-redacted.png" alt="reading user.txt from john's Desktop with the flag value blacked out"><figcaption>Reading <code>user.txt</code> off john's Desktop (value redacted). <code>root.txt</code> comes off the Administrator Desktop the same way. Box owned.</figcaption></figure>
+
+  <p>Both flags in hand. Box owned.</p>
+
+  <hr>
+
+  <!-- ==================== 07 ==================== -->
+  <h2><span class="num">07</span>Root cause &amp; remediation</h2>
+
+  <p>Legacy is almost a museum piece, so the fixes are less "apply this patch" and more "this host should not
+  exist as-is." Still, let's break it down honestly:</p>
+
+  <table style="width:100%; border-collapse:collapse; font-size:14.5px; margin:6px 0 8px">
+    <tbody>
+      <tr style="border-bottom:1px solid var(--border)">
+        <td style="padding:11px 12px 11px 0; color:var(--text); width:40%"><strong>Unsupported, end-of-life OS</strong><br><span style="color:var(--text-4);font-size:13px">Windows XP</span></td>
+        <td style="padding:11px 0; color:var(--text-3)">This is the root of everything else. XP stopped getting security updates years ago, so it will never be patched against the bugs below. The real fix is to decommission it, or if some business reason truly demands it, isolate it on a segmented network with no inbound access and treat it as already compromised.</td>
+      </tr>
+      <tr style="border-bottom:1px solid var(--border)">
+        <td style="padding:11px 12px 11px 0; color:var(--text)"><strong>SMB RCE (MS08-067)</strong><br><span style="color:var(--text-4);font-size:13px">CVE-2008-4250</span></td>
+        <td style="padding:11px 0; color:var(--text-3)">A pre-auth overflow in the Server service that hands over SYSTEM. On a supported OS you would simply apply the MS08-067 update (and MS17-010 while you are at it). Here, the patch doesn't exist for the platform, which loops us right back to retiring the host.</td>
+      </tr>
+      <tr style="border-bottom:1px solid var(--border)">
+        <td style="padding:11px 12px 11px 0; color:var(--text)"><strong>SMBv1 enabled</strong></td>
+        <td style="padding:11px 0; color:var(--text-3)">SMBv1 is obsolete and carries a stack of wormable exploits. Disable it everywhere it is not strictly required, and prefer SMBv2/3. On a modern fleet this is a single Group Policy or PowerShell change.</td>
+      </tr>
+      <tr style="border-bottom:1px solid var(--border)">
+        <td style="padding:11px 12px 11px 0; color:var(--text)"><strong>Anonymous null sessions</strong></td>
+        <td style="padding:11px 0; color:var(--text-3)">The host let us authenticate with empty credentials and enumerate it before we had any access. Restrict anonymous access (RestrictAnonymous / RestrictNullSessAccess) and disable the guest account so recon isn't free.</td>
+      </tr>
+      <tr>
+        <td style="padding:11px 12px 11px 0; color:var(--text)"><strong>SMB signing disabled</strong></td>
+        <td style="padding:11px 0; color:var(--text-3)">Signing was off ("dangerous, but default" for this era), which opens the door to relay attacks. Enforce SMB signing so sessions can't be tampered with or relayed.</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <hr>
+
+  <!-- ==================== 08 ==================== -->
+  <h2><span class="num">08</span>Takeaways</h2>
+  <p>Legacy is an easy box, but it teaches a lesson I keep relearning: the enumeration wall <em>is</em> the clue.
+  I spent a good while poking at smbclient and rpcclient trying to browse a share, and the box kept telling me
+  "no" in five different ways. Eventually it clicked that the "no" was the whole message. An SMBv1-only, null-session
+  Windows XP host isn't a puzzle to brute your way into, it's a flashing sign that says "I am old and I have known,
+  wormable holes." The moment a version banner screams that, the move is to stop grinding tools and run a vuln
+  scan.</p>
+  <p>The other takeaway is about privilege. We landed as SYSTEM in a single step, and it would be easy to shrug
+  that off as "the exploit just worked." But understanding <em>why</em> is the real lesson: the vulnerable service
+  ran as SYSTEM, so our code did too. Knowing what account a service runs as tells you exactly how far a bug in it
+  can take you. Short box, but a clean reminder to read what the target is handing you and to tie severity to what
+  a flaw actually grants. Fun little trip back to 2008.</p>
+
+  <p style="margin-top:32px">
+    <a href="writeups.html">&larr; all write-ups</a> &nbsp;&middot;&nbsp;
+    <a href="vulns.html">techniques used &rarr;</a>
+  </p>
+
+</main>
+
+<footer class="foot"><div class="wrap" style="display:flex;gap:18px;flex-wrap:wrap">
+  <a href="index.html">home</a>
+  <a href="writeups.html">write-ups</a>
+  <a href="vulns.html">vulns</a>
+  <a href="https://github.com/sudoanthony">github</a>
+</div></footer>
+
+<script src="writeup-toc.js"></script>
+<script src="lightbox.js"></script>
+</body>
+</html>

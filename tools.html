@@ -67,7 +67,7 @@
         <li><strong>Binary exploitation:</strong> <a href="#gdb">gdb / pwndbg</a>, <a href="#checksec">checksec</a>, <a href="#readelf">readelf</a>.</li>
         <li><strong>Web &amp; proxies:</strong> <a href="#burp">Burp Suite</a>, <a href="#mitmproxy">mitmproxy</a>.</li>
         <li><strong>Networking &amp; access:</strong> <a href="#netcat">netcat</a>, <a href="#ssh">ssh</a> (local port forwarding), <a href="#telnet">telnet</a>.</li>
-        <li><strong>Active Directory / Windows:</strong> <a href="#dig">dig</a>, <a href="#ldapsearch">ldapsearch</a>, <a href="#netexec">netexec</a>, <a href="#smbpasswd">smbpasswd</a>, <a href="#showmount">showmount/mount</a>, <a href="#evil-winrm">evil-winrm</a>, <a href="#impacket">Impacket</a>, <a href="#diskshadow">diskshadow + robocopy</a>, <a href="#printspoofer">PrintSpoofer</a>, <a href="#john">John the Ripper</a>.</li>
+        <li><strong>Active Directory / Windows:</strong> <a href="#dig">dig</a>, <a href="#ldapsearch">ldapsearch</a>, <a href="#netexec">netexec</a>, <a href="#smbclient">smbclient</a>, <a href="#rpcclient">rpcclient</a>, <a href="#smbmap">smbmap</a>, <a href="#smbpasswd">smbpasswd</a>, <a href="#showmount">showmount/mount</a>, <a href="#evil-winrm">evil-winrm</a>, <a href="#impacket">Impacket</a>, <a href="#diskshadow">diskshadow + robocopy</a>, <a href="#printspoofer">PrintSpoofer</a>, <a href="#john">John the Ripper</a>.</li>
         <li><strong>Mobile static:</strong> <a href="#jadx">jadx</a>, <a href="#apktool">apktool</a>, <a href="#mobsf">MobSF</a>.</li>
         <li><strong>Mobile device &amp; runtime:</strong> <a href="#android-studio">Android Studio</a>, <a href="#adb">adb</a> (with <code>am</code> and <code>content</code>), <a href="#frida">Frida</a>, <a href="#objection">objection</a>.</li>
         <li><strong>Reverse engineering &amp; signing:</strong> <a href="#apksigner">apksigner</a>, <a href="#zipalign">zipalign</a>, <a href="#keytool">keytool</a>, <a href="#ghidra">Ghidra</a>, <a href="#radare2">radare2</a>.</li>
@@ -355,6 +355,31 @@
           <div class="tc-row"><span class="os">AUTH</span> <code>nxc smb IP -u user -p pass</code></div>
           <div class="tc-row"><span class="os">SPRAY</span> <code>nxc smb IP -u users.txt -p 'Pass123!' --continue-on-success</code></div>
           <div class="tc-seen">seen in <a href="writeup-baby.html">Baby</a></div>
+        </div>
+
+        <div class="toolcard cat-recon" id="smbclient">
+          <div class="tc-head"><span class="tc-glyph">smb</span><span class="tc-name">smbclient</span><span class="tc-cat">smb client</span></div>
+          <p class="tc-what">FTP-style interactive client for SMB shares. List shares and browse them with or without creds; a <strong>null session</strong> (<code>-N</code>) often exposes readable shares. On very old hosts you must force the SMB1 dialect or session setup fails with <code>NT_STATUS_INVALID_PARAMETER</code>.</p>
+          <div class="tc-row"><span class="os">LINUX</span> <code>sudo apt install smbclient</code></div>
+          <div class="tc-row"><span class="os">LIST</span> <code>smbclient -L //IP -N</code></div>
+          <div class="tc-row"><span class="os">OPEN</span> <code>smbclient //IP/SHARE -N</code></div>
+          <div class="tc-row"><span class="os">SMB1</span> <code>--option='client min protocol=NT1'</code> &nbsp;(XP-era hosts)</div>
+        </div>
+
+        <div class="toolcard cat-recon" id="rpcclient">
+          <div class="tc-head"><span class="tc-glyph">rpc</span><span class="tc-name">rpcclient</span><span class="tc-cat">ms-rpc enum</span></div>
+          <p class="tc-what">Manual MS-RPC client. Over a null or authenticated session it enumerates domain users, groups, and shares (<code>enumdomusers</code>, <code>querydominfo</code>). When <code>enumdomusers</code> is blocked, <code>queryuser</code> by RID often still works, so you <strong>RID-cycle</strong> to recover the user list.</p>
+          <div class="tc-row"><span class="os">LINUX</span> ships with <code>samba-common-bin</code></div>
+          <div class="tc-row"><span class="os">NULL</span> <code>rpcclient -U "" -N IP</code></div>
+          <div class="tc-row"><span class="os">ENUM</span> <code>enumdomusers</code> &middot; <code>queryuser 0x3e8</code></div>
+        </div>
+
+        <div class="toolcard cat-recon" id="smbmap">
+          <div class="tc-head"><span class="tc-glyph">map</span><span class="tc-name">smbmap</span><span class="tc-cat">share perms</span></div>
+          <p class="tc-what">Share enumerator that shows <strong>read/write permissions per share</strong> at a glance, plus remote command execution and file up/download. A fast first pass to see which shares are worth browsing before you open them in smbclient.</p>
+          <div class="tc-row"><span class="os">LINUX</span> <code>pipx install smbmap</code></div>
+          <div class="tc-row"><span class="os">SCAN</span> <code>smbmap -H IP</code></div>
+          <div class="tc-seen">patched by me: <a href="opensource.html#smbmap-py314-threadpool">smbmap PR #124</a></div>
         </div>
 
         <div class="toolcard cat-recon" id="smbpasswd">

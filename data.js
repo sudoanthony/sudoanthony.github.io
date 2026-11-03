@@ -23,6 +23,19 @@
 
 const WRITEUPS = [
   {
+    title:      "Legacy",
+    url:        "writeup-legacy.html",
+    platform:   "HackTheBox",
+    team:       "red",
+    difficulty: "Easy",
+    os:         "Windows",
+    category:   "SMB",
+    icon:       "images/icons/Legacy.png",
+    date:       "2026-11-03",
+    summary:    "Windows XP box: SMB enumeration confirms an unpatched SMBv1 host allowing null sessions. smbclient and rpcclient are dead ends, but an nmap vuln scan flags MS08-067, and its Metasploit module (CVE-2008-4250) returns a meterpreter session already running as SYSTEM, no privilege escalation needed.",
+    tags:       ["smb-rce-ms08067", "legacy-smbv1", "null-session"]
+  },
+  {
     title:      "October",
     url:        "writeup-october.html",
     platform:   "HackTheBox",
@@ -713,31 +726,66 @@ const VULNS = [
     uses: [
       { writeup: "October", url: "writeup-october.html", ctx: "SUID-root /usr/local/bin/ovrflw: 112-byte offset to EIP, ret2libc (system/exit/\"/bin/sh\") looped against a fixed libc base until ASLR lands, for a root shell" }
     ]
+  },
+  {
+    id:    "smb-rce-ms08067",
+    name:  "SMB remote code execution (MS08-067)",
+    cat:   "network",
+    sev:   "crit",
+    ext:   "CVE-2008-4250 · MS08-067 · CWE-119",
+    blurb: "A pre-authentication stack overflow in the Windows Server service: a crafted RPC request mishandled during path canonicalization lets an unauthenticated attacker run code as the service account, which is SYSTEM. No credentials, no user interaction, wormable - about as severe as a network bug gets. The fix is the MS08-067 patch; realistically, retire any OS this old, since it is years past end of life.",
+    deepdive: "",
+    uses: [
+      { writeup: "Legacy", url: "writeup-legacy.html", ctx: "an nmap smb-vuln scan flags the host VULNERABLE; the Metasploit MS08-067 module returns a meterpreter session already running as SYSTEM" }
+    ]
+  },
+  {
+    id:    "legacy-smbv1",
+    name:  "Legacy SMBv1 / end-of-life OS",
+    cat:   "network",
+    sev:   "high",
+    ext:   "CWE-1104 · CWE-477",
+    blurb: "Running SMBv1 on an operating system past its support date means no security patches and a stack of public, wormable exploits (MS08-067, MS17-010 / EternalBlue). Even the quirks are a fingerprint: an SMB1-only dialect and missing modern commands tell an attacker exactly how exposed the host is. The fix is to disable SMBv1 everywhere and decommission or isolate the legacy system.",
+    deepdive: "",
+    uses: [
+      { writeup: "Legacy", url: "writeup-legacy.html", ctx: "smb-os-discovery and nxc confirm Windows XP (5.1) speaking only SMBv1 with signing disabled; modern smbclient cannot even negotiate a dialect with it" }
+    ]
+  },
+  {
+    id:    "null-session",
+    name:  "Anonymous SMB null session",
+    cat:   "network",
+    sev:   "med",
+    ext:   "CWE-287 · CWE-200",
+    blurb: "An SMB service that accepts a blank username and password (a null session) lets an unauthenticated attacker enumerate shares, users, and system info before any credential is required. On its own it is information disclosure, but it is the reconnaissance that feeds the real attack. The fix is to restrict anonymous access (RestrictAnonymous / RestrictNullSessAccess) and disable the guest account.",
+    deepdive: "",
+    uses: [
+      { writeup: "Legacy", url: "writeup-legacy.html", ctx: "enum4linux-ng and nxc report Null Auth: True and authenticate with empty credentials to reach the legacy share" }
+    ]
   }
 ];
-
 
 /* ---------- open-source contributions (rendered on opensource.html) ---------- */
 const OSS = [
   {
     id: "ipa-mobile-disclosure",
-    title: "Mobile application vulnerability",
-    org: "reported via IPA (ipa.go.jp)",
+    title: "Healthcare Mobile Application Vulnerability",
+    subtitle: "ipa.go.jp: Pending CVE Submission",
     type: "disclosure",
     status: "awaiting",
-    statusLabel: "awaiting review",
+    statusLabel: "Awaiting Review",
     date: "2026-11-03",
-    blurb: "A vulnerability I discovered and reported through IPA's coordinated disclosure program in Japan. It is awaiting triage, so the affected product and the finding itself are held back until it is published. Once it is, I will write up the research: the static-analysis workflow with Ghidra, jadx, and apktool that led to it."
+    blurb: "A vulnerability I discovered and reported through IPA's coordinated disclosure program in Japan. It is awaiting triage, so the specific product and the finding itself are held back until it is published. Once it is, I will write up the research: the static-analysis workflow with Ghidra, jadx, and apktool that led to it."
   },
   {
     id: "smbmap-py314-threadpool",
-    title: "Thread-based pool fix for Python 3.14",
-    repo: "ShawnDEvans/smbmap",
+    title: "Thread-based pool fix for Python 3.14 (PR #124)",
+    subtitle: "Github: ShawnDEvans/smbmap",
     type: "bug fix",
     status: "open",
+    statusLabel: "Open",
     url: "https://github.com/ShawnDEvans/smbmap/pull/124",
     deepdive: "oss-smbmap.html",
-    ext: "PR #124",
     date: "2026-11-03",
     fixes: [
       { label: "#120", url: "https://github.com/ShawnDEvans/smbmap/issues/120" },

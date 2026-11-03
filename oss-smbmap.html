@@ -54,6 +54,7 @@ multiprocessing.pool.MaybeEncodingError: Error sending result:
 '[&lt;impacket.smbconnection.SMBConnection object ...&gt;]'. Reason:
 'PicklingError("Can't pickle local object
 &lt;function Structure.__init__.&lt;locals&gt;.&lt;lambda&gt; ...&gt;")'</code></pre>
+  <figure><img src="images/OpenSource/smbmap/shot-20261103-054732.png" alt="smbmap crashing with multiprocessing.pool.MaybeEncodingError and a PicklingError about a local lambda"><figcaption>The crash: smbmap detects SMB, then dies with <code>MaybeEncodingError</code>. The cause is a <code>PicklingError</code> on <code>Structure.__init__.&lt;locals&gt;.&lt;lambda&gt;</code> inside the impacket <code>SMBConnection</code>.</figcaption></figure>
   <p>After the error the worker processes were left spinning, so the run appeared to "authenticate
   forever" until I killed it, which then dumped a dozen more tracebacks and a leaked-semaphore warning.
   All of that is downstream of one root cause.</p>
@@ -79,6 +80,7 @@ multiprocessing.pool.MaybeEncodingError: Error sending result:
 <pre><code><span class="c"># smbmap/smbmap.py, line 21</span>
 <span class="c">- </span>from multiprocessing.pool import Pool
 <span class="c">+ </span>from multiprocessing.dummy import Pool</code></pre>
+  <figure><img src="images/OpenSource/smbmap/shot-20261103-055458.png" alt="git diff showing line 21 changed from multiprocessing.pool to multiprocessing.dummy"><figcaption>The entire fix, one line: <code>git diff</code> shows the import on line 21 swapped from <code>multiprocessing.pool</code> to <code>multiprocessing.dummy</code>.</figcaption></figure>
   <div class="note insight">
     <span class="lbl">why this over forcing fork</span>
     Forcing the old <code>fork</code> start method also works, but it is Linux-only and fork is on its way
@@ -94,6 +96,7 @@ multiprocessing.pool.MaybeEncodingError: Error sending result:
 [*] Established 1 SMB connections(s) and 1 authenticated session(s)
 [!] Access denied on 10.129.227.181, no fun for you...
 [*] Closed 1 connections</code></pre>
+  <figure><img src="images/OpenSource/smbmap/shot-20261103-055418.png" alt="smbmap running cleanly after the fix: establishes a session, reports access denied, closes the connection"><figcaption>After the fix, same command and host: smbmap authenticates, reports the host denies anonymous listing, and exits cleanly. No traceback, no hung workers.</figcaption></figure>
   <p>"Access denied" is the host refusing anonymous listing, which is the tool working correctly. No
   traceback, no hanging workers, no leaked-semaphore warning.</p>
 
@@ -103,6 +106,8 @@ multiprocessing.pool.MaybeEncodingError: Error sending result:
   file, a stale-install problem rather than a flaw in the fix. I opened
   <a href="https://github.com/ShawnDEvans/smbmap/pull/124">PR #124</a> with the one-line change, a
   root-cause writeup, and before/after proof, closing both issues.</p>
+
+  <figure><img src="images/OpenSource/smbmap/shot-20261103-062623.png" alt="git push of the fix branch, including the token-auth prompt, then the create-pull-request URL"><figcaption>Pushing the branch. GitHub rejects password auth (it needs a personal access token now), then the push succeeds and prints the pull-request URL.</figcaption></figure>
 
   <h2><span class="num">06</span>Takeaways</h2>
   <ul>
