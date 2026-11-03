@@ -201,16 +201,18 @@ figcaption { color: var(--text-4); font-size: 13px; margin-top: 7px; font-family
 .btn.primary:hover { background: rgba(136,192,208,0.1); }
 
 .section-label { font-family: var(--mono); font-size: 12px; text-transform: uppercase; letter-spacing: 1.5px; color: var(--text-4); margin: 0 0 16px; }
-/* two-column layout: machines (THM/HTB) left, practice tracks (Mobile/Web) right */
-.cols { display: flex; gap: 40px; align-items: flex-start; }
-.col { min-width: 0; }
-.col-left { flex: 1 1 auto; }
-.col-right { flex: 0 0 272px; }
-.col .platform-head:first-child { margin-top: 0; }
+/* 2x2 category grid: machines (THM/HTB) in the left column, practice tracks (Mobile/Web)
+   in the right column. Each category is a cell; cells on the same row share a top edge, and a
+   fixed header height makes every card top line up across both columns. */
+.cols { display: grid; grid-template-columns: minmax(0,1fr) 272px; gap: 34px 40px; align-items: start; }
+.pgroup { min-width: 0; }
+.pgroup .platform-head { margin-top: 0; min-height: 42px; }
+.pgroup .grid { margin-bottom: 0; }
 @media (max-width: 920px) {
-  .cols { flex-direction: column; gap: 0; }
-  .col-right { flex: 1 1 auto; width: 100%; }
-  .col-right .platform-head:first-child { margin-top: 38px; }
+  .cols { grid-template-columns: 1fr; gap: 0; }
+  .pgroup .platform-head { margin-top: 38px; }
+  .pgroup:first-child .platform-head { margin-top: 0; }
+  .pgroup.empty-cell { display: none; }
 }
 
 .platform-head { display: flex; align-items: center; gap: 10px; margin: 38px 0 16px; }
@@ -309,11 +311,11 @@ figcaption { color: var(--text-4); font-size: 13px; margin-top: 7px; font-family
 .bx .sub { font-family: var(--mono); font-size: 12px; color: var(--text-3); text-align: center; line-height: 1.4; }
 /* Mobile and Web cards are text-heavy (title + sub-headline + long OS) — give them
    more room and clip-guard so the content can't spill out of the box. */
-.bx.mobile, .bx.web { grid-template-rows: 200px 0fr; }
-.bx.mobile:hover, .bx.web:hover { grid-template-rows: 200px 1fr; }
-.bx.mobile .face, .bx.web .face { height: 200px; gap: 6px; overflow: hidden; }
-.bx.mobile .rev, .bx.web .rev { min-height: 200px; }
-@media (hover: none) { .bx.mobile:hover, .bx.web:hover { grid-template-rows: 200px 0fr; } }
+.bx.mobile, .bx.web { grid-template-rows: 176px 0fr; }
+.bx.mobile:hover, .bx.web:hover { grid-template-rows: 176px 1fr; }
+.bx.mobile .face, .bx.web .face { height: 176px; gap: 6px; overflow: hidden; }
+.bx.mobile .rev, .bx.web .rev { min-height: 176px; }
+@media (hover: none) { .bx.mobile:hover, .bx.web:hover { grid-template-rows: 176px 0fr; } }
 .bx .sub .d-very-easy{color:#9cc3ec;} .bx .sub .d-easy{color:#7fd9bc;} .bx .sub .d-medium{color:#f0b35a;} .bx .sub .d-hard{color:#eb9d9b;} .bx .sub .d-insane{color:#f2f4f6;} .bx .sub .d-practice{color:#9ed8f2;}
 .bx .sub svg{opacity:.85;}
 .bx .revwrap { overflow: hidden; }
@@ -554,3 +556,32 @@ img.zoomable { cursor: zoom-in; }
 .concept-card.soon { cursor: default; opacity: .5; }
 .concept-card.soon:hover { border-color: var(--border); transform: none; }
 .concept-card.soon .cc { color: var(--text-4); font-style: italic; }
+
+
+/* ---------- open source / contributions (opensource.html) ---------- */
+.oss-legend { display: flex; gap: 18px; margin: 14px 0 6px; }
+.oss { border-top: 1px solid var(--border); padding: 18px 0 20px; }
+.oss .head { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; }
+.oss .name { color: var(--text); font-size: 17px; font-weight: 600; }
+.oss a.name:hover { color: var(--accent); text-decoration: underline; }
+.oss .repo { font-family: var(--mono); font-size: 12px; color: var(--accent); }
+.oss .id { font-family: var(--mono); font-size: 11px; color: var(--text-4); }
+.oss .link { margin-left: auto; font-family: var(--mono); font-size: 11px; color: var(--accent-2); }
+.oss .link:hover { color: var(--accent); text-decoration: none; }
+.oss .blurb { color: var(--text-3); font-size: 13.5px; margin: 7px 0 11px; line-height: 1.55; }
+.oss .meta-row { display: flex; align-items: center; gap: 16px; flex-wrap: wrap; font-family: var(--mono); font-size: 12px; color: var(--text-4); }
+.oss .meta-row .fixes a { color: var(--text-2); }
+.oss .meta-row .fixes a:hover { color: var(--accent); }
+
+/* status light: amber "open" breathes like a slow pulse, green "merged" is a steady glow */
+.status { display: inline-flex; align-items: center; gap: 7px; font-family: var(--mono); font-size: 11.5px; letter-spacing: .6px; text-transform: uppercase; }
+.status .dot { width: 9px; height: 9px; border-radius: 50%; flex: none; }
+.status.open { color: #f0b35a; }
+.status.open .dot { background: var(--medium); animation: breathe 2.6s ease-in-out infinite; }
+.status.merged { color: #7fd9bc; }
+.status.merged .dot { background: var(--easy); box-shadow: 0 0 8px 1px rgba(93,202,165,0.55); }
+@keyframes breathe {
+  0%, 100% { opacity: .4; box-shadow: 0 0 0 0 rgba(239,159,39,0); }
+  50%      { opacity: 1;  box-shadow: 0 0 9px 2px rgba(239,159,39,0.55); }
+}
+@media (prefers-reduced-motion: reduce) { .status.open .dot { animation: none; opacity: 1; } }

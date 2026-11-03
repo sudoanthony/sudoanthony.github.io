@@ -12,6 +12,7 @@
   <a class="brand" href="index.html">~/sudoanthony</a>
   <div class="links">
     <a href="writeups.html">write-ups</a>
+    <a href="opensource.html">open source</a>
     <a href="vulns.html">vulns</a>
     <a href="concepts.html">concepts</a>
     <a href="tools.html">tools</a>
@@ -112,21 +113,22 @@
   }
 
   function render() {
-    // Left column: machine platforms (TryHackMe, HackTheBox, anything unknown).
-    // Right column: the practice/OWASP tracks (Mobile, Web).
+    // 2x2 category grid: machine platforms (TryHackMe, HackTheBox) fill the left column,
+    // practice tracks (Mobile, Web) the right column. Each category is a cell, and cells on
+    // the same row share a top edge so card tops line up across the two columns. Empty
+    // placeholder cells keep the grid slots aligned when one column has more categories.
     const isRight = p => { const c = platClass(p); return c === "mobile" || c === "web"; };
     const leftPlats  = present.filter(p => !isRight(p));
     const rightPlats = present.filter(isRight);
-    const colHtml = plats => plats.map(groupHtml).join("");
-    const left  = colHtml(leftPlats);
-    const right = colHtml(rightPlats);
-    const html = (left || right)
-      ? '<div class="cols">' +
-          '<div class="col col-left">'  + left  + '</div>' +
-          (right ? '<div class="col col-right">' + right + '</div>' : '') +
-        '</div>'
+    const cell = p => p
+      ? '<div class="pgroup">' + groupHtml(p) + '</div>'
+      : '<div class="pgroup empty-cell"></div>';
+    const rows = Math.max(leftPlats.length, rightPlats.length);
+    let cells = "";
+    for (let i = 0; i < rows; i++) cells += cell(leftPlats[i]) + cell(rightPlats[i]);
+    document.getElementById("groups").innerHTML = cells
+      ? '<div class="cols">' + cells + '</div>'
       : '<p class="empty">No write-ups yet.</p>';
-    document.getElementById("groups").innerHTML = html;
   }
 
   render();

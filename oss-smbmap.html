@@ -1,0 +1,127 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>smbmap: thread-based pool fix for Python 3.14 - Anthony</title>
+<meta name="description" content="Root cause and fix for smbmap's MaybeEncodingError crash on Python 3.14: an impacket SMBConnection with a local lambda could not be pickled across a process pool.">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<nav class="nav"><div class="wrap">
+  <a class="brand" href="index.html">~/sudoanthony</a>
+  <div class="links">
+    <a href="writeups.html">write-ups</a>
+    <a href="opensource.html">open source</a>
+    <a href="vulns.html">vulns</a>
+    <a href="concepts.html">concepts</a>
+    <a href="tools.html">tools</a>
+    <a href="https://github.com/sudoanthony">github</a>
+  </div>
+</div></nav>
+
+<main class="wrap" style="padding-top:40px; max-width:820px">
+  <h1>smbmap: thread-based pool fix for Python 3.14</h1>
+
+  <div class="meta">
+    <span class="repo" style="color:var(--accent)">ShawnDEvans/smbmap</span>
+    <span class="sep">/</span>
+    <a href="https://github.com/ShawnDEvans/smbmap/pull/124">PR #124</a>
+    <span class="sep">/</span>
+    <span class="status open"><span class="dot"></span>open</span>
+    <span class="sep">/</span>
+    <span>2026-11-03</span>
+  </div>
+
+  <div class="tldr">
+    <span class="lbl">tl;dr</span>
+    <p>While enumerating a box, <strong>smbmap</strong> crashed instead of listing shares. On Python 3.14
+    its process-based pool tries to pickle the worker result, an impacket <strong>SMBConnection</strong>
+    that carries a local lambda, and lambdas cannot be pickled. The one-line fix is to import
+    <strong>Pool</strong> from <strong>multiprocessing.dummy</strong>, a thread-backed pool with the same
+    API that never pickles its results.</p>
+  </div>
+
+  <h2><span class="num">01</span>The crash</h2>
+  <p>Running a plain share enumeration against a live host, smbmap detected SMB and then died during the
+  login phase:</p>
+<pre><code><span class="c"># every host, not just this one</span>
+<span class="p">$</span> smbmap -H <span class="o">10.129.227.181</span>
+[*] Detected 1 hosts serving SMB
+...
+multiprocessing.pool.MaybeEncodingError: Error sending result:
+'[&lt;impacket.smbconnection.SMBConnection object ...&gt;]'. Reason:
+'PicklingError("Can't pickle local object
+&lt;function Structure.__init__.&lt;locals&gt;.&lt;lambda&gt; ...&gt;")'</code></pre>
+  <p>After the error the worker processes were left spinning, so the run appeared to "authenticate
+  forever" until I killed it, which then dumped a dozen more tracebacks and a leaked-semaphore warning.
+  All of that is downstream of one root cause.</p>
+
+  <h2><span class="num">02</span>Root cause</h2>
+  <p>smbmap spreads its host connections across worker processes with a
+  <code>multiprocessing.pool.Pool</code>. When a worker finishes, the pool has to send its result back to
+  the parent process, and crossing that process boundary means <strong>pickling</strong> the object.</p>
+  <p>The object being returned is an impacket <code>SMBConnection</code>, which holds a
+  <strong>local lambda</strong> (<code>Structure.__init__.&lt;locals&gt;.&lt;lambda&gt;</code>). Local
+  lambdas have no importable name, so they cannot be pickled.</p>
+  <div class="note insight">
+    <span class="lbl">why now</span>
+    This was latent for years. Python 3.14 changed the default multiprocessing start method and made the
+    pickle path stricter, so a bug that older Python quietly tolerated became a hard crash. The same
+    change is breaking the same way across the wider Python ecosystem, not just in smbmap.
+  </div>
+
+  <h2><span class="num">03</span>The fix</h2>
+  <p>Do not cross a process boundary at all. <code>multiprocessing.dummy</code> exposes the exact same
+  <code>Pool</code> API backed by <strong>threads</strong>. Threads share memory, so results are passed by
+  reference and never pickled. One import changes it for every pool in the file:</p>
+<pre><code><span class="c"># smbmap/smbmap.py, line 21</span>
+<span class="c">- </span>from multiprocessing.pool import Pool
+<span class="c">+ </span>from multiprocessing.dummy import Pool</code></pre>
+  <div class="note insight">
+    <span class="lbl">why this over forcing fork</span>
+    Forcing the old <code>fork</code> start method also works, but it is Linux-only and fork is on its way
+    out. The thread-pool swap is cross-platform and future-proof, and smbmap's work is network I/O bound,
+    so the GIL has no meaningful cost. It also removes the orphaned workers and leaked semaphores.
+  </div>
+
+  <h2><span class="num">04</span>Proof</h2>
+  <p>Same command, same host, same version (1.10.8), only the import changed. Before, it crashed with the
+  pickling error. After, it authenticates, enumerates, and exits cleanly:</p>
+<pre><code><span class="p">$</span> smbmap -H <span class="o">10.129.227.181</span>
+[*] Detected 1 hosts serving SMB
+[*] Established 1 SMB connections(s) and 1 authenticated session(s)
+[!] Access denied on 10.129.227.181, no fun for you...
+[*] Closed 1 connections</code></pre>
+  <p>"Access denied" is the host refusing anonymous listing, which is the tool working correctly. No
+  traceback, no hanging workers, no leaked-semaphore warning.</p>
+
+  <h2><span class="num">05</span>The pull request</h2>
+  <p>I confirmed two existing issues (#120 and #123) were the same bug. #123 even had a report that the
+  fix "did not work", but the traceback there showed the user was still running an unpatched copy of the
+  file, a stale-install problem rather than a flaw in the fix. I opened
+  <a href="https://github.com/ShawnDEvans/smbmap/pull/124">PR #124</a> with the one-line change, a
+  root-cause writeup, and before/after proof, closing both issues.</p>
+
+  <h2><span class="num">06</span>Takeaways</h2>
+  <ul>
+    <li>Read the traceback to the bottom. "Can't pickle local object" names the exact object and the exact
+    reason; the fix is in the message.</li>
+    <li>A crash that appears on every target, not just one, is an environment problem, not a target
+    problem.</li>
+    <li>When you report or fix a bug, confirm the running copy is the one you edited. A stale install looks
+    identical to a broken fix.</li>
+  </ul>
+</main>
+
+<footer class="foot"><div class="wrap" style="display:flex;gap:18px;flex-wrap:wrap">
+  <a href="opensource.html">open source</a>
+  <a href="index.html">home</a>
+  <a href="https://github.com/sudoanthony">github</a>
+</div></footer>
+
+<script src="writeup-toc.js"></script>
+<script src="lightbox.js"></script>
+</body>
+</html>

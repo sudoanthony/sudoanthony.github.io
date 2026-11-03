@@ -1,0 +1,82 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Open source - Anthony</title>
+<meta name="description" content="Fixes and contributions I've made to open-source security tooling, each linked to the pull request.">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<nav class="nav"><div class="wrap">
+  <a class="brand" href="index.html">~/sudoanthony</a>
+  <div class="links">
+    <a href="writeups.html">write-ups</a>
+    <a href="opensource.html">open source</a>
+    <a href="vulns.html">vulns</a>
+    <a href="concepts.html">concepts</a>
+    <a href="tools.html">tools</a>
+    <a href="https://github.com/sudoanthony">github</a>
+  </div>
+</div></nav>
+
+<main class="wrap" style="padding-top:44px">
+  <h1>Open source</h1>
+  <p style="color:var(--text-3); max-width:600px">
+    Fixes and contributions I've made to open-source security tooling. Each entry links to the pull
+    request; some have a full write-up of the bug, the root cause, and the fix. The list grows as I
+    contribute more.
+  </p>
+
+  <div class="oss-legend">
+    <span class="status open"><span class="dot"></span>open</span>
+    <span class="status merged"><span class="dot"></span>merged</span>
+  </div>
+
+  <div id="list"></div>
+  <p class="empty" id="empty" style="display:none">Nothing here yet.</p>
+</main>
+
+<footer class="foot"><div class="wrap" style="display:flex;gap:18px;flex-wrap:wrap">
+  <a href="index.html">home</a>
+  <a href="writeups.html">write-ups</a>
+  <a href="https://github.com/sudoanthony">github</a>
+</div></footer>
+
+<script src="data.js"></script>
+<script>
+  var items = (typeof OSS !== "undefined" ? OSS : []).slice()
+    .sort(function (a, b) { return a.date < b.date ? 1 : -1; });
+
+  function esc(s) { return (s || "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;"); }
+
+  document.getElementById("empty").style.display = items.length ? "none" : "block";
+
+  document.getElementById("list").innerHTML = items.map(function (o) {
+    var nameHtml = o.deepdive
+      ? '<a class="name" href="' + o.deepdive + '">' + esc(o.title) + '</a>'
+      : '<span class="name">' + esc(o.title) + '</span>';
+    var repo = o.repo ? '<span class="repo">' + esc(o.repo) + '</span>' : (o.org ? '<span class="repo">' + esc(o.org) + '</span>' : '');
+    var ext = o.ext ? '<span class="id">' + esc(o.ext) + '</span>' : '';
+    var link = o.url ? '<a class="link" href="' + o.url + '">view pull request &rarr;</a>' : '';
+    var stCls = (o.status === "merged") ? "merged" : "open";
+    var stLabel = o.statusLabel || o.status || "open";
+    var st = '<span class="status ' + stCls + '"><span class="dot"></span>' + esc(stLabel) + '</span>';
+    var type = o.type ? '<span>' + esc(o.type) + '</span>' : '';
+    var date = o.date ? '<span>' + esc(o.date) + '</span>' : '';
+    var fixes = (o.fixes && o.fixes.length)
+      ? '<span class="fixes">fixes ' + o.fixes.map(function (f) {
+          return '<a href="' + f.url + '">' + esc(f.label) + '</a>';
+        }).join(", ") + '</span>'
+      : '';
+    return '<div class="oss" id="' + o.id + '">' +
+      '<div class="head">' + nameHtml + repo + ext + link + '</div>' +
+      '<div class="blurb">' + esc(o.blurb) + '</div>' +
+      '<div class="meta-row">' + st + type + date + fixes + '</div>' +
+    '</div>';
+  }).join("");
+</script>
+<script src="lightbox.js"></script>
+</body>
+</html>

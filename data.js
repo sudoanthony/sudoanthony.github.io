@@ -715,3 +715,34 @@ const VULNS = [
     ]
   }
 ];
+
+
+/* ---------- open-source contributions (rendered on opensource.html) ---------- */
+const OSS = [
+  {
+    id: "ipa-mobile-disclosure",
+    title: "Mobile application vulnerability",
+    org: "reported via IPA (ipa.go.jp)",
+    type: "disclosure",
+    status: "awaiting",
+    statusLabel: "awaiting review",
+    date: "2026-11-03",
+    blurb: "A vulnerability I discovered and reported through IPA's coordinated disclosure program in Japan. It is awaiting triage, so the affected product and the finding itself are held back until it is published. Once it is, I will write up the research: the static-analysis workflow with Ghidra, jadx, and apktool that led to it."
+  },
+  {
+    id: "smbmap-py314-threadpool",
+    title: "Thread-based pool fix for Python 3.14",
+    repo: "ShawnDEvans/smbmap",
+    type: "bug fix",
+    status: "open",
+    url: "https://github.com/ShawnDEvans/smbmap/pull/124",
+    deepdive: "oss-smbmap.html",
+    ext: "PR #124",
+    date: "2026-11-03",
+    fixes: [
+      { label: "#120", url: "https://github.com/ShawnDEvans/smbmap/issues/120" },
+      { label: "#123", url: "https://github.com/ShawnDEvans/smbmap/issues/123" }
+    ],
+    blurb: "smbmap crashed on Python 3.14 with a MaybeEncodingError: its process pool tried to pickle an impacket SMBConnection, which holds a local lambda and cannot be serialized. One-line fix: import Pool from multiprocessing.dummy so the pool is thread-backed and never pickles its results. Verified against a live SMB host."
+  }
+];
