@@ -127,7 +127,7 @@ const WRITEUPS = [
     tags:       ["command-injection", "exposed-credentials", "priv-esc"]
   },
   {
-    title:      "OWASP Top 10:2025",
+    title:      "OWASP Top 10 2025",
     subtitle:   "Juice Shop Web App Pentest",
     url:        "writeup-juiceshop.html",
     platform:   "Web",
@@ -137,7 +137,7 @@ const WRITEUPS = [
     category:   "Web",
     icon:       "images/icons/juice.png",
     date:       "2026-09-18",
-    summary:    "OWASP Juice Shop (Angular + Node/Express) worked end-to-end against the complete OWASP Top 10:2025 - all ten categories, from basket IDOR and SQLi/DOM XSS to an alg:none JWT forgery and exposed access logs. Each exploited by hand through Burp, root-caused, and written up as a severity-rated finding.",
+    summary:    "OWASP Juice Shop (Angular + Node/Express) worked end-to-end against the complete OWASP Top 10 2025 - all ten categories, from basket IDOR and SQLi/DOM XSS to an alg:none JWT forgery and exposed access logs. Each exploited by hand through Burp, root-caused, and written up as a severity-rated finding.",
     tags:       ["broken-access-control", "security-misconfiguration", "vulnerable-components", "sensitive-data-exposure", "sql-injection", "dom-xss", "insecure-design", "auth-failures", "broken-jwt", "improper-error-handling"]
   },
   {
@@ -192,7 +192,7 @@ const VULNS = [
     blurb: "The server acts on a client-supplied object reference (an ID in the URL, body, or storage) without checking the requester is authorized for it. Swap the ID and you read or change another user's data. SSRF folds into this category as of the 2025 Top 10. Fix is server-side authorization on every object access, keyed to the session, not the supplied ID.",
     deepdive: "",
     uses: [
-      { writeup: "OWASP Top 10:2025", url: "writeup-juiceshop.html", ctx: "/rest/basket/{id} returns any basket by ID with no ownership check - View Basket solved via the bid in session storage and replicated in Burp Repeater" }
+      { writeup: "OWASP Top 10 2025", url: "writeup-juiceshop.html", ctx: "/rest/basket/{id} returns any basket by ID with no ownership check - View Basket solved via the bid in session storage and replicated in Burp Repeater" }
     ]
   },
   {
@@ -204,7 +204,7 @@ const VULNS = [
     blurb: "Front-end JavaScript reads attacker-controlled input (URL param, search box) and writes it into the DOM without escaping - the payload never touches the server. In Angular it means calling bypassSecurityTrustHtml on untrusted input, switching off the framework's default auto-escaping. Fix is to never bypass the sanitizer and let the framework encode output.",
     deepdive: "",
     uses: [
-      { writeup: "OWASP Top 10:2025", url: "writeup-juiceshop.html", ctx: "search reads the q URL param (source) and passes it to sanitizer.bypassSecurityTrustHtml (sink); an iframe javascript: URI fires since <script> won't run via innerHTML" }
+      { writeup: "OWASP Top 10 2025", url: "writeup-juiceshop.html", ctx: "search reads the q URL param (source) and passes it to sanitizer.bypassSecurityTrustHtml (sink); an iframe javascript: URI fires since <script> won't run via innerHTML" }
     ]
   },
   {
@@ -216,7 +216,7 @@ const VULNS = [
     blurb: "The app fails to catch and normalize errors, returning raw exception objects, stack traces, or SQL messages to the client - free reconnaissance (file paths, frameworks, DB engine, internal structure). A new dedicated category in the 2025 Top 10; verbose errors previously lived under Security Misconfiguration. Fix is catch-all handling that logs details internally and returns a generic message.",
     deepdive: "",
     uses: [
-      { writeup: "OWASP Top 10:2025", url: "writeup-juiceshop.html", ctx: "a single quote in the Juice Shop login email returns an unhandled [object Object] error instead of a graceful message" }
+      { writeup: "OWASP Top 10 2025", url: "writeup-juiceshop.html", ctx: "a single quote in the Juice Shop login email returns an unhandled [object Object] error instead of a graceful message" }
     ]
   },
   {
@@ -313,7 +313,7 @@ const VULNS = [
     deepdive: "",
     uses: [
       { writeup: "OWASP Mobile Top 10 2024", url: "writeup-allsafe.html", ctx: "AllSafe login rawQuery bypassed with a tautology and full user dump; InsecureBankv2's exported provider read via UNION on sqlite_master" },
-      { writeup: "OWASP Top 10:2025", url: "writeup-juiceshop.html", ctx: "Juice Shop login bypassed with ' OR 1=1-- to authenticate as admin, and targeted specific users with email'-- ; input concatenated into the query instead of parameterized" }
+      { writeup: "OWASP Top 10 2025", url: "writeup-juiceshop.html", ctx: "Juice Shop login bypassed with ' OR 1=1-- to authenticate as admin, and targeted specific users with email'-- ; input concatenated into the query instead of parameterized" }
     ]
   },
   {
@@ -459,7 +459,7 @@ const VULNS = [
     blurb: "Insecure defaults, unnecessary features, or deprecated interfaces left enabled - each one is extra attack surface the app never needed to expose. Fix is to harden defaults, disable unused features fully (not just hide them from the UI), and enforce allow-lists server-side.",
     deepdive: "",
     uses: [
-      { writeup: "OWASP Top 10:2025", url: "writeup-juiceshop.html", ctx: "a deprecated XML B2B upload interface, pulled from the UI but still live on the backend - the File Complaint form accepts an .xml file and processes it" }
+      { writeup: "OWASP Top 10 2025", url: "writeup-juiceshop.html", ctx: "a deprecated XML B2B upload interface, pulled from the UI but still live on the backend - the File Complaint form accepts an .xml file and processes it" }
     ]
   },
   {
@@ -471,7 +471,7 @@ const VULNS = [
     blurb: "Shipping a third-party dependency at a version with a public CVE - the flaw isn't in your code, it's in something you installed and never updated. Fix is automated dependency scanning (npm audit, Dependabot, retire.js) in CI and a patching cadence.",
     deepdive: "",
     uses: [
-      { writeup: "OWASP Top 10:2025", url: "writeup-juiceshop.html", ctx: "sanitize-html 1.4.2 - a direct dependency frozen several major versions behind; triaged 19 npm-audit highs down with npm outdated to the biggest version gaps" }
+      { writeup: "OWASP Top 10 2025", url: "writeup-juiceshop.html", ctx: "sanitize-html 1.4.2 - a direct dependency frozen several major versions behind; triaged 19 npm-audit highs down with npm outdated to the biggest version gaps" }
     ]
   },
   {
@@ -483,7 +483,7 @@ const VULNS = [
     blurb: "Sensitive files or data reachable without access control - served straight off a browsable directory rather than gated behind an authenticated, authorization-checked route. Severity tracks what the data actually is: placeholder content is Medium, real material non-public info is High.",
     deepdive: "",
     uses: [
-      { writeup: "OWASP Top 10:2025", url: "writeup-juiceshop.html", ctx: "a confidential acquisitions.md served from the browsable /ftp directory to any unauthenticated user" },
+      { writeup: "OWASP Top 10 2025", url: "writeup-juiceshop.html", ctx: "a confidential acquisitions.md served from the browsable /ftp directory to any unauthenticated user" },
       { writeup: "Orion", url: "writeup-orion.html", ctx: "Craft dev mode leaks stack traces/paths, and the web-root .env + project.yaml expose the DB password and the admin username adam@orion.htb" }
     ]
   },
@@ -496,7 +496,7 @@ const VULNS = [
     blurb: "A security control placed where the attacker sits - validation enforced only in the browser, so intercepting the request past the client checks bypasses it. The design flaw is trusting the client; the fix is to enforce every check server-side.",
     deepdive: "",
     uses: [
-      { writeup: "OWASP Top 10:2025", url: "writeup-juiceshop.html", ctx: "registration accepts an empty email/password (and a mismatched passwordRepeat) once the client-side form checks are bypassed in Burp" }
+      { writeup: "OWASP Top 10 2025", url: "writeup-juiceshop.html", ctx: "registration accepts an empty email/password (and a mismatched passwordRepeat) once the client-side form checks are bypassed in Burp" }
     ]
   },
   {
@@ -508,7 +508,7 @@ const VULNS = [
     blurb: "Weak login, credential, or recovery handling: guessable passwords with no lockout, or a password reset gated behind an OSINT-able security question. Fix is a strong password policy, rate-limiting/lockout, MFA, and reset tokens over a verified channel instead of knowledge questions.",
     deepdive: "",
     uses: [
-      { writeup: "OWASP Top 10:2025", url: "writeup-juiceshop.html", ctx: "admin's weak password brute-forced with ffuf (no lockout); Jim's password reset via a security question answered from OSINT (a Star Trek reference in his reviews)" }
+      { writeup: "OWASP Top 10 2025", url: "writeup-juiceshop.html", ctx: "admin's weak password brute-forced with ffuf (no lockout); Jim's password reset via a security question answered from OSINT (a Star Trek reference in his reviews)" }
     ]
   },
   {
@@ -520,7 +520,7 @@ const VULNS = [
     blurb: "The server trusts the client-supplied alg header. Setting it to none tells the server the token is unsigned, so it skips signature verification and accepts any payload - full identity forgery. Fix is to pin the expected algorithm server-side and reject anything else; never honor alg:none.",
     deepdive: "",
     uses: [
-      { writeup: "OWASP Top 10:2025", url: "writeup-juiceshop.html", ctx: "forged an alg:none JWT with an empty signature, base64url-encoded by hand, impersonating the non-existent user jwtn3d@juice-sh.op" }
+      { writeup: "OWASP Top 10 2025", url: "writeup-juiceshop.html", ctx: "forged an alg:none JWT with an empty signature, base64url-encoded by hand, impersonating the non-existent user jwtn3d@juice-sh.op" }
     ]
   },
   {

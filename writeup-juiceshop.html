@@ -3,18 +3,18 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>OWASP Top 10:2025 - Juice Shop web app pentest</title>
-<meta name="description" content="A hands-on web application penetration testing methodology walked through the OWASP Top 10:2025 using the intentionally vulnerable OWASP Juice Shop: broken access control, injection (SQLi and XSS), mishandling of exceptional conditions, and more - worked examples with screenshots and a severity-rated finding for every vulnerability.">
+<title>OWASP Top 10 2025 - Juice Shop web app pentest</title>
+<meta name="description" content="A hands-on web application penetration testing methodology walked through the OWASP Top 10 2025 using the intentionally vulnerable OWASP Juice Shop: broken access control, injection (SQLi and XSS), mishandling of exceptional conditions, and more - worked examples with screenshots and a severity-rated finding for every vulnerability.">
 <link rel="canonical" href="https://sudoanthony.github.io/writeup-juiceshop.html">
 <meta property="og:type" content="article">
 <meta property="og:site_name" content="~/sudoanthony">
-<meta property="og:title" content="OWASP Top 10:2025 - Web App Pentest Methodology">
-<meta property="og:description" content="A hands-on pentest of the complete OWASP Top 10:2025 against OWASP Juice Shop - all ten categories exploited by hand in Burp and written up as root-caused, severity-rated findings with remediation.">
+<meta property="og:title" content="OWASP Top 10 2025 - Web App Pentest Methodology">
+<meta property="og:description" content="A hands-on pentest of the complete OWASP Top 10 2025 against OWASP Juice Shop - all ten categories exploited by hand in Burp and written up as root-caused, severity-rated findings with remediation.">
 <meta property="og:url" content="https://sudoanthony.github.io/writeup-juiceshop.html">
 <meta property="og:image" content="https://sudoanthony.github.io/images/juice-og.png">
 <meta name="twitter:card" content="summary_large_image">
-<meta name="twitter:title" content="OWASP Top 10:2025 - Web App Pentest Methodology">
-<meta name="twitter:description" content="A hands-on pentest of the complete OWASP Top 10:2025 against OWASP Juice Shop - all ten categories, exploited by hand and written up as severity-rated findings.">
+<meta name="twitter:title" content="OWASP Top 10 2025 - Web App Pentest Methodology">
+<meta name="twitter:description" content="A hands-on pentest of the complete OWASP Top 10 2025 against OWASP Juice Shop - all ten categories, exploited by hand and written up as severity-rated findings.">
 <meta name="twitter:image" content="https://sudoanthony.github.io/images/juice-og.png">
 <link rel="stylesheet" href="style.css">
 <style>
@@ -72,10 +72,10 @@
 
   <div class="wu-head">
     <img class="wu-icon" src="images/icons/juice.png" alt="" onerror="this.style.display='none'">
-    <h1>OWASP Top 10:2025 - OWASP Juice Shop Web App Pentest</h1>
+    <h1>OWASP Top 10 2025 - OWASP Juice Shop Web App Pentest</h1>
   </div>
   <p>A hands-on web application penetration testing walkthrough, mapped to the current
-  <strong>OWASP Top 10:2025</strong> and demonstrated through the intentionally vulnerable
+  <strong>OWASP Top 10 2025</strong> and demonstrated through the intentionally vulnerable
   <strong>OWASP Juice Shop</strong> - each challenge exploited by hand, explained down to its root
   cause, and written up as a severity-rated finding.</p>
 
@@ -108,7 +108,7 @@
   against a live web target. The goal is that it can be followed, or used as a reference, to understand
   <em>why</em> each item sits in the ten most critical web risks, how it is exploited, and how it would be
   remediated.</p>
-  <p>This write-up maps to the <strong>OWASP Top 10:2025</strong>, the current edition. The 2025 list
+  <p>This write-up maps to the <strong>OWASP Top 10 2025</strong>, the current edition. The 2025 list
   reordered several risks and added new categories (Software Supply Chain Failures, and Mishandling of
   Exceptional Conditions). Here is the current list:</p>
   <ul>
@@ -130,7 +130,7 @@
 
   <!-- ==================== Methodology ==================== -->
   <h2>Methodology</h2>
-  <p>Each section maps a Juice Shop challenge to its OWASP Top 10:2025 category. For every one we identify
+  <p>Each section maps a Juice Shop challenge to its OWASP Top 10 2025 category. For every one we identify
   the vulnerability, exploit it by hand through the browser and Burp, explain the root cause (down to the
   vulnerable code where Juice Shop exposes it), and record a severity-rated finding:</p>
   <ul>
@@ -155,7 +155,7 @@
     <li>Wappalyzer (fingerprint the front-end framework and back end)</li>
     <li>OWASP Juice Shop (the intentionally vulnerable target, run locally on Node.js)</li>
     <li>Kali Linux (host environment)</li>
-    <li><a href="https://top10.owasp.org/2025/">OWASP Top 10:2025</a> (the standard findings are mapped to)</li>
+    <li><a href="https://top10.owasp.org/2025/">OWASP Top 10 2025</a> (the standard findings are mapped to)</li>
   </ul>
 
   <hr style="border:none; border-top:3px solid var(--gold); margin:46px 0 40px;">
@@ -892,7 +892,7 @@ http://localhost:3000/8b63ecd0-... =&gt; 200 (Length: 9608). Please exclude the 
 
   <hr style="border:none; border-top:3px solid var(--gold); margin:46px 0 24px;">
   <h2 id="conclusion">Conclusion</h2>
-  <p>That's the full <strong>OWASP Top 10:2025</strong> - every category demonstrated end to end against
+  <p>That's the full <strong>OWASP Top 10 2025</strong> - every category demonstrated end to end against
   Juice Shop, each exploited by hand, explained down to its root cause, and written up as a severity-rated
   finding. The point was never just to collect achievements; it was to build a repeatable methodology and a
   report format I can reuse on a real client engagement.</p>
