@@ -22,11 +22,19 @@
 
 <main class="wrap" style="padding-top:44px">
   <h1>Write-ups</h1>
-  <p style="color:var(--text-3)">Here you can find boxes I have rooted and write-ups with detailed
-  step-by-step instructions and screenshots. Feel free to hover over a box to read a summary of the
-  write-up, then click it to be brought to the full write-up page.</p>
-  <p style="color:var(--text-3)">Mobile write-ups can also be read and followed along with to learn how
-  to find and exploit the OWASP 2024 Top 10 cybersecurity vulnerabilities in targets.</p>
+  <p style="color:var(--text-3)">Here you can find my write-ups on TryHackMe, HackTheBox, Web, Mobile, and
+  Open Source machines and projects. Feel free to hover over a box to read a brief summary of the write-up,
+  then click it to be brought to the full write-up page.</p>
+  <p style="color:var(--text-3)">TryHackMe and HackTheBox write-ups include screenshots, tool usages, and
+  remediations for vulnerabilities found on the box. They cover my methodology and how I approached the
+  box.</p>
+  <p style="color:var(--text-3)">Mobile currently covers the OWASP Mobile Top 10 2024. I use Android Studio
+  and a variety of other tools to demonstrate all of the Top 10 flaws affecting our mobile devices today. In
+  the future, I plan to add any published CVEs and their write-ups covering my methodology.</p>
+  <p style="color:var(--text-3)">Web currently covers the OWASP Top 10 2025 for Web applications through a
+  containerized OWASP Juice Shop.</p>
+  <p style="color:var(--text-3)">Finally, Open Source covers all of my contributions from GitHub and more
+  that don't fit into the other categories.</p>
   <p style="color:var(--text-3)">Techniques cross-link into my <a href="vulns.html">vulnerability index</a>.</p>
 
   <div id="groups"></div>
@@ -49,7 +57,7 @@
 
 <script src="data.js"></script>
 <script>
-  const platClass = p => /hack.?the.?box|htb/i.test(p || "") ? "htb" : /mobile/i.test(p || "") ? "mobile" : /web/i.test(p || "") ? "web" : "thm";
+  const platClass = p => /hack.?the.?box|htb/i.test(p || "") ? "htb" : /mobile/i.test(p || "") ? "mobile" : /open.?source|oss/i.test(p || "") ? "oss" : /web/i.test(p || "") ? "web" : "thm";
   const diffClass = d => ({"very easy":"very-easy",easy:"easy",medium:"medium",hard:"hard",insane:"insane",practice:"practice"}[(d||"").toLowerCase()] || "medium");
   const esc = s => (s||"").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");
 
@@ -65,8 +73,17 @@
   }
 
   const sorted = [...WRITEUPS].sort((a,b) => (a.date < b.date ? 1 : -1));
-  const order = ["TryHackMe", "HackTheBox", "Mobile", "Web"];
-  const present = order.filter(p => sorted.some(w => w.platform === p))
+  // Open-source contributions that have a write-up page, shown as their own category
+  const ossCards = (typeof OSS !== "undefined" ? OSS : [])
+    .filter(o => o.deepdive)
+    .sort((a,b) => (a.date < b.date ? 1 : -1))
+    .map(o => {
+      const short = (o.subtitle && o.subtitle.indexOf("/") >= 0) ? o.subtitle.split("/").pop().trim() : o.title;
+      return { title: o.title, cardTitle: short, url: o.deepdive, platform: "Open Source",
+               summary: o.blurb, _oss: true, status: o.statusLabel || o.status || "", type: o.type || "" };
+    });
+  const order = ["TryHackMe", "HackTheBox", "Mobile", "Web", "Open Source"];
+  const present = order.filter(p => (p === "Open Source" ? ossCards.length : sorted.some(w => w.platform === p)))
     .concat([...new Set(sorted.map(w => w.platform))].filter(p => !order.includes(p)));
 
   function iconHtml(w) {
@@ -79,7 +96,28 @@
       : '<div class="icon">' + mono + '</div>';
   }
 
+  function ossGlyph() {
+    return '<svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="#cbd5e1" ' +
+      'stroke-width="2" stroke-linecap="round" stroke-linejoin="round">' +
+      '<circle cx="18" cy="18" r="3"></circle><circle cx="6" cy="6" r="3"></circle>' +
+      '<path d="M6 21V9a9 9 0 0 0 9 9"></path></svg>';
+  }
+
   function boxCard(w) {
+    if (w._oss) {
+      const osub = [w.status ? '<span class="d-oss">' + esc(w.status) + '</span>' : '',
+                    w.type ? esc(w.type) : ''].filter(Boolean).join(' &middot; ');
+      return '<a class="bx oss diff-oss" href="' + w.url + '">' +
+        '<div class="face"><div class="icon">' + ossGlyph() + '</div>' +
+          '<div class="nm">' + esc(w.cardTitle || w.title) + '</div>' +
+          '<div class="sub">' + osub + '</div>' +
+        '</div>' +
+        '<div class="revwrap"><div class="rev">' +
+          '<div class="rt">' + esc(w.title) + '</div>' +
+          '<div class="rs">' + esc(w.summary) + '</div>' +
+        '</div></div>' +
+      '</a>';
+    }
     const dc = diffClass(w.difficulty);
     const osPart = w.os ? osIcon(w.os) + esc(w.os) : "";
     const diffPart = w.difficulty ? '<span class="d-' + dc + '">' + esc(w.difficulty) + '</span>' : '';
@@ -98,7 +136,7 @@
   }
 
   function groupHtml(p) {
-    const items = sorted.filter(w => w.platform === p);
+    const items = (p === "Open Source") ? ossCards : sorted.filter(w => w.platform === p);
     if (!items.length) return "";
     const pc = platClass(p);
     const logo = 'images/' + pc + '-logo.' + (pc === 'web' ? 'svg' : 'png');
@@ -107,27 +145,22 @@
           'onerror="this.style.display=\'none\';this.nextElementSibling.style.display=\'inline-flex\'">' +
         '<span class="plfallback" style="display:none;align-items:center;gap:10px">' +
           '<span class="dot ' + pc + '"></span><span class="name">' + esc(p) + '</span></span>' +
-        '<span class="count">' + items.length + (items.length===1?' write-up':' write-ups') + '</span>' +
+        '<span class="count">' + items.length + (p === "Open Source" ? (items.length===1?' contribution':' contributions') : (items.length===1?' write-up':' write-ups')) + '</span>' +
       '</div>' +
       '<div class="grid">' + items.map(boxCard).join("") + '</div>';
   }
 
   function render() {
-    // 2x2 category grid: machine platforms (TryHackMe, HackTheBox) fill the left column,
-    // practice tracks (Mobile, Web) the right column. Each category is a cell, and cells on
-    // the same row share a top edge so card tops line up across the two columns. Empty
-    // placeholder cells keep the grid slots aligned when one column has more categories.
-    const isRight = p => { const c = platClass(p); return c === "mobile" || c === "web"; };
-    const leftPlats  = present.filter(p => !isRight(p));
-    const rightPlats = present.filter(isRight);
-    const cell = p => p
-      ? '<div class="pgroup">' + groupHtml(p) + '</div>'
-      : '<div class="pgroup empty-cell"></div>';
-    const rows = Math.max(leftPlats.length, rightPlats.length);
-    let cells = "";
-    for (let i = 0; i < rows; i++) cells += cell(leftPlats[i]) + cell(rightPlats[i]);
-    document.getElementById("groups").innerHTML = cells
-      ? '<div class="cols">' + cells + '</div>'
+    // Two independent columns: machines (TryHackMe, HackTheBox) on the left, practice tracks
+    // and Open Source on the right. Headers are pinned to a fixed height so the first card in
+    // each column lines up; the right column then flows Mobile -> Web -> Open Source.
+    const isRight = p => { const c = platClass(p); return c === "mobile" || c === "web" || c === "oss"; };
+    const colHtml = plats => plats.map(p => '<div class="pgroup">' + groupHtml(p) + '</div>').join("");
+    const left  = colHtml(present.filter(p => !isRight(p)));
+    const right = colHtml(present.filter(isRight));
+    document.getElementById("groups").innerHTML = (left || right)
+      ? '<div class="cols"><div class="col col-left">' + left + '</div>' +
+        (right ? '<div class="col col-right">' + right + '</div>' : '') + '</div>'
       : '<p class="empty">No write-ups yet.</p>';
   }
 

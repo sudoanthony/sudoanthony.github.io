@@ -201,18 +201,21 @@ figcaption { color: var(--text-4); font-size: 13px; margin-top: 7px; font-family
 .btn.primary:hover { background: rgba(136,192,208,0.1); }
 
 .section-label { font-family: var(--mono); font-size: 12px; text-transform: uppercase; letter-spacing: 1.5px; color: var(--text-4); margin: 0 0 16px; }
-/* 2x2 category grid: machines (THM/HTB) in the left column, practice tracks (Mobile/Web)
-   in the right column. Each category is a cell; cells on the same row share a top edge, and a
-   fixed header height makes every card top line up across both columns. */
-.cols { display: grid; grid-template-columns: minmax(0,1fr) 272px; gap: 34px 40px; align-items: start; }
+/* Two columns: machines (THM/HTB) left, practice tracks + Open Source right. Each group is a
+   .pgroup that stacks in its column; a fixed header height lines up the first card in each
+   column, and the right column flows Mobile -> Web -> Open Source. */
+.cols { display: flex; gap: 40px; align-items: flex-start; }
+.col { min-width: 0; display: flex; flex-direction: column; }
+.col-left { flex: 1 1 auto; }
+.col-right { flex: 0 0 272px; }
 .pgroup { min-width: 0; }
-.pgroup .platform-head { margin-top: 0; min-height: 42px; }
+.pgroup .platform-head { min-height: 42px; }
+.col .pgroup:first-child .platform-head { margin-top: 0; }
 .pgroup .grid { margin-bottom: 0; }
 @media (max-width: 920px) {
-  .cols { grid-template-columns: 1fr; gap: 0; }
-  .pgroup .platform-head { margin-top: 38px; }
-  .pgroup:first-child .platform-head { margin-top: 0; }
-  .pgroup.empty-cell { display: none; }
+  .cols { flex-direction: column; gap: 0; }
+  .col-right { flex: 1 1 auto; width: 100%; }
+  .col-right .pgroup:first-child .platform-head { margin-top: 38px; }
 }
 
 .platform-head { display: flex; align-items: center; gap: 10px; margin: 38px 0 16px; }
@@ -586,3 +589,12 @@ img.zoomable { cursor: zoom-in; }
   50%      { opacity: 1;  box-shadow: 0 0 9px 2px rgba(239,159,39,0.55); }
 }
 @media (prefers-reduced-motion: reduce) { .status.open .dot { animation: none; opacity: 1; } }
+
+
+/* writeups.html: Open Source category (grey/white, shares the Mobile/Web column) */
+.platform-head .dot.oss { background: #cbd5e1; }
+.bx.oss .face { border-top: 3px solid #cbd5e1; }
+.bx.diff-oss { --diff: #cbd5e1; }
+.bx.oss .face::after { height: 72px; }
+.bx .sub .d-oss { color: #cbd5e1; }
+.badge.oss { background: rgba(203,213,225,0.14); color: #dbe2ea; }
