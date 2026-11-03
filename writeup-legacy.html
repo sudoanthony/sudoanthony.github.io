@@ -181,7 +181,7 @@ session setup failed: NT_STATUS_INVALID_PARAMETER</code></pre>
 |     IDs:  CVE:CVE-2008-4250
 |           ...allows remote attackers to execute arbitrary code via a crafted RPC
 |           request that triggers the overflow during path canonicalization.</code></pre>
-  <figure><img src="images/Legacy/shot-20261103-081206.png" alt="nmap smb-vuln scripts reporting MS17-010 and MS08-067 as VULNERABLE"><figcaption>nmap's vuln scripts light up: both <strong>MS17-010</strong> and <strong>MS08-067 (CVE-2008-4250)</strong> come back <strong>VULNERABLE</strong>. On a host this old, that is exactly what we expect.</figcaption></figure>
+  <figure><img src="images/Legacy/legacy01.png" alt="nmap smb-vuln scripts reporting MS17-010 and MS08-067 as VULNERABLE"><figcaption>nmap's vuln scripts light up: both <strong>MS17-010</strong> and <strong>MS08-067 (CVE-2008-4250)</strong> come back <strong>VULNERABLE</strong>. On a host this old, that is exactly what we expect.</figcaption></figure>
   <p>Okay, now we're getting somewhere. The box is vulnerable to a couple of CVEs. For our use case,
   <strong>CVE-2008-4250 (MS08-067)</strong> is the eye-catching one thanks to the clean path to RCE.</p>
 
@@ -217,9 +217,9 @@ Microsoft Windows Server 2000/2003 - Code Execution (MS08-067)               | w
   (the target) and <code>LHOST</code> (us), and check the payload, which is a reverse TCP shell. Then we run
   it.</p>
 
-  <figure><img src="images/Legacy/shot-20261103-081228.png" alt="msf search ms08-067 showing the ms08_067_netapi module and target list"><figcaption>Searching in msfconsole surfaces <code>exploit/windows/smb/ms08_067_netapi</code> (rank "great"), with targets from Windows 2000 up through XP SP3. We take <strong>target 1, Automatic Targeting</strong>.</figcaption></figure>
-  <figure><img src="images/Legacy/shot-20261103-081240.png" alt="show options listing RHOSTS, RPORT and the reverse_tcp payload"><figcaption><code>show options</code>: we point <code>RHOSTS</code> at the target and set <code>LHOST</code> to us, keeping the default <code>windows/meterpreter/reverse_tcp</code> payload.</figcaption></figure>
-  <figure><img src="images/Legacy/shot-20261103-081248.png" alt="the module fingerprinting Windows XP SP3, triggering the overflow, and opening a meterpreter session"><figcaption>On <code>run</code> the module fingerprints the box as <strong>Windows XP SP3 English</strong>, triggers the overflow, and opens <strong>Meterpreter session 1</strong>. A quick <code>shell</code> drops us into a Windows XP prompt.</figcaption></figure>
+  <figure><img src="images/Legacy/legacy02.png" alt="msf search ms08-067 showing the ms08_067_netapi module and target list"><figcaption>Searching in msfconsole surfaces <code>exploit/windows/smb/ms08_067_netapi</code> (rank "great"), with targets from Windows 2000 up through XP SP3. We take <strong>target 1, Automatic Targeting</strong>.</figcaption></figure>
+  <figure><img src="images/Legacy/legacy03.png" alt="show options listing RHOSTS, RPORT and the reverse_tcp payload"><figcaption><code>show options</code>: we point <code>RHOSTS</code> at the target and set <code>LHOST</code> to us, keeping the default <code>windows/meterpreter/reverse_tcp</code> payload.</figcaption></figure>
+  <figure><img src="images/Legacy/legacy04.png" alt="the module fingerprinting Windows XP SP3, triggering the overflow, and opening a meterpreter session"><figcaption>On <code>run</code> the module fingerprints the box as <strong>Windows XP SP3 English</strong>, triggers the overflow, and opens <strong>Meterpreter session 1</strong>. A quick <code>shell</code> drops us into a Windows XP prompt.</figcaption></figure>
 
   <p>And we got a meterpreter session!</p>
 
@@ -233,7 +233,7 @@ Microsoft Windows Server 2000/2003 - Code Execution (MS08-067)               | w
 
   <p>A quick check of who we are:</p>
 
-  <figure><img src="images/Legacy/shot-20261103-081141.png" alt="meterpreter getuid returning NT AUTHORITY SYSTEM"><figcaption><code>getuid</code> confirms it: <strong>NT AUTHORITY\SYSTEM</strong>. The foothold and the highest privilege on the box are the same step.</figcaption></figure>
+  <figure><img src="images/Legacy/legacy05.png" alt="meterpreter getuid returning NT AUTHORITY SYSTEM"><figcaption><code>getuid</code> confirms it: <strong>NT AUTHORITY\SYSTEM</strong>. The foothold and the highest privilege on the box are the same step.</figcaption></figure>
 
   <p>We're already <code>NT AUTHORITY\SYSTEM</code>, the highest-privilege account on Windows. Here is why that
   happens with no extra effort: MS08-067 is a flaw in the Windows <strong>Server service</strong>, and that
@@ -246,8 +246,8 @@ Microsoft Windows Server 2000/2003 - Code Execution (MS08-067)               | w
   <pre><code><span class="p">C:\&gt;</span> type "C:\Documents and Settings\john\Desktop\user.txt"       <span class="c"># [flag omitted]</span>
 <span class="p">C:\&gt;</span> type "C:\Documents and Settings\Administrator\Desktop\root.txt" <span class="c"># [flag omitted]</span></code></pre>
 
-  <figure><img src="images/Legacy/shot-20261103-081121.png" alt="meterpreter listing Documents and Settings showing Administrator and john profiles"><figcaption>Under <code>C:\Documents and Settings</code> sit the <strong>Administrator</strong> and <strong>john</strong> profiles, the XP-era home of our two flags.</figcaption></figure>
-  <figure><img src="images/Legacy/legacy-userflag-redacted.png" alt="reading user.txt from john's Desktop with the flag value blacked out"><figcaption>Reading <code>user.txt</code> off john's Desktop (value redacted). <code>root.txt</code> comes off the Administrator Desktop the same way. Box owned.</figcaption></figure>
+  <figure><img src="images/Legacy/legacy06.png" alt="meterpreter listing Documents and Settings showing Administrator and john profiles"><figcaption>Under <code>C:\Documents and Settings</code> sit the <strong>Administrator</strong> and <strong>john</strong> profiles, the XP-era home of our two flags.</figcaption></figure>
+  <figure><img src="images/Legacy/legacy07.png" alt="reading user.txt from john's Desktop with the flag value blacked out"><figcaption>Reading <code>user.txt</code> off john's Desktop (value redacted). <code>root.txt</code> comes off the Administrator Desktop the same way. Box owned.</figcaption></figure>
 
   <p>Both flags in hand. Box owned.</p>
 

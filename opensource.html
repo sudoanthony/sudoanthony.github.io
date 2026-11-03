@@ -56,11 +56,12 @@
   document.getElementById("empty").style.display = items.length ? "none" : "block";
 
   document.getElementById("list").innerHTML = items.map(function (o) {
-    var nameHtml = o.deepdive
-      ? '<a class="name" href="' + o.deepdive + '">' + esc(o.title) + '</a>'
-      : '<span class="name">' + esc(o.title) + '</span>';
+    var nameHtml = '<span class="name">' + esc(o.title) + '</span>';
     var sub = o.subtitle ? '<div class="subtitle">' + esc(o.subtitle) + '</div>' : '';
-    var link = o.url ? '<a class="link" href="' + o.url + '">view pull request &rarr;</a>' : '';
+    var links = '';
+    if (o.url) links += '<a class="link" href="' + o.url + '">view pull request &rarr;</a>';
+    if (o.deepdive) links += '<a class="link" href="' + o.deepdive + '">view the writeup &rarr;</a>';
+    var linksBlock = links ? '<div class="links-col">' + links + '</div>' : '';
     var stCls = (o.status === "merged") ? "merged" : "open";
     var stLabel = o.statusLabel || o.status || "open";
     var st = '<span class="status ' + stCls + '"><span class="dot"></span>' + esc(stLabel) + '</span>';
@@ -73,7 +74,7 @@
       : '';
     return '<div class="oss" id="' + o.id + '">' +
       '<div class="head">' +
-        '<div class="titles">' + nameHtml + sub + '</div>' + link +
+        '<div class="titles">' + nameHtml + sub + '</div>' + linksBlock +
       '</div>' +
       '<div class="blurb">' + esc(o.blurb) + '</div>' +
       '<div class="meta-row">' + st + type + date + fixes + '</div>' +

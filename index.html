@@ -80,6 +80,14 @@
     <button class="btn" id="randomBtn">surprise me</button>
   </div>
 
+  <!-- LATEST OPEN SOURCE - rendered automatically from the newest entry in OSS (data.js) -->
+  <p class="section-label" style="margin-top:44px">latest open source</p>
+  <div id="latestOss"></div>
+
+  <div class="btn-row">
+    <a class="btn primary" href="opensource.html">all open source →</a>
+  </div>
+
   <!-- OPTIONAL STAT COUNTERS - switch on once the numbers flatter you (~8+ writeups).
        Uncomment the <div id="stats"> line and the stats code near the bottom of this file.
   <p class="section-label" style="margin-top:44px">by the numbers</p>
@@ -133,6 +141,28 @@
     const pick = WRITEUPS[Math.floor(Math.random() * WRITEUPS.length)];
     window.location.href = pick.url;
   });
+
+  // latest open source contribution card (same ordering as opensource.html)
+  (function () {
+    if (typeof OSS === 'undefined' || !OSS.length) return;
+    const esc = s => (s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    const o = [...OSS].sort((a, b) => (a.date < b.date ? 1 : -1))[0];
+    const href = o.deepdive || o.url || 'opensource.html';
+    const stCls = o.status === 'merged' ? 'merged' : 'open';
+    const stLabel = o.statusLabel || o.status || 'open';
+    const blurb = (o.blurb && o.blurb.length > 165) ? o.blurb.slice(0, 162) + '...' : (o.blurb || '');
+    document.getElementById('latestOss').innerHTML =
+      '<a class="card" href="' + href + '">' +
+        '<div class="card-head"><div class="title">' + esc(o.title) + '</div></div>' +
+        (o.subtitle ? '<div style="font-family:var(--mono);font-size:13px;color:var(--accent);margin:-2px 0 10px">' + esc(o.subtitle) + '</div>' : '') +
+        '<div class="desc">' + esc(blurb) + '</div>' +
+        '<div class="row">' +
+          '<span class="status ' + stCls + '"><span class="dot"></span>' + esc(stLabel) + '</span>' +
+          (o.type ? '<span style="font-family:var(--mono);font-size:11.5px;color:var(--text-4)">' + esc(o.type) + '</span>' : '') +
+          '<span style="font-family:var(--mono);font-size:11.5px;color:var(--text-4);margin-left:auto">' + o.date + '</span>' +
+        '</div>' +
+      '</a>';
+  })();
 
   /* --- OPTIONAL STATS (see comment above to enable) ---
   const nWrite = WRITEUPS.length;

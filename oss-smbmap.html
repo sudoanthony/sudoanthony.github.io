@@ -25,7 +25,7 @@
   <h1>smbmap: thread-based pool fix for Python 3.14</h1>
 
   <div class="meta">
-    <span class="repo" style="color:var(--accent)">ShawnDEvans/smbmap</span>
+    <span style="color:var(--accent)">ShawnDEvans/smbmap</span>
     <span class="sep">/</span>
     <a href="https://github.com/ShawnDEvans/smbmap/pull/124">PR #124</a>
     <span class="sep">/</span>
@@ -36,57 +36,106 @@
 
   <div class="tldr">
     <span class="lbl">tl;dr</span>
-    <p>While enumerating a box, <strong>smbmap</strong> crashed instead of listing shares. On Python 3.14
-    its process-based pool tries to pickle the worker result, an impacket <strong>SMBConnection</strong>
-    that carries a local lambda, and lambdas cannot be pickled. The one-line fix is to import
-    <strong>Pool</strong> from <strong>multiprocessing.dummy</strong>, a thread-backed pool with the same
-    API that never pickles its results.</p>
+    <p>While enumerating a box, <strong>smbmap</strong> crashed instead of listing shares. On Python 3.14 its
+    process-based pool tries to pickle the worker result, an impacket <strong>SMBConnection</strong> that
+    carries a local lambda, and lambdas cannot be pickled. The one-line fix is to import <strong>Pool</strong>
+    from <strong>multiprocessing.dummy</strong>, a thread-backed pool with the same API that never pickles its
+    results.</p>
   </div>
 
   <h2><span class="num">01</span>The crash</h2>
-  <p>Running a plain share enumeration against a live host, smbmap detected SMB and then died during the
-  login phase:</p>
-<pre><code><span class="c"># every host, not just this one</span>
-<span class="p">$</span> smbmap -H <span class="o">10.129.227.181</span>
+  <p>Running a plain share enumeration against a live host (<a href="writeup-legacy.html">Legacy</a> to be
+  exact), smbmap detected SMB and then died during the login phase:</p>
+<pre><code><span class="p">$</span> smbmap -H <span class="o">10.129.227.181</span>
 [*] Detected 1 hosts serving SMB
 ...
 multiprocessing.pool.MaybeEncodingError: Error sending result:
 '[&lt;impacket.smbconnection.SMBConnection object ...&gt;]'. Reason:
 'PicklingError("Can't pickle local object
 &lt;function Structure.__init__.&lt;locals&gt;.&lt;lambda&gt; ...&gt;")'</code></pre>
-  <figure><img src="images/OpenSource/smbmap/shot-20261103-054732.png" alt="smbmap crashing with multiprocessing.pool.MaybeEncodingError and a PicklingError about a local lambda"><figcaption>The crash: smbmap detects SMB, then dies with <code>MaybeEncodingError</code>. The cause is a <code>PicklingError</code> on <code>Structure.__init__.&lt;locals&gt;.&lt;lambda&gt;</code> inside the impacket <code>SMBConnection</code>.</figcaption></figure>
-  <p>After the error the worker processes were left spinning, so the run appeared to "authenticate
-  forever" until I killed it, which then dumped a dozen more tracebacks and a leaked-semaphore warning.
-  All of that is downstream of one root cause.</p>
+  <figure><img src="images/OpenSource/smbmap/smbmap01.png" alt="smbmap crashing with multiprocessing.pool.MaybeEncodingError and a PicklingError about a local lambda"><figcaption>The crash: smbmap detects SMB, then dies with <code>MaybeEncodingError</code>. The cause is a <code>PicklingError</code> on <code>Structure.__init__.&lt;locals&gt;.&lt;lambda&gt;</code> inside the impacket <code>SMBConnection</code>.</figcaption></figure>
+  <p>After the error the worker processes were left spinning, so the run appeared to "authenticate forever"
+  until I killed it, which then dumped a dozen more tracebacks and a leaked-semaphore warning. All of that is
+  downstream of one root cause.</p>
+
+  <h3>How I found it</h3>
+  <p>I was in the middle of enumerating Legacy, reaching for smbmap the way I always do for a quick look at a
+  host's shares. Instead of the usual output it printed its banner, said it detected SMB, and then just sat on
+  <code>Authenticating...</code> forever. My first instinct was that the box was slow or the null session was
+  hanging, so I waited. Nothing. When I finally hit <code>Ctrl+C</code> to kill it, the terminal threw up a
+  wall of tracebacks, a dozen worker processes dying at once, and a leaked-semaphore warning at the bottom. I
+  tried a lot of my other SMB enumeration tools and they seemed to work fine, and I did not remember this one
+  ever doing this before.</p>
+  <p>I assumed I had messed up an install or it was out of date. I reinstalled smbmap and ran the command
+  again, but it still failed. Only when I looked at the smbmap GitHub itself did I see other people had two
+  similar issues, one from almost a year ago and one from a month ago.</p>
+  <p>Looking at what the program throws up when I <code>Ctrl+C</code> out of the stalling "Authenticating..."
+  step, I saw <code>multiprocessing.pool.MaybeEncodingError</code>, and its reason, a <code>PicklingError</code>
+  that "can't pickle local object ... <code>&lt;lambda&gt;</code>" inside an impacket <code>SMBConnection</code>.</p>
+  <p>So while I do not have an intricate understanding of smbmap's internals, two details told me this was not
+  my setup. First, the error named the exact object and the exact reason, it was not a vague network timeout.
+  Second, it happened on <em>every</em> host I pointed it at, not just Legacy. From there it was just reading
+  the traceback down to the line it blamed (<code>smbmap.py</code> line 1540, the pool's <code>.map</code>
+  call), opening the file, and finding the process pool trying to ship a connection object back across a
+  process boundary. That is the bug.</p>
+  <p>I double-checked my reasoning with Claude (Opus 4.8), and it confirmed what I thought was going on.</p>
+
+  <h3>What is Pickle / Pickling?</h3>
+  <p>If you are newer to Python this part of the error can look like gibberish (just as it did to me). So I
+  will let Claude explain it, the way it did for me when I asked:</p>
+  <div class="note">
+    <span class="lbl">Claude explains</span>
+    <strong>Pickling</strong> is Python's built-in way of <strong>serializing</strong> an object: taking a live
+    object in memory (a list, a dictionary, a custom class instance) and turning it into a flat stream of bytes
+    that can be written to disk or sent somewhere else. <strong>Unpickling</strong> is the reverse, taking those
+    bytes and rebuilding the original object. Think of it like flat-packing furniture: you break the object down
+    into a box of labeled parts that can be shipped, then reassemble it on the other end.<br><br>
+    Why does smbmap care? Because Python's <code>multiprocessing</code> hands work out to separate processes,
+    and separate processes do not share memory. To send a result from a worker process back to the main one,
+    Python has to pickle it, box up the bytes, ship them across, and unpickle on the other side.<br><br>
+    The catch is that not everything can be flat-packed. To rebuild an object later, Python needs a stable,
+    importable <em>name</em> for each of its parts. A <strong>lambda</strong> (an anonymous, throwaway function)
+    has no such name, so Python cannot write down instructions to rebuild it. The impacket
+    <code>SMBConnection</code> that smbmap tries to send back happens to carry one of these nameless lambdas
+    inside it, so when Python reaches for the packing tape it fails. That is the <code>PicklingError</code>.
+  </div>
+
+  <figure><img src="images/OpenSource/smbmap/smbmap-pickle-diagram.png" alt="Hand-drawn 3-panel comic explaining pickling, the smbmap bug, and the fix using a moving-company furniture metaphor"><figcaption>My own take on the whole thing. <strong>Pickling</strong>: flat-packing a chair (an <code>SMBConnection</code>) to move it between houses (processes). <strong>The bug</strong>: one part will not come apart (the lambda), so the move jams and the workers pile up on "Authenticating...". <strong>The fix</strong>: merge the two houses into one (threads), so you just carry the chair over whole, no packing, no truck.</figcaption></figure>
 
   <h2><span class="num">02</span>Root cause</h2>
   <p>smbmap spreads its host connections across worker processes with a
-  <code>multiprocessing.pool.Pool</code>. When a worker finishes, the pool has to send its result back to
-  the parent process, and crossing that process boundary means <strong>pickling</strong> the object.</p>
-  <p>The object being returned is an impacket <code>SMBConnection</code>, which holds a
-  <strong>local lambda</strong> (<code>Structure.__init__.&lt;locals&gt;.&lt;lambda&gt;</code>). Local
-  lambdas have no importable name, so they cannot be pickled.</p>
-  <div class="note insight">
-    <span class="lbl">why now</span>
-    This was latent for years. Python 3.14 changed the default multiprocessing start method and made the
-    pickle path stricter, so a bug that older Python quietly tolerated became a hard crash. The same
-    change is breaking the same way across the wider Python ecosystem, not just in smbmap.
-  </div>
+  <code>multiprocessing.pool.Pool</code>. When a worker finishes, the pool has to send its result back to the
+  parent process, and crossing that process boundary means <strong>pickling</strong> the object.</p>
+  <p>The object being returned is an impacket <code>SMBConnection</code>, which holds a <strong>local
+  lambda</strong> (<code>Structure.__init__.&lt;locals&gt;.&lt;lambda&gt;</code>). Local lambdas have no
+  importable name, so they cannot be pickled.</p>
+
+  <h3>Why is the bug happening now?</h3>
+  <p>This was latent for years. Python 3.14 changed the default multiprocessing start method and made the
+  pickle path stricter, so a bug that older Python quietly tolerated became a hard crash. The same change is
+  breaking the same way across the wider Python ecosystem, not just in smbmap.</p>
 
   <h2><span class="num">03</span>The fix</h2>
-  <p>Do not cross a process boundary at all. <code>multiprocessing.dummy</code> exposes the exact same
+  <p>We do not cross a process boundary at all. <code>multiprocessing.dummy</code> exposes the exact same
   <code>Pool</code> API backed by <strong>threads</strong>. Threads share memory, so results are passed by
   reference and never pickled. One import changes it for every pool in the file:</p>
 <pre><code><span class="c"># smbmap/smbmap.py, line 21</span>
 <span class="c">- </span>from multiprocessing.pool import Pool
 <span class="c">+ </span>from multiprocessing.dummy import Pool</code></pre>
-  <figure><img src="images/OpenSource/smbmap/shot-20261103-055458.png" alt="git diff showing line 21 changed from multiprocessing.pool to multiprocessing.dummy"><figcaption>The entire fix, one line: <code>git diff</code> shows the import on line 21 swapped from <code>multiprocessing.pool</code> to <code>multiprocessing.dummy</code>.</figcaption></figure>
-  <div class="note insight">
-    <span class="lbl">why this over forcing fork</span>
-    Forcing the old <code>fork</code> start method also works, but it is Linux-only and fork is on its way
-    out. The thread-pool swap is cross-platform and future-proof, and smbmap's work is network I/O bound,
-    so the GIL has no meaningful cost. It also removes the orphaned workers and leaked semaphores.
-  </div>
+  <figure><img src="images/OpenSource/smbmap/smbmap02.png" alt="git diff showing line 21 changed from multiprocessing.pool to multiprocessing.dummy"><figcaption>The entire fix, one line: <code>git diff</code> shows the import on line 21 swapped from <code>multiprocessing.pool</code> to <code>multiprocessing.dummy</code>.</figcaption></figure>
+  <h3>Picking the fix (from Claude)</h3>
+  <p>Anthony asked me how I landed on this one line out of everything you could change, so here is the
+  reasoning. The crash can be fixed in a few places, and most of them are the wrong place. You could patch
+  impacket so its <code>SMBConnection</code> no longer carries a lambda, but that is someone else's library and
+  a much larger change. You could rewrite smbmap's worker to return only simple, picklable data instead of the
+  whole connection object, but that is a real refactor with room to add new bugs. You could force Python's old
+  <code>fork</code> start method, but that is Linux-only and fork is being retired.</p>
+  <p>The trick is to fix the root condition, not the symptom. The error only happens because results cross a
+  process boundary and have to be pickled, so remove the boundary and the whole class of problem disappears.
+  <code>multiprocessing.dummy</code> gives the identical <code>Pool</code> API backed by threads, which share
+  memory and never pickle, so one changed import on line 21 fixes every pool in the file at once with no logic
+  touched. It is also the easiest change for a maintainer to trust: one line, no behavior change, nothing to
+  review but the import. The work is network I/O bound, so threads lose nothing to the GIL, no real downside.</p>
 
   <h2><span class="num">04</span>Proof</h2>
   <p>Same command, same host, same version (1.10.8), only the import changed. Before, it crashed with the
@@ -96,28 +145,31 @@ multiprocessing.pool.MaybeEncodingError: Error sending result:
 [*] Established 1 SMB connections(s) and 1 authenticated session(s)
 [!] Access denied on 10.129.227.181, no fun for you...
 [*] Closed 1 connections</code></pre>
-  <figure><img src="images/OpenSource/smbmap/shot-20261103-055418.png" alt="smbmap running cleanly after the fix: establishes a session, reports access denied, closes the connection"><figcaption>After the fix, same command and host: smbmap authenticates, reports the host denies anonymous listing, and exits cleanly. No traceback, no hung workers.</figcaption></figure>
-  <p>"Access denied" is the host refusing anonymous listing, which is the tool working correctly. No
-  traceback, no hanging workers, no leaked-semaphore warning.</p>
+  <figure><img src="images/OpenSource/smbmap/smbmap03.png" alt="smbmap running cleanly after the fix: establishes a session, reports access denied, closes the connection"><figcaption>After the fix, same command and host: smbmap authenticates, reports the host denies anonymous listing, and exits cleanly. No traceback, no hung workers.</figcaption></figure>
+  <p>"Access denied" is the host refusing anonymous listing, which is the tool working correctly. No traceback,
+  no hanging workers, no leaked-semaphore warning.</p>
 
   <h2><span class="num">05</span>The pull request</h2>
-  <p>I confirmed two existing issues (#120 and #123) were the same bug. #123 even had a report that the
-  fix "did not work", but the traceback there showed the user was still running an unpatched copy of the
-  file, a stale-install problem rather than a flaw in the fix. I opened
-  <a href="https://github.com/ShawnDEvans/smbmap/pull/124">PR #124</a> with the one-line change, a
-  root-cause writeup, and before/after proof, closing both issues.</p>
-
-  <figure><img src="images/OpenSource/smbmap/shot-20261103-062623.png" alt="git push of the fix branch, including the token-auth prompt, then the create-pull-request URL"><figcaption>Pushing the branch. GitHub rejects password auth (it needs a personal access token now), then the push succeeds and prints the pull-request URL.</figcaption></figure>
+  <p>I confirmed two existing issues (#120 and #123) were the same bug. #123 even had a report that the fix
+  "did not work", but the traceback there showed the user was still running an unpatched copy of the file, a
+  stale-install problem rather than a flaw in the fix. I opened
+  <a href="https://github.com/ShawnDEvans/smbmap/pull/124">PR #124</a> with the one-line change, a root-cause
+  writeup, and before/after proof, closing both issues.</p>
+  <figure><img src="images/OpenSource/smbmap/smbmap04.png" alt="git push of the fix branch, including the token-auth prompt, then the create-pull-request URL"><figcaption>Pushing the branch. GitHub rejects password auth (it needs a personal access token now), then the push succeeds and prints the pull-request URL.</figcaption></figure>
 
   <h2><span class="num">06</span>Takeaways</h2>
   <ul>
     <li>Read the traceback to the bottom. "Can't pickle local object" names the exact object and the exact
     reason; the fix is in the message.</li>
-    <li>A crash that appears on every target, not just one, is an environment problem, not a target
-    problem.</li>
+    <li>A crash that appears on every target, not just one, is an environment problem, not a target problem.</li>
     <li>When you report or fix a bug, confirm the running copy is the one you edited. A stale install looks
     identical to a broken fix.</li>
   </ul>
+
+  <p style="margin-top:32px">
+    <a href="opensource.html">&larr; open source</a> &nbsp;&middot;&nbsp;
+    <a href="https://github.com/ShawnDEvans/smbmap/pull/124">view PR #124 &rarr;</a>
+  </p>
 </main>
 
 <footer class="foot"><div class="wrap" style="display:flex;gap:18px;flex-wrap:wrap">
