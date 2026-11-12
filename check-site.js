@@ -434,7 +434,9 @@ WRITEUPS.forEach(w => {
 const missingAssets = new Map(); // rel -> [where]
 
 htmlFiles.forEach(f => {
-  const src = read(f);
+  // Blank out HTML comments (keeping newlines, so line numbers hold) so
+  // commented-out template examples are not reported as broken links.
+  const src = read(f).replace(/<!--[\s\S]*?-->/g, c => c.replace(/[^\n]/g, ' '));
   const lines = src.split('\n');
   lines.forEach((line, n) => {
     const re = /(?:href|src)\s*=\s*["']([^"'#?]+)["']/gi;
