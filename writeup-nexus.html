@@ -177,8 +177,6 @@
     <li><code>DB_PASSWORD=</code> - empty right now, but the key is we know <em>it exists</em>.</li>
   </ul>
 
-  <figure><img src="images/Nexus/nexus14.png" alt="docker-compose.yml contents"><figcaption><code>docker-compose.yml</code> - confirms the service architecture</figcaption></figure>
-
   <p>The compose file shows <code>krayin-phpmyadmin</code> on port 8080, the DB password pulled from
   <code>${DB_PASSWORD}</code> (meaning it lives in <code>.env</code>), and the Krayin app on port 80.
   The DB host is internal to the container network, so we can't reach MySQL directly from outside -
