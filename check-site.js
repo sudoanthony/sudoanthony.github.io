@@ -39,6 +39,7 @@ const TEAMS        = ['red', 'blue'];
 const SEVERITIES   = ['crit', 'high', 'med', 'low'];
 const WRITEUP_FIELDS = ['title', 'url', 'platform', 'team', 'difficulty', 'os',
                         'category', 'icon', 'date', 'summary', 'tags'];
+const OPTIONAL_WRITEUP_FIELDS = ['report'];   // report: "reports/<box>.pdf" -> card stamp
 
 // Sections every finished writeup should have. Matched case-insensitively
 // against the <h2> text, so "Privilege escalation to root" or "Priv Esc" satisfies it.
@@ -162,7 +163,7 @@ WRITEUPS.forEach((w, i) => {
     if (empty && !optional) err(at, `Field "${f}" is empty${f === 'tags' ? ' or not an array' : ''}`);
   }
 
-  const extra = Object.keys(w).filter(k => !WRITEUP_FIELDS.includes(k));
+  const extra = Object.keys(w).filter(k => !WRITEUP_FIELDS.includes(k) && !OPTIONAL_WRITEUP_FIELDS.includes(k));
   if (extra.length) warn(at, `Unexpected field(s): ${extra.join(', ')}`,
                              'Harmless, but the templates ignore them.');
 
@@ -211,6 +212,15 @@ WRITEUPS.forEach((w, i) => {
 
   if (w.icon && imagesDirPresent && !exists(w.icon))
     warn(at, `Icon "${w.icon}" not found - the card will fall back to a letter`);
+
+  // optional pentest report (turns on the "SysReptor report" card stamp)
+  if (w.report !== undefined) {
+    if (typeof w.report !== 'string' || !/^reports\/[\w.-]+\.pdf$/i.test(w.report))
+      err(at, `report "${w.report}" should look like "reports/<box>.pdf"`);
+    else if (!exists(w.report))
+      err(at, `Report "${w.report}" does not exist`,
+              'Add the PDF, or remove the report field so the card has no stamp.');
+  }
 });
 
 // newest-first ordering

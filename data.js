@@ -32,8 +32,9 @@ const WRITEUPS = [
     category:   "Web",
     icon:       "images/icons/blocky.png",
     date:       "2026-11-17",
-    summary:    "Minecraft WordPress site: an open /plugins folder serves BlockyCore.jar, whose class file hardcodes a DB password. That password is reused by notch for FTP and SSH, and notch has full sudo, so sudo bash is root.",
-    tags:       ["hardcoded-secret", "exposed-credentials", "security-misconfiguration", "sensitive-data-exposure", "priv-esc"]
+    summary:    "Minecraft WordPress site: an open /plugins folder serves BlockyCore.jar with a hardcoded DB password, reused by notch for FTP and SSH. After a lot of local enumeration, notch turns out to have full sudo. Full SysReptor report included.",
+    tags:       ["hardcoded-secret", "exposed-credentials", "security-misconfiguration", "sensitive-data-exposure", "priv-esc"],
+    report:     "reports/blocky-report.pdf"
   },
   {
     title:      "Legacy",

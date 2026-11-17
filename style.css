@@ -322,6 +322,61 @@ figcaption { color: var(--text-4); font-size: 13px; margin-top: 7px; font-family
 @media (hover: none) { .bx.mobile:hover, .bx.web:hover { grid-template-rows: 176px 0fr; } }
 .bx .sub .d-very-easy{color:#9cc3ec;} .bx .sub .d-easy{color:#7fd9bc;} .bx .sub .d-medium{color:#f0b35a;} .bx .sub .d-hard{color:#eb9d9b;} .bx .sub .d-insane{color:#f2f4f6;} .bx .sub .d-practice{color:#9ed8f2;}
 .bx .sub svg{opacity:.85;}
+/* "SysReptor report included" stamp: a badge on the machine icon plus a line under
+   the sub-header. Set report: "reports/<box>.pdf" in data.js to turn it on.
+   Part of the card itself (no own hover); the badge breathes on a slow 5s loop. */
+.bx { --report: #b48ead; }
+.bx .rp-badge {
+  position: absolute; right: -7px; bottom: -5px; z-index: 1; pointer-events: none;
+  width: 21px; height: 21px; box-sizing: border-box; border-radius: 50%;
+  background: var(--bg-2); border: 1.5px solid var(--report); color: var(--report);
+  display: flex; align-items: center; justify-content: center;
+  animation: rp-breathe 5s ease-in-out infinite;
+}
+/* pinned to the bottom so the icon and title stay level with neighbouring cards */
+.bx .rp-line { position: absolute; left: 0; right: 0; bottom: 12px; font-family: var(--mono); font-size: 11px; color: var(--report); text-align: center; line-height: 1.2; }
+@keyframes rp-breathe { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.08); } }
+@media (prefers-reduced-motion: reduce) { .bx .rp-badge { animation: none; } }
+
+/* ---------- writeups page on narrow screens ----------
+   Columns stack below 920px, so add a sticky jump bar under the nav. On phones the
+   cards shrink to two per row (Mobile / Web cards keep their taller face). */
+.jump { display: none; }
+@media (max-width: 920px) {
+  .jump {
+    display: flex; gap: 8px; overflow-x: auto; scrollbar-width: none;
+    position: sticky; top: 58px; z-index: 9; margin: 0 -24px 6px; padding: 10px 24px;
+    background: rgba(20,24,31,0.92); backdrop-filter: blur(8px); border-bottom: 1px solid var(--border);
+  }
+  .jump::-webkit-scrollbar { display: none; }
+  .jump a {
+    flex: none; font-family: var(--mono); font-size: 12px; color: var(--text-2);
+    border: 1px solid var(--border); border-top: 2px solid var(--border-2); border-radius: 99px; padding: 4px 12px;
+  }
+  .jump a:hover { text-decoration: none; color: var(--text); }
+  .jump a.thm { border-top-color: var(--thm); } .jump a.htb { border-top-color: var(--htb); }
+  .jump a.mobile { border-top-color: var(--mobile); } .jump a.web { border-top-color: var(--web); }
+  .jump a.oss { border-top-color: #ebecf0; }
+  .pgroup { scroll-margin-top: 112px; }
+}
+@media (max-width: 560px) {
+  /* nav: brand on top, links on their own row so none run off the screen */
+  .nav .wrap { flex-wrap: wrap; height: auto; padding-top: 10px; padding-bottom: 10px; row-gap: 6px; }
+  .nav .links { margin-left: 0; width: 100%; justify-content: space-between; gap: 0; }
+  .nav .links a { font-size: 13px; white-space: nowrap; }
+  .jump { top: 74px; }
+  .pgroup { scroll-margin-top: 120px; }
+  .grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+  .bx { grid-template-rows: 140px 0fr; }
+  .bx:hover { grid-template-rows: 140px 1fr; }
+  .bx .face { height: 140px; padding: 10px 8px; gap: 7px; }
+  .bx .icon, .bx .icon img, .bx .mono { width: 42px; height: 42px; }
+  .bx .nm { font-size: 14px; }
+  .bx .sub { font-size: 11px; }
+  .bx .rp-line { bottom: 8px; }
+  .bx .rev { min-height: 140px; }
+}
+@media (max-width: 560px) and (hover: none) { .bx:hover { grid-template-rows: 140px 0fr; } }
 .bx .revwrap { overflow: hidden; }
 .bx .rev {
   min-height: 176px; margin-top: 10px; box-sizing: border-box; padding: 15px;

@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Blocky - HackTheBox writeup</title>
-<meta name="description" content="HackTheBox Blocky (Easy, Linux): a Minecraft-themed WordPress site exposes a /plugins directory with a custom BlockyCore.jar; decompiling it reveals a hardcoded database password that is reused by the user notch for FTP and SSH, and notch has full sudo for an instant root shell.">
+<meta name="description" content="HackTheBox Blocky (Easy, Linux): a Minecraft-themed WordPress site exposes a /plugins directory with a custom BlockyCore.jar; decompiling it reveals a hardcoded database password that is reused by the user notch for FTP and SSH, and after a long round of local enumeration (MySQL, WordPress, phpMyAdmin) notch turns out to have full sudo for a root shell. Includes a full SysReptor pentest report.">
 <link rel="canonical" href="https://sudoanthony.github.io/writeup-blocky.html">
 <meta property="og:type" content="article">
 <meta property="og:site_name" content="~/sudoanthony">
@@ -56,9 +56,10 @@
     <code>.jar</code> files. Decompiling the custom <strong>BlockyCore.jar</strong> gives us a
     <strong>hardcoded database password</strong>. It doesn't work for <code>root</code> on FTP or SSH, but it
     does work for the user <strong>notch</strong> (<strong>password reuse</strong>), which gets us the user flag
-    and a shell. notch has <strong>full sudo</strong>, so <code>sudo bash</code> is root. Since it was an easy
-    root, we enumerate for fun and spend some time looking around for the other ways we could have gotten in:
-    MySQL, the WordPress backend and phpMyAdmin.</p>
+    and a shell. From there I enumerated a lot: SUIDs, logs, <code>wp-config.php</code>, MySQL, the WordPress
+    password hash and phpMyAdmin. Only after all of that did I realize notch had <strong>full sudo</strong> the
+    whole time, so <code>sudo bash</code> is root. I then logged into the WordPress backend and restored the
+    password hash I had changed, like you would on a real engagement.</p>
   </div>
 
   <div class="tags">
@@ -67,6 +68,13 @@
     <a class="tag" href="vulns.html#security-misconfiguration">security-misconfiguration</a>
     <a class="tag" href="vulns.html#sensitive-data-exposure">sensitive-data-exposure</a>
     <a class="tag" href="vulns.html#priv-esc">priv-esc</a>
+  </div>
+
+  <div class="note insight" style="margin-top:18px">
+    <span class="lbl">pentest report</span>
+    I also wrote this box up as a full pentest report in SysReptor: 10 findings rated by severity, a
+    step-by-step walkthrough, evidence and remediation.
+    <a href="#report">Full SysReptor pentest report (PDF) &rarr;</a>
   </div>
 
   <hr>
@@ -82,25 +90,28 @@
   port 8192 from its services list, which maps it to Sophos (an antivirus vendor) remote management. While this
   isn't a guarantee, this is good enough for me to get an idea what sophos is.</p>
 
-  <p>I first begin with the basics of checking for anonymous login via FTP and SSH, but both don't work.</p>
+  <p>I first begin with the basics of checking for anonymous login via FTP and SSH, but both don't work:</p>
+  <figure><img src="images/Blocky/blocky02.png" alt="anonymous FTP login incorrect and anonymous SSH permission denied"><figcaption>FTP: <code>530 Login incorrect</code>. SSH: <code>Permission denied</code> after three tries. (Recaptured after the box for the report; the original attempts weren't screenshotted.)</figcaption></figure>
 
   <p>Checking port 80 (after adding <code>blocky.htb</code> to <code>/etc/hosts</code>) reveals a Minecraft
   server homepage running WordPress on Apache:</p>
-  <figure><img src="images/Blocky/blocky02.png" alt="BlockyCraft WordPress post mentioning a wiki and a core plugin"><figcaption>"BlockyCraft, Under Construction!" The only post mentions a <strong>wiki</strong> and a <strong>core plugin</strong> to track player stats. Keep that in mind.</figcaption></figure>
+  <figure><img src="images/Blocky/blocky03.png" alt="BlockyCraft WordPress post mentioning a wiki and a core plugin"><figcaption>"BlockyCraft, Under Construction!" The only post mentions a <strong>wiki</strong> and a <strong>core plugin</strong> to track player stats. Keep that in mind.</figcaption></figure>
 
   <p>Using WPScan, I find a ton of vulnerabilities, the theme, no plugins, and two users:</p>
   <pre><code><span class="p">$</span> wpscan --url http://blocky.htb --enumerate --api-token <span class="c">[redacted]</span></code></pre>
-  <figure><img src="images/Blocky/blocky03.png" alt="WPScan output showing XML-RPC enabled and upload directory listing"><figcaption>XML-RPC is enabled, and <code>wp-content/uploads/</code> has directory listing on. (API token blacked out.)</figcaption></figure>
-  <figure><img src="images/Blocky/blocky04.png" alt="WPScan identifying WordPress 4.8 with 111 vulnerabilities"><figcaption>WordPress <strong>4.8</strong>, flagged insecure with <strong>111</strong> known vulnerabilities.</figcaption></figure>
-  <figure><img src="images/Blocky/blocky05.png" alt="WPScan enumerating users notch and Notch"><figcaption>Two users, <code>notch</code> / <code>Notch</code>, whose handle mimics the creator of Minecraft.</figcaption></figure>
+  <figure><img src="images/Blocky/blocky04.png" alt="WPScan output showing XML-RPC enabled and upload directory listing"><figcaption>XML-RPC is enabled, and <code>wp-content/uploads/</code> has directory listing on. (API token blacked out.)</figcaption></figure>
+  <figure><img src="images/Blocky/blocky05.png" alt="WPScan identifying WordPress 4.8 with 111 vulnerabilities"><figcaption>WordPress <strong>4.8</strong>, flagged insecure with <strong>111</strong> known vulnerabilities.</figcaption></figure>
+  <figure><img src="images/Blocky/blocky06.png" alt="WPScan enumerating users notch and Notch"><figcaption>Two users, <code>notch</code> / <code>Notch</code>, whose handle mimics the creator of Minecraft.</figcaption></figure>
 
-  <p>I start a password attack against <code>notch</code> since I notice <code>xml-rpc</code> is enabled, so
-  this could be an angle. At the same time, I use Gobuster to enumerate the website:</p>
-  <figure><img src="images/Blocky/blocky06.png" alt="gobuster finding phpmyadmin, plugins, wiki, wp-admin and wp-login"><figcaption>A bunch of interesting URLs: two login portals (<code>/phpmyadmin</code> and <code>wp-login.php</code>), plus <code>/wiki</code> and <code>/plugins</code>.</figcaption></figure>
-  <figure><img src="images/Blocky/blocky07.png" alt="phpMyAdmin login page denying admin"><figcaption>The phpMyAdmin login. Guessing gets me nowhere for now.</figcaption></figure>
-  <figure><img src="images/Blocky/blocky08.png" alt="Blocky wiki under construction page mentioning the core plugin and database"><figcaption>The wiki is under construction, but it says the new core plugin will store player info <strong>in our database</strong>. So the plugin talks to the database, and it probably has credentials.</figcaption></figure>
+  <p>I start a password attack against the two users since I notice <code>xml-rpc</code> is enabled, so this
+  could be an angle:</p>
+  <pre><code><span class="p">$</span> wpscan --password-attack xmlrpc -t 20 -U notch,Notch -P rockyou.txt --url http://blocky.htb</code></pre>
+  <figure><img src="images/Blocky/blocky07.png" alt="WPScan XML-RPC password attack starting against notch and Notch"><figcaption>The attack started but never finished, and as it turned out, it was never needed. (Recaptured for the report.)</figcaption></figure>
 
-  <p>The password attack never finished, and as it turned out, it was never needed.</p>
+  <p>At the same time, I use Gobuster to enumerate the website:</p>
+  <figure><img src="images/Blocky/blocky08.png" alt="gobuster finding phpmyadmin, plugins, wiki, wp-admin and wp-login"><figcaption>A bunch of interesting URLs: two login portals (<code>/phpmyadmin</code> and <code>wp-login.php</code>), plus <code>/wiki</code> and <code>/plugins</code>.</figcaption></figure>
+  <figure><img src="images/Blocky/blocky09.png" alt="phpMyAdmin login page denying admin"><figcaption>The phpMyAdmin login. Guessing gets me nowhere for now.</figcaption></figure>
+  <figure><img src="images/Blocky/blocky10.png" alt="Blocky wiki under construction page mentioning the core plugin and database"><figcaption>The wiki is under construction, but it says the new core plugin will store player info <strong>in our database</strong>. So the plugin talks to the database, and it probably has credentials.</figcaption></figure>
 
   <hr>
 
@@ -109,14 +120,14 @@
 
   <p>Interestingly enough, despite WPScan saying there were no plugins, there IS a <code>/plugins</code> URL,
   and there I find two downloadable <code>.jar</code> files:</p>
-  <figure><img src="images/Blocky/blocky09.png" alt="/plugins directory listing BlockyCore.jar and griefprevention jar"><figcaption><code>BlockyCore.jar</code> (883 bytes, the custom "core plugin") and <code>griefprevention-1.11.2-3.1.1.298.jar</code>. WPScan only looks at <code>wp-content/plugins</code>, so a Minecraft plugins folder sitting at the web root is invisible to it.</figcaption></figure>
+  <figure><img src="images/Blocky/blocky11.png" alt="/plugins directory listing BlockyCore.jar and griefprevention jar"><figcaption><code>BlockyCore.jar</code> (883 bytes, the custom "core plugin") and <code>griefprevention-1.11.2-3.1.1.298.jar</code>. WPScan only looks at <code>wp-content/plugins</code>, so a Minecraft plugins folder sitting at the web root is invisible to it.</figcaption></figure>
 
   <p>A <code>.jar</code> is just a zip, so I download and unzip them. My first set of credentials is in
   <code>com/myfirstplugin/BlockyCore.class</code>. While <code>cat</code> shows the strings, <code>javap</code>
   shows a more cleaned up way to view them:</p>
   <pre><code><span class="p">$</span> unzip BlockyCore.jar
 <span class="p">$</span> javap -c -p com/myfirstplugin/BlockyCore.class</code></pre>
-  <figure><img src="images/Blocky/blocky10.png" alt="javap disassembly showing sqlHost localhost, sqlUser root and sqlPass"><figcaption>The constructor sets <code>sqlHost = localhost</code>, <code>sqlUser = root</code> and <code>sqlPass = 8YsqfCTnvxAUeduzjNSXe22</code>. Hardcoded in a file anyone can download.</figcaption></figure>
+  <figure><img src="images/Blocky/blocky12.png" alt="javap disassembly showing sqlHost localhost, sqlUser root and a redacted sqlPass"><figcaption>The constructor sets <code>sqlHost = localhost</code>, <code>sqlUser = root</code> and <code>sqlPass = [redacted]</code>. A database root password, hardcoded in a file anyone can download.</figcaption></figure>
 
   <div class="note insight">
     <span class="lbl">why this is the finding</span>
@@ -128,28 +139,72 @@
 
   <p>I also enumerated the GriefPrevention <code>.jar</code> a bit, but as the title suggests, it's just a
   plugin for the server to stop people from griefing and nothing too juicy is inside:</p>
-  <figure><img src="images/Blocky/blocky11.png" alt="GriefPrevention mcmod.info showing a public plugin by MinecraftPortCentral"><figcaption>A stock public plugin. Initially I thought the unzipped directory <code>ryanhamshire</code> was related to the box, but after a bit of research it's just the developer of that add-on for Minecraft servers. Check them out, I guess?</figcaption></figure>
+  <figure><img src="images/Blocky/blocky13.png" alt="GriefPrevention mcmod.info showing a public plugin by MinecraftPortCentral"><figcaption>A stock public plugin. Initially I thought the unzipped directory <code>ryanhamshire</code> was related to the box, but after a bit of research it's just the developer of that add-on for Minecraft servers. Check them out, I guess?</figcaption></figure>
 
   <p>Using these credentials as <code>root</code> for FTP, SSH and <code>wp-login.php</code> yields no results.
-  (In retrospect, I rooted the box without this, but if I had used them at <code>/phpmyadmin</code> I would
-  have been able to log in and find my second pair of credentials that way.)</p>
+  (In retrospect, if I had used them at <code>/phpmyadmin</code> I would have been able to log in and find my
+  second pair of credentials that way.)</p>
+  <figure><img src="images/Blocky/blocky14.png" alt="SSH as root with the recovered password denied three times"><figcaption>SSH as <code>root</code>: <code>Permission denied</code>. (Recaptured for the report.)</figcaption></figure>
+  <figure><img src="images/Blocky/blocky15.png" alt="WordPress login as root returning Invalid username"><figcaption><code>wp-login.php</code> as <code>root</code>: "Invalid username". Only <code>notch</code> / <code>Notch</code> exist. (Recaptured for the report.)</figcaption></figure>
 
   <p>So I try the password with the <code>notch</code> username, and DO get access to FTP and SSH:</p>
-  <figure><img src="images/Blocky/blocky12.png" alt="FTP login failing as root and succeeding as notch, then downloading user.txt"><figcaption><code>root</code> fails, <code>notch</code> logs in. FTP shows a <code>minecraft</code> directory and <code>user.txt</code>.</figcaption></figure>
-  <figure><img src="images/Blocky/blocky13.png" alt="cat user.txt with the flag censored"><figcaption>User flag <span style="color:var(--text-4)">[flag omitted]</span>.</figcaption></figure>
-  <figure><img src="images/Blocky/blocky14.png" alt="SSH login as notch on Ubuntu 16.04.2"><figcaption>The same password gets me an SSH session as <code>notch</code> on Ubuntu 16.04.2.</figcaption></figure>
+  <figure><img src="images/Blocky/blocky16.png" alt="FTP login failing as root and succeeding as notch, then downloading user.txt"><figcaption><code>root</code> fails, <code>notch</code> logs in. FTP shows a <code>minecraft</code> directory and <code>user.txt</code>.</figcaption></figure>
+  <figure><img src="images/Blocky/blocky17.png" alt="cat user.txt with the flag censored"><figcaption>User flag <span style="color:var(--text-4)">[flag omitted]</span>.</figcaption></figure>
+  <figure><img src="images/Blocky/blocky18.png" alt="SSH login as notch on Ubuntu 16.04.2"><figcaption>The same password gets me an SSH session as <code>notch</code> on Ubuntu 16.04.2.</figcaption></figure>
 
   <hr>
 
   <!-- ==================== 03 ==================== -->
   <h2><span class="num">03</span> - Priv Esc - sudo</h2>
 
-  <p>At this point I begin my basic privilege escalation checks and... I have <code>sudo</code>?!</p>
-  <figure><img src="images/Blocky/blocky15.png" alt="notch whoami, id showing sudo and lxd groups, and sudo -l showing ALL ALL"><figcaption><code>notch</code> is in the <code>sudo</code> group and <code>sudo -l</code> shows <code>(ALL : ALL) ALL</code>. Any command as root, with the password I already have.</figcaption></figure>
+  <p>To be honest, this is where I enumerated a lot before the answer clicked. I begin my basic privilege
+  escalation checks with SUIDs and didn't find anything exploitable as far as I could tell:</p>
+  <pre><code><span class="p">$</span> find / -perm -u=s -type f 2>/dev/null</code></pre>
+  <figure><img src="images/Blocky/blocky19.png" alt="SUID binaries on Blocky, all standard"><figcaption>Standard Ubuntu SUID binaries.</figcaption></figure>
 
-  <pre><code><span class="p">notch@Blocky:~$</span> sudo bash</code></pre>
-  <figure><img src="images/Blocky/blocky16.png" alt="sudo bash returning a root shell"><figcaption><code>whoami</code>: <strong>root</strong>.</figcaption></figure>
-  <figure><img src="images/Blocky/blocky17.png" alt="cat root.txt with the flag censored"><figcaption>And in <code>/root</code> I find <code>root.txt</code> <span style="color:var(--text-4)">[flag omitted]</span>. Box owned.</figcaption></figure>
+  <p>Then the usual <code>whoami</code>, <code>id</code> and <code>sudo -l</code>:</p>
+  <figure><img src="images/Blocky/blocky20.png" alt="notch whoami, id showing sudo and lxd groups, and sudo -l showing ALL ALL"><figcaption>Look closely: <code>notch</code> is in the <code>sudo</code> group and <code>sudo -l</code> already shows <code>(ALL : ALL) ALL</code>. The answer was right here, and I scrolled straight past it.</figcaption></figure>
+
+  <p>The <code>adm</code> group was interesting to me, since I could use it to read a bunch of logs:</p>
+  <pre><code><span class="p">$</span> find / -group adm -readable 2>/dev/null</code></pre>
+  <figure><img src="images/Blocky/blocky21.png" alt="find listing logs readable by the adm group"><figcaption>Apache, ProFTPD, MySQL, auth and syslog logs, all readable by <code>notch</code>.</figcaption></figure>
+
+  <p>I also checked for container instances since I saw I was a member of <code>lxd</code>, but nothing really
+  showed up either.</p>
+
+  <p>There is a MySQL service running on localhost, and in <code>/var/www/html</code> I find the
+  <code>wp-config.php</code> file with the MySQL credentials and a bunch of keys and salts. Those salts are what
+  WordPress uses to sign its login cookies, so with them (plus a user's hash) you could forge a valid auth
+  cookie:</p>
+  <figure><img src="images/Blocky/blocky22.png" alt="wp-config.php with the wordpress database user and a redacted password"><figcaption><code>DB_USER</code> <code>wordpress</code>, <code>DB_PASSWORD</code> <code>[redacted]</code>, host <code>localhost</code>.</figcaption></figure>
+
+  <p>I connect to MySQL via localhost as <code>wordpress</code>. I first looked at the <code>phpmyadmin</code>
+  database because at this time I didn't know I already had those credentials. I move on to WordPress since I
+  hadn't really enumerated it, and find the <code>Notch</code> user and a hash:</p>
+  <pre><code><span class="p">$</span> mysql -u wordpress -p -h localhost
+<span class="p">mysql></span> use wordpress;
+<span class="p">mysql></span> select * from wp_users;</code></pre>
+  <figure><img src="images/Blocky/blocky23.png" alt="wp_users table with Notch and a redacted phpass hash"><figcaption>One row: <code>Notch</code> with a phpass hash (redacted). I noted the original value here, which matters later.</figcaption></figure>
+
+  <p>I did run hashcat on it, but it never really finished, and it was never necessary:</p>
+  <pre><code><span class="p">$</span> hashcat --identify notch.txt
+<span class="p">$</span> hashcat -m 400 -a 0 notch.txt /usr/share/wordlists/rockyou.txt</code></pre>
+  <figure><img src="images/Blocky/blocky24.png" alt="hashcat identifying the hash as mode 400 phpass"><figcaption>Mode <strong>400 (phpass)</strong>, a slow salted hash, so rockyou on a CPU takes a while.</figcaption></figure>
+
+  <p>Then I checked <code>SHOW GRANTS;</code> and realized I could write as the logged-in user, so I just
+  changed the hash myself:</p>
+  <pre><code><span class="p">mysql></span> SHOW GRANTS;
+<span class="p">mysql></span> UPDATE wp_users SET user_pass = MD5('[redacted]') WHERE user_login = 'Notch';</code></pre>
+  <figure><img src="images/Blocky/blocky25.png" alt="SHOW GRANTS showing ALL PRIVILEGES and the UPDATE of Notch's password, values redacted"><figcaption><code>GRANT ALL PRIVILEGES ON *.*</code> for <code>wordpress@localhost</code>, then the update. WordPress still accepts a plain MD5 in <code>user_pass</code> and upgrades it on the next login.</figcaption></figure>
+
+  <p>And as said earlier, the jar's <code>root</code> password works on phpMyAdmin too:</p>
+  <figure><img src="images/Blocky/blocky26.png" alt="phpMyAdmin logged in as root@localhost, session token redacted"><figcaption>phpMyAdmin as <code>root@localhost</code>, showing every database. (Session token in the URL redacted.)</figcaption></figure>
+
+  <p>About 45 minutes after that first <code>sudo -l</code>, it finally clicked: wait, notch can run
+  <em>anything</em> as root, with the password I've had since the foothold.</p>
+  <pre><code><span class="p">notch@Blocky:/var/www/html$</span> sudo bash</code></pre>
+  <figure><img src="images/Blocky/blocky27.png" alt="sudo bash returning a root shell"><figcaption><code>whoami</code>: <strong>root</strong>.</figcaption></figure>
+  <figure><img src="images/Blocky/blocky28.png" alt="cat root.txt with the flag censored"><figcaption>And in <code>/root</code> I find <code>root.txt</code> <span style="color:var(--text-4)">[flag omitted]</span>. Box owned.</figcaption></figure>
 
   <div class="note insight">
     <span class="lbl">severity</span>
@@ -161,81 +216,70 @@
   <hr>
 
   <!-- ==================== 04 ==================== -->
-  <h2><span class="num">04</span> - Bonus: Enumerating for fun</h2>
+  <h2><span class="num">04</span> - After root: WordPress backend and cleanup</h2>
 
-  <p>Due to how easy that was, I decided to enumerate around and see if there were other ways I could have
-  (or was supposed to) root the box.</p>
-
-  <p>There is a MySQL service running on localhost, and in <code>/var/www/html</code> I find the
-  <code>wp-config.php</code> file with the MySQL credentials and a bunch of keys and salts. Those salts are what
-  WordPress uses to sign its login cookies, so with them (plus a user's hash) you could forge a valid auth
-  cookie:</p>
-  <figure><img src="images/Blocky/blocky18.png" alt="wp-config.php with the wordpress database user and password"><figcaption><code>DB_USER</code> <code>wordpress</code>, <code>DB_PASSWORD</code> <code>kWuvW2SYsABmzywYRdoD</code>, host <code>localhost</code>.</figcaption></figure>
-
-  <p>I connect to MySQL via localhost as <code>wordpress</code>. I first looked at the <code>phpmyadmin</code>
-  database because at this time I didn't know I already had those credentials. I move on to WordPress since I
-  hadn't really enumerated it, and find the <code>Notch</code> user and a hash:</p>
-  <pre><code><span class="p">$</span> mysql -u wordpress -p -h localhost
-<span class="p">mysql></span> use wordpress;
-<span class="p">mysql></span> select * from wp_users;</code></pre>
-  <figure><img src="images/Blocky/blocky19.png" alt="wp_users table with Notch and a phpass hash"><figcaption>One row: <code>Notch</code> with a <code>$P$</code> hash.</figcaption></figure>
-
-  <p>I did run hashcat on it, but it never really finished, and it was never necessary:</p>
-  <pre><code><span class="p">$</span> hashcat --identify notch.txt
-<span class="p">$</span> hashcat -m 400 -a 0 notch.txt /usr/share/wordlists/rockyou.txt</code></pre>
-  <figure><img src="images/Blocky/blocky20.png" alt="hashcat identifying the hash as mode 400 phpass"><figcaption>Mode <strong>400 (phpass)</strong>, a slow salted hash, so rockyou on a CPU takes a while.</figcaption></figure>
-
-  <p>Then I checked <code>SHOW GRANTS;</code> and realized I could write as the logged-in user, so I just
-  changed the hash myself:</p>
-  <pre><code><span class="p">mysql></span> SHOW GRANTS;
-<span class="p">mysql></span> UPDATE wp_users SET user_pass = MD5('newpassword123') WHERE user_login = 'Notch';</code></pre>
-  <figure><img src="images/Blocky/blocky21.png" alt="SHOW GRANTS showing ALL PRIVILEGES and the UPDATE of Notch's password"><figcaption><code>GRANT ALL PRIVILEGES ON *.*</code> for <code>wordpress@localhost</code>, then the update. WordPress still accepts a plain MD5 in <code>user_pass</code> and upgrades it on the next login.</figcaption></figure>
-  <figure><img src="images/Blocky/blocky22.png" alt="WordPress dashboard logged in as Notch"><figcaption>After a short wait, the login goes through: the WordPress dashboard as <code>Notch</code>.</figcaption></figure>
+  <p>The WordPress login with the password I set took a while to go through, but it did, and I got into the
+  backend as <code>Notch</code>:</p>
+  <figure><img src="images/Blocky/blocky29.png" alt="WordPress dashboard logged in as Notch"><figcaption>The WordPress dashboard as <code>Notch</code>, an admin account taken over straight from the database.</figcaption></figure>
 
   <p>In the backend I find two plugins, Akismet Anti-Spam and Hello Dolly. They aren't activated, which is why
   WPScan didn't find them earlier. Because they aren't activated, I don't think I could exploit them as they
   are. However, as an admin I could activate them (or edit a plugin or theme file) and take advantage of that.</p>
-  <figure><img src="images/Blocky/blocky23.png" alt="WordPress Plugins page listing Akismet 3.3.2 and Hello Dolly 1.6, both inactive"><figcaption>Akismet Anti-Spam 3.3.2 and Hello Dolly 1.6, both <strong>Inactive (2)</strong>, with Activate and Edit links right there for an admin.</figcaption></figure>
+  <figure><img src="images/Blocky/blocky30.png" alt="WordPress Plugins page listing Akismet 3.3.2 and Hello Dolly 1.6, both inactive"><figcaption>Akismet Anti-Spam 3.3.2 and Hello Dolly 1.6, both <strong>Inactive (2)</strong>, with Activate and Edit links right there for an admin.</figcaption></figure>
 
-  <p>And as said earlier, the jar's <code>root</code> password works on phpMyAdmin too:</p>
-  <figure><img src="images/Blocky/blocky24.png" alt="phpMyAdmin logged in as root@localhost"><figcaption>phpMyAdmin as <code>root@localhost</code>, showing every database. The second set of credentials was one login away.</figcaption></figure>
-
-  <p>The <code>adm</code> group was interesting to me as well, since I could use it to read a bunch of logs:</p>
-  <pre><code><span class="p">$</span> find / -group adm -readable 2>/dev/null</code></pre>
-  <figure><img src="images/Blocky/blocky25.png" alt="find listing logs readable by the adm group"><figcaption>Apache, ProFTPD, MySQL, auth and syslog logs, all readable by <code>notch</code>.</figcaption></figure>
-
-  <p>I also looked at SUIDs and didn't find anything exploitable as far as I could tell:</p>
-  <pre><code><span class="p">$</span> find / -perm -u=s -type f 2>/dev/null</code></pre>
-  <figure><img src="images/Blocky/blocky26.png" alt="SUID binaries on Blocky, all standard"><figcaption>Standard Ubuntu SUID binaries.</figcaption></figure>
-
-  <p>I then checked for container instances since I saw I was a member of <code>lxd</code>, but nothing
-  really showed up either.</p>
+  <p>Last, I put Notch's original hash back. Changing a client's password and leaving it changed isn't
+  acceptable on a real engagement, so anything changed during testing gets restored and written down in the
+  report:</p>
+  <pre><code><span class="p">mysql></span> UPDATE wp_users SET user_pass = '[original hash]' WHERE user_login = 'Notch';
+<span class="p">mysql></span> SELECT * FROM wp_users;</code></pre>
+  <figure><img src="images/Blocky/blocky31.png" alt="UPDATE restoring Notch's original hash and SELECT confirming it, values redacted"><figcaption>The original phpass hash is back and matches the value from before the change. This is the "Changes / Host Cleanup" entry in the report.</figcaption></figure>
 
   <hr>
 
   <!-- ==================== 05 ==================== -->
   <h2><span class="num">05</span> - Root cause &amp; remediation</h2>
+  <p>These match the findings in the <a href="#report">report</a>, highest severity first.</p>
   <table style="width:100%; border-collapse:collapse; font-size:14.5px; margin:6px 0 8px">
     <tbody>
       <tr style="border-bottom:1px solid var(--border)">
-        <td style="padding:11px 12px 11px 0; color:var(--text); width:40%"><strong>Plugin jars served from the web root with directory listing</strong></td>
-        <td style="padding:11px 0; color:var(--text-3)">Server-side plugin files have no reason to be on the website. Move them out of the web root and turn off <code>Options Indexes</code> in Apache.</td>
-      </tr>
-      <tr style="border-bottom:1px solid var(--border)">
-        <td style="padding:11px 12px 11px 0; color:var(--text)"><strong>Hardcoded database credentials in BlockyCore.jar</strong></td>
+        <td style="padding:11px 12px 11px 0; color:var(--text); width:40%"><strong>Hardcoded database credential in BlockyCore.jar</strong><br><span style="color:var(--text-4);font-size:13px">High</span></td>
         <td style="padding:11px 0; color:var(--text-3)">Read DB credentials from a config file or environment at runtime, use a dedicated low-privilege DB account for the plugin instead of <code>root</code>, and rotate the leaked password.</td>
       </tr>
       <tr style="border-bottom:1px solid var(--border)">
-        <td style="padding:11px 12px 11px 0; color:var(--text)"><strong>Password reuse (DB root = notch)</strong></td>
-        <td style="padding:11px 0; color:var(--text-3)">Unique passwords per account and service. Use key-based SSH and disable password auth, and drop plain FTP (or at least don't share its credentials with SSH).</td>
+        <td style="padding:11px 12px 11px 0; color:var(--text)"><strong>Password reuse (DB root = notch)</strong><br><span style="color:var(--text-4);font-size:13px">High</span></td>
+        <td style="padding:11px 0; color:var(--text-3)">Unique passwords per account and service. Rotate both, use key-based SSH and disable password auth.</td>
       </tr>
       <tr style="border-bottom:1px solid var(--border)">
-        <td style="padding:11px 12px 11px 0; color:var(--text)"><strong>Full sudo on a user whose password leaked</strong></td>
-        <td style="padding:11px 0; color:var(--text-3)">Limit sudo to the commands the user actually needs, and keep admin accounts off public-facing services like FTP.</td>
+        <td style="padding:11px 12px 11px 0; color:var(--text)"><strong>Unrestricted sudo for notch</strong><br><span style="color:var(--text-4);font-size:13px">Medium</span></td>
+        <td style="padding:11px 0; color:var(--text-3)">Limit sudo to the commands the user actually needs instead of <code>(ALL : ALL) ALL</code>.</td>
+      </tr>
+      <tr style="border-bottom:1px solid var(--border)">
+        <td style="padding:11px 12px 11px 0; color:var(--text)"><strong>Over-privileged WordPress DB account</strong><br><span style="color:var(--text-4);font-size:13px">Medium &middot; GRANT ALL ON *.*</span></td>
+        <td style="padding:11px 0; color:var(--text-3)">Grant the <code>wordpress</code> account rights on the <code>wordpress</code> database only, and keep <code>wp-config.php</code> readable by the web server user only.</td>
+      </tr>
+      <tr style="border-bottom:1px solid var(--border)">
+        <td style="padding:11px 12px 11px 0; color:var(--text)"><strong>phpMyAdmin exposed and accepts DB root</strong><br><span style="color:var(--text-4);font-size:13px">Medium</span></td>
+        <td style="padding:11px 0; color:var(--text-3)">Restrict phpMyAdmin to an internal/admin network or remove it, and don't let MySQL <code>root</code> log in through it.</td>
+      </tr>
+      <tr style="border-bottom:1px solid var(--border)">
+        <td style="padding:11px 12px 11px 0; color:var(--text)"><strong>Outdated WordPress 4.8</strong><br><span style="color:var(--text-4);font-size:13px">Medium &middot; not exploited</span></td>
+        <td style="padding:11px 0; color:var(--text-3)">Update WordPress core and the Twenty Seventeen theme.</td>
+      </tr>
+      <tr style="border-bottom:1px solid var(--border)">
+        <td style="padding:11px 12px 11px 0; color:var(--text)"><strong>Directory listing enabled</strong><br><span style="color:var(--text-4);font-size:13px">Low</span></td>
+        <td style="padding:11px 0; color:var(--text-3)">Turn off <code>Options Indexes</code> on <code>/plugins/</code> and <code>/wp-content/uploads/</code>, and move plugin files out of the web root.</td>
+      </tr>
+      <tr style="border-bottom:1px solid var(--border)">
+        <td style="padding:11px 12px 11px 0; color:var(--text)"><strong>WordPress username enumeration</strong><br><span style="color:var(--text-4);font-size:13px">Low</span></td>
+        <td style="padding:11px 0; color:var(--text-3)">Block author enumeration (<code>?author=</code>, REST users endpoint) and use display names that differ from login names.</td>
+      </tr>
+      <tr style="border-bottom:1px solid var(--border)">
+        <td style="padding:11px 12px 11px 0; color:var(--text)"><strong>Cleartext FTP accepts system credentials</strong><br><span style="color:var(--text-4);font-size:13px">Low</span></td>
+        <td style="padding:11px 0; color:var(--text-3)">Drop plain FTP for SFTP, or at least keep system accounts off it.</td>
       </tr>
       <tr>
-        <td style="padding:11px 12px 11px 0; color:var(--text)"><strong>Over-privileged WordPress DB user</strong><br><span style="color:var(--text-4);font-size:13px">GRANT ALL ON *.*</span></td>
-        <td style="padding:11px 0; color:var(--text-3)">Grant the <code>wordpress</code> account rights on the <code>wordpress</code> database only, and keep <code>wp-config.php</code> readable by the web server user only. Update WordPress 4.8.</td>
+        <td style="padding:11px 12px 11px 0; color:var(--text)"><strong>XML-RPC enabled</strong><br><span style="color:var(--text-4);font-size:13px">Info</span></td>
+        <td style="padding:11px 0; color:var(--text-3)">Disable or restrict <code>xmlrpc.php</code> if nothing needs it.</td>
       </tr>
     </tbody>
   </table>
@@ -247,7 +291,28 @@
   <p>Overall, it was an actual Easy box, which surprised me, as a lot of Easy boxes sometimes involve a lot more
   work than this one. I can actually remember some Starting Point boxes that required a bit more work for
   privilege escalation than this one, but it was fun.</p>
+  <p>The funny part is that <code>sudo -l</code> told me everything in the first minute, and I still went
+  through SUIDs, logs, MySQL, hashcat and phpMyAdmin before it clicked. Read your own output.</p>
   <p>Just another reminder that sometimes we don't need to dig too deep to find what we're looking for.</p>
+
+  <hr>
+
+  <!-- ==================== 07 ==================== -->
+  <h2 id="report"><span class="num">07</span> - SysReptor report</h2>
+  <p>This is the same box written up as a client deliverable: findings rated by severity, a step-by-step
+  walkthrough with evidence, the host cleanup, and remediation.</p>
+  <figure><img src="images/Blocky/blocky-report-cover.png" alt="Cover page of the Blocky penetration test report" style="max-width:320px"><figcaption>Cover of the 41-page report, built in SysReptor.</figcaption></figure>
+  <figure><img src="images/Blocky/blocky-report-findings.png" alt="Report findings table: 2 High, 4 Medium, 3 Low, 1 Info"><figcaption>The findings overview: 2 High, 4 Medium, 3 Low and 1 Info.</figcaption></figure>
+  <div class="note">
+    <span class="lbl">about the template</span>
+    The report is based on HackTheBox's CJCA report template. Blocky has no blue team side, so the SIEM alert
+    analysis part of that template doesn't apply and is marked not applicable. Flags, passwords, hashes and
+    tokens are redacted throughout.
+  </div>
+  <div class="btn-row">
+    <a class="btn primary" href="reports/blocky-report.pdf" download>Download PDF (5.5 MB)</a>
+    <a class="btn" href="reports/blocky-report.pdf" target="_blank" rel="noopener">Open in browser</a>
+  </div>
 
   <p style="margin-top:32px">
     <a href="writeups.html">&larr; all write-ups</a> &nbsp;&middot;&nbsp;

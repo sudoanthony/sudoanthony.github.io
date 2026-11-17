@@ -86,14 +86,21 @@
   const present = order.filter(p => (p === "Open Source" ? ossCards.length : sorted.some(w => w.platform === p)))
     .concat([...new Set(sorted.map(w => w.platform))].filter(p => !order.includes(p)));
 
+  // small document-with-check glyph for the "report included" badge (our own mark)
+  const RP_GLYPH = '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" ' +
+    'stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' +
+    '<path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"></path>' +
+    '<path d="M14 3v5h5"></path><path d="M9 14l2 2 4-4"></path></svg>';
+
   function iconHtml(w) {
     const mono = '<div class="mono">' + esc((w.title||"?")[0]) + '</div>';
+    const badge = w.report ? '<span class="rp-badge">' + RP_GLYPH + '</span>' : '';
     // show the image; if it 404s, reveal the letter fallback underneath
     return w.icon
       ? '<div class="icon">' + mono +
           '<img src="' + w.icon + '" alt="" style="position:absolute;inset:0;margin:auto" ' +
-          'onerror="this.style.display=\'none\'"></div>'
-      : '<div class="icon">' + mono + '</div>';
+          'onerror="this.style.display=\'none\'">' + badge + '</div>'
+      : '<div class="icon">' + mono + badge + '</div>';
   }
 
   function ossGlyph() {
@@ -126,6 +133,7 @@
         '<div class="nm">' + esc(w.title) + (w.subtitle ? ':' : '') + '</div>' +
         (w.subtitle ? '<div class="nm-sub">' + esc(w.subtitle) + '</div>' : '') +
         '<div class="sub">' + sub + '</div>' +
+        (w.report ? '<div class="rp-line">SysReptor report</div>' : '') +
       '</div>' +
       '<div class="revwrap"><div class="rev">' +
         '<div class="rt">' + esc(w.title) + '</div>' +
@@ -162,16 +170,30 @@
     // and Open Source on the right. Headers are pinned to a fixed height so the first card in
     // each column lines up; the right column then flows Mobile -> Web -> Open Source.
     const isRight = p => { const c = platClass(p); return c === "mobile" || c === "web" || c === "oss"; };
-    const colHtml = plats => plats.map(p => '<div class="pgroup">' + groupHtml(p) + '</div>').join("");
+    const colHtml = plats => plats.map(p => '<div class="pgroup" id="plat-' + platClass(p) + '">' + groupHtml(p) + '</div>').join("");
     const left  = colHtml(present.filter(p => !isRight(p)));
     const right = colHtml(present.filter(isRight));
+    // jump bar: only shown on narrow screens (CSS), where the columns stack into one long list
+    const ordered = present.filter(p => !isRight(p)).concat(present.filter(isRight));
+    const jump = '<nav class="jump" aria-label="Jump to platform">' +
+      ordered.map(p => '<a class="' + platClass(p) + '" href="#plat-' + platClass(p) + '">' + esc(p) + '</a>').join("") +
+      '</nav>';
     document.getElementById("groups").innerHTML = (left || right)
-      ? '<div class="cols"><div class="col col-left">' + left + '</div>' +
+      ? jump + '<div class="cols"><div class="col col-left">' + left + '</div>' +
         (right ? '<div class="col col-right">' + right + '</div>' : '') + '</div>'
       : '<p class="empty">No write-ups yet.</p>';
   }
 
   render();
+  // the groups are built by JS, so re-apply a #plat-... link once they exist and the
+  // fonts/images above them have loaded (otherwise the intro reflows and pushes it down)
+  function jumpToHash() {
+    const t = location.hash && document.getElementById(location.hash.slice(1));
+    if (t) t.scrollIntoView({ behavior: "instant" });
+  }
+  jumpToHash();                                  // right away, in case load is slow
+  if (document.readyState !== "complete") window.addEventListener("load", jumpToHash);
+  if (document.fonts) document.fonts.ready.then(jumpToHash);
 </script>
 <script src="lightbox.js"></script>
 </body>

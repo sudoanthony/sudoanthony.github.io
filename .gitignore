@@ -18,3 +18,9 @@ images/**/shot-*.png
 
 # editor/script backups
 *.bak
+
+# Report sources - only the cleaned copy in reports/ is published
+/*.pdf
+
+# Working folders of redacted screenshots - the curated <box>NN.png set is what gets published
+images/**/*-SSRedact/
