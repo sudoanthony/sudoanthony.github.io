@@ -41,11 +41,11 @@ const WRITEUP_FIELDS = ['title', 'url', 'platform', 'team', 'difficulty', 'os',
                         'category', 'icon', 'date', 'summary', 'tags'];
 
 // Sections every finished writeup should have. Matched case-insensitively
-// against the <h2> text, so "Privilege escalation to root" satisfies "privileg".
+// against the <h2> text, so "Privilege escalation to root" or "Priv Esc" satisfies it.
 const REQUIRED_SECTIONS = [
   { label: 'Enumeration',            test: /enumerat/i },
   { label: 'Foothold',               test: /foothold/i },
-  { label: 'Privilege escalation',   test: /privileg/i },
+  { label: 'Privilege escalation',   test: /privileg|priv\s*esc/i },
   { label: 'Root cause & remediation', test: /root cause/i },
   { label: 'Takeaways',              test: /takeaway/i },
 ];

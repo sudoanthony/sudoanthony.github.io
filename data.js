@@ -23,6 +23,19 @@
 
 const WRITEUPS = [
   {
+    title:      "Blocky",
+    url:        "writeup-blocky.html",
+    platform:   "HackTheBox",
+    team:       "red",
+    difficulty: "Easy",
+    os:         "Linux",
+    category:   "Web",
+    icon:       "images/icons/blocky.png",
+    date:       "2026-11-17",
+    summary:    "Minecraft WordPress site: an open /plugins folder serves BlockyCore.jar, whose class file hardcodes a DB password. That password is reused by notch for FTP and SSH, and notch has full sudo, so sudo bash is root.",
+    tags:       ["hardcoded-secret", "exposed-credentials", "security-misconfiguration", "sensitive-data-exposure", "priv-esc"]
+  },
+  {
     title:      "Legacy",
     url:        "writeup-legacy.html",
     platform:   "HackTheBox",
@@ -228,6 +241,7 @@ const VULNS = [
     blurb: "A secret compiled into the APK (strings.xml / resources / smali) - recoverable by anyone with the binary. Severity depends on what the secret authorizes; a challenge-gate key is Low, a live API key is not.",
     deepdive: "",
     uses: [
+      { writeup: "Blocky", url: "writeup-blocky.html", ctx: "the custom BlockyCore.jar plugin hardcodes the MySQL root password in its class file; javap prints it" },
       { writeup: "OWASP Mobile Top 10 2024", url: "writeup-allsafe.html", ctx: "UUID in strings.xml gates a deep link - found via the R.string.key reference, not a keyword grep" }
     ]
   },
@@ -361,6 +375,7 @@ const VULNS = [
     blurb: "Turning a foothold user into root, Administrator, or SYSTEM through a local misconfiguration or over-privileged right.",
     deepdive: "",
     uses: [
+      { writeup: "Blocky", url: "writeup-blocky.html", ctx: "notch is in the sudo group with (ALL : ALL) ALL, so the reused password plus sudo bash gives root" },
       { writeup: "Remote", url: "writeup-remote.html", ctx: "SeImpersonatePrivilege on the IIS service account abused with PrintSpoofer to spawn a SYSTEM shell" },
       { writeup: "Knife", url: "writeup-knife.html", ctx: "passwordless sudo on Chef's knife (Ruby) abused with knife exec to spawn a root shell" },
       { writeup: "Baby", url: "writeup-baby.html", ctx: "SeBackupPrivilege (Backup Operators) used to shadow-copy and read NTDS.dit, then Pass-the-Hash as Administrator" },
@@ -381,6 +396,7 @@ const VULNS = [
     blurb: "Credentials recoverable by a low-priv user and reused across accounts - obfuscated configs, key files, shared passwords, directory attributes.",
     deepdive: "",
     uses: [
+      { writeup: "Blocky", url: "writeup-blocky.html", ctx: "the password from BlockyCore.jar is reused by notch for FTP and SSH, and also opens phpMyAdmin as root" },
       { writeup: "Remote", url: "writeup-remote.html", ctx: "an NFS backup's Umbraco.sdf leaks the admin SHA1 hash, cracked with john to baconandcheese" },
       { writeup: "Baby", url: "writeup-baby.html", ctx: "anonymous LDAP read exposes an initial password stored in a user's AD description field" },
       { writeup: "Abducted", url: "writeup-abducted.html", ctx: "rclone-obfuscated backup password revealed and reused for scott's SSH" },
@@ -459,6 +475,7 @@ const VULNS = [
     blurb: "Insecure defaults, unnecessary features, or deprecated interfaces left enabled - each one is extra attack surface the app never needed to expose. Fix is to harden defaults, disable unused features fully (not just hide them from the UI), and enforce allow-lists server-side.",
     deepdive: "",
     uses: [
+      { writeup: "Blocky", url: "writeup-blocky.html", ctx: "a Minecraft /plugins folder sits in the web root with directory listing on, serving the plugin jars to anyone" },
       { writeup: "OWASP Top 10 2025", url: "writeup-juiceshop.html", ctx: "a deprecated XML B2B upload interface, pulled from the UI but still live on the backend - the File Complaint form accepts an .xml file and processes it" }
     ]
   },
@@ -483,6 +500,7 @@ const VULNS = [
     blurb: "Sensitive files or data reachable without access control - served straight off a browsable directory rather than gated behind an authenticated, authorization-checked route. Severity tracks what the data actually is: placeholder content is Medium, real material non-public info is High.",
     deepdive: "",
     uses: [
+      { writeup: "Blocky", url: "writeup-blocky.html", ctx: "downloadable plugin jars leak the DB root password; wp-config.php holds the wordpress DB password and the auth keys and salts" },
       { writeup: "OWASP Top 10 2025", url: "writeup-juiceshop.html", ctx: "a confidential acquisitions.md served from the browsable /ftp directory to any unauthenticated user" },
       { writeup: "Orion", url: "writeup-orion.html", ctx: "Craft dev mode leaks stack traces/paths, and the web-root .env + project.yaml expose the DB password and the admin username adam@orion.htb" }
     ]

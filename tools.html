@@ -60,17 +60,17 @@
       <p class="kicker">By the job it does</p>
       <h2>Categories</h2>
       <ul>
-        <li><strong>Recon &amp; scanning:</strong> <a href="#nmap">nmap</a>, <a href="#gobuster">gobuster</a>, <a href="#feroxbuster">feroxbuster</a>, <a href="#ffuf">ffuf</a>, <a href="#curl">curl</a>.</li>
+        <li><strong>Recon &amp; scanning:</strong> <a href="#nmap">nmap</a>, <a href="#gobuster">gobuster</a>, <a href="#feroxbuster">feroxbuster</a>, <a href="#ffuf">ffuf</a>, <a href="#curl">curl</a>, <a href="#wpscan">WPScan</a>.</li>
         <li><strong>Container &amp; host enum:</strong> <a href="#mountinfo">findmnt / mountinfo</a>, <a href="#netstat">netstat</a>, <a href="#mysql">mysql</a>, <a href="#file">file</a>, <a href="#dpkg">dpkg -S</a>.</li>
         <li><strong>Vulnerability scanners:</strong> <a href="#nessus">Nessus</a>, <a href="#openvas">OpenVAS</a>.</li>
-        <li><strong>Exploitation &amp; cracking:</strong> <a href="#searchsploit">searchsploit</a>, <a href="#metasploit">Metasploit</a>, <a href="#hydra">Hydra</a>.</li>
+        <li><strong>Exploitation &amp; cracking:</strong> <a href="#searchsploit">searchsploit</a>, <a href="#metasploit">Metasploit</a>, <a href="#hydra">Hydra</a>, <a href="#hashcat">hashcat</a>.</li>
         <li><strong>Binary exploitation:</strong> <a href="#gdb">gdb / pwndbg</a>, <a href="#checksec">checksec</a>, <a href="#readelf">readelf</a>.</li>
         <li><strong>Web &amp; proxies:</strong> <a href="#burp">Burp Suite</a>, <a href="#mitmproxy">mitmproxy</a>.</li>
         <li><strong>Networking &amp; access:</strong> <a href="#netcat">netcat</a>, <a href="#ssh">ssh</a> (local port forwarding), <a href="#telnet">telnet</a>.</li>
         <li><strong>Active Directory / Windows:</strong> <a href="#dig">dig</a>, <a href="#ldapsearch">ldapsearch</a>, <a href="#netexec">netexec</a>, <a href="#smbclient">smbclient</a>, <a href="#rpcclient">rpcclient</a>, <a href="#smbmap">smbmap</a>, <a href="#smbpasswd">smbpasswd</a>, <a href="#showmount">showmount/mount</a>, <a href="#evil-winrm">evil-winrm</a>, <a href="#impacket">Impacket</a>, <a href="#diskshadow">diskshadow + robocopy</a>, <a href="#printspoofer">PrintSpoofer</a>, <a href="#john">John the Ripper</a>.</li>
         <li><strong>Mobile static:</strong> <a href="#jadx">jadx</a>, <a href="#apktool">apktool</a>, <a href="#mobsf">MobSF</a>.</li>
         <li><strong>Mobile device &amp; runtime:</strong> <a href="#android-studio">Android Studio</a>, <a href="#adb">adb</a> (with <code>am</code> and <code>content</code>), <a href="#frida">Frida</a>, <a href="#objection">objection</a>.</li>
-        <li><strong>Reverse engineering &amp; signing:</strong> <a href="#apksigner">apksigner</a>, <a href="#zipalign">zipalign</a>, <a href="#keytool">keytool</a>, <a href="#ghidra">Ghidra</a>, <a href="#radare2">radare2</a>.</li>
+        <li><strong>Reverse engineering &amp; signing:</strong> <a href="#apksigner">apksigner</a>, <a href="#zipalign">zipalign</a>, <a href="#keytool">keytool</a>, <a href="#ghidra">Ghidra</a>, <a href="#radare2">radare2</a>, <a href="#javap">javap</a>.</li>
         <li><strong>Utilities:</strong> <a href="#sqlite3">sqlite3</a>, <a href="#jq">jq</a>, <a href="#python">Python</a>, <a href="#wsl">WSL</a>, <a href="#cyberchef">CyberChef</a>.</li>
         <li><strong>Targets:</strong> <a href="#allsafe">AllSafe</a>, <a href="#androgoat">AndroGoat</a>, <a href="#insecurebankv2">InsecureBankv2</a>.</li>
       </ul>
@@ -88,7 +88,7 @@
           <div class="tc-row"><span class="os">WIN</span> <code>winget install Insecure.Nmap</code></div>
           <div class="tc-row"><span class="os">LINUX</span> <code>sudo apt install nmap</code></div>
           <div class="tc-row"><span class="os">CMD</span> <code>nmap -p- -sVC TARGET</code></div>
-          <div class="tc-seen">seen in <a href="writeup-biohazard.html">Biohazard</a>, <a href="writeup-abducted.html">Abducted</a>, <a href="writeup-nexus.html">Nexus</a>, <a href="writeup-october.html">October</a></div>
+          <div class="tc-seen">seen in <a href="writeup-biohazard.html">Biohazard</a>, <a href="writeup-abducted.html">Abducted</a>, <a href="writeup-nexus.html">Nexus</a>, <a href="writeup-october.html">October</a>, <a href="writeup-blocky.html">Blocky</a></div>
         </div>
 
         <div class="toolcard cat-recon" id="gobuster">
@@ -98,7 +98,7 @@
           <div class="tc-row"><span class="os">DIR</span> <code>gobuster dir -u URL -w LIST -x php,html,txt --exclude-length N</code></div>
           <div class="tc-row"><span class="os">VHOST</span> <code>gobuster vhost -u http://DOMAIN -w LIST --append-domain</code></div>
           <div class="tc-row"><span class="os">TLS</span> <code>gobuster vhost -u https://DOMAIN -k --append-domain -w LIST</code></div>
-          <div class="tc-seen">seen in <a href="writeup-nexus.html">Nexus</a>, <a href="writeup-kobold.html">Kobold</a>, <a href="writeup-october.html">October</a></div>
+          <div class="tc-seen">seen in <a href="writeup-nexus.html">Nexus</a>, <a href="writeup-kobold.html">Kobold</a>, <a href="writeup-october.html">October</a>, <a href="writeup-blocky.html">Blocky</a></div>
         </div>
 
         <div class="toolcard cat-recon" id="feroxbuster">
@@ -122,7 +122,15 @@
           <p class="tc-what">Command-line HTTP client. Beyond fetching pages, <code>-I</code> grabs just the response <strong>headers</strong> - the fastest way to fingerprint a server. A giveaway banner like <code>X-Powered-By</code> or <code>Server</code> often points straight at a known vulnerability.</p>
           <div class="tc-row"><span class="os">LINUX</span> ships on virtually every system (<code>apt install curl</code>)</div>
           <div class="tc-row"><span class="os">HEADERS</span> <code>curl -I http://TARGET</code></div>
-          <div class="tc-seen">seen in <a href="writeup-knife.html">Knife</a>, <a href="writeup-kobold.html">Kobold</a>, <a href="writeup-october.html">October</a></div>
+          <div class="tc-seen">seen in <a href="writeup-knife.html">Knife</a>, <a href="writeup-kobold.html">Kobold</a>, <a href="writeup-october.html">October</a>, <a href="writeup-blocky.html">Blocky</a></div>
+        </div>
+
+        <div class="toolcard cat-recon" id="wpscan">
+          <div class="tc-head"><span class="tc-glyph">wp</span><span class="tc-name">WPScan</span><span class="tc-cat">wordpress scanner</span></div>
+          <p class="tc-what">WordPress scanner. Pulls the core version, theme, plugins and users, and with a free API token matches them against its vulnerability database. It only finds plugins under <code>wp-content/plugins</code> that leave a trace, so inactive plugins and anything outside WordPress (like a <code>/plugins</code> folder at the web root) won't show. Keep your API token out of screenshots.</p>
+          <div class="tc-row"><span class="os">LINUX</span> preinstalled on Kali (<code>sudo apt install wpscan</code>)</div>
+          <div class="tc-row"><span class="os">ENUM</span> <code>wpscan --url http://TARGET --enumerate --api-token TOKEN</code></div>
+          <div class="tc-seen">seen in <a href="writeup-blocky.html">Blocky</a></div>
         </div>
 
       </div>
@@ -179,6 +187,14 @@
           <div class="tc-row"><span class="os">LINUX</span> <code>sudo apt install hydra</code></div>
           <div class="tc-row"><span class="os">SSH</span> <code>hydra -l USER -P /usr/share/wordlists/rockyou.txt TARGET ssh</code></div>
           <div class="tc-seen">seen in <a href="writeup-orion.html">Orion</a>, <a href="writeup-october.html">October</a></div>
+        </div>
+
+        <div class="toolcard cat-recon" id="hashcat">
+          <div class="tc-head"><span class="tc-glyph">hc</span><span class="tc-name">hashcat</span><span class="tc-cat">offline cracker</span></div>
+          <p class="tc-what">Offline hash cracker, fastest on a GPU. Pick the hash type with <code>-m</code>; if you don't know it, <code>--identify</code> suggests the mode. Slow salted hashes like WordPress phpass (mode 400) can take a long time on a CPU, so check whether you even need the plaintext before waiting on it.</p>
+          <div class="tc-row"><span class="os">LINUX</span> preinstalled on Kali (<code>sudo apt install hashcat</code>)</div>
+          <div class="tc-row"><span class="os">CRACK</span> <code>hashcat --identify hash.txt</code> &middot; <code>hashcat -m 400 -a 0 hash.txt rockyou.txt</code></div>
+          <div class="tc-seen">seen in <a href="writeup-blocky.html">Blocky</a></div>
         </div>
 
       </div>
@@ -262,7 +278,7 @@
           <div class="tc-row"><span class="os">WIN / LINUX</span> ships with OpenSSH (Windows: <code>Add-WindowsCapability</code>; Linux: <code>openssh-client</code>)</div>
           <div class="tc-row"><span class="os">SHELL</span> <code>ssh user@TARGET</code></div>
           <div class="tc-row"><span class="os">TUNNEL</span> <code>ssh -L 3000:127.0.0.1:3000 user@TARGET</code> &nbsp;&mdash; run from <em>your</em> box; now browse <code>127.0.0.1:3000</code> to hit the target's internal service</div>
-          <div class="tc-seen">seen in <a href="writeup-biohazard.html">Biohazard</a>, <a href="writeup-nexus.html">Nexus</a></div>
+          <div class="tc-seen">seen in <a href="writeup-biohazard.html">Biohazard</a>, <a href="writeup-nexus.html">Nexus</a>, <a href="writeup-blocky.html">Blocky</a></div>
         </div>
 
         <div class="toolcard cat-recon" id="telnet">
@@ -304,7 +320,7 @@
           <div class="tc-row"><span class="os">LINUX</span> <code>sudo apt install mariadb-client</code></div>
           <div class="tc-row"><span class="os">CONNECT</span> <code>mysql -u root -p'PASS' -h 127.0.0.1</code></div>
           <div class="tc-row"><span class="os">CHECK</span> <code>SHOW GRANTS;</code> &middot; <code>SHOW VARIABLES LIKE 'secure_file_priv';</code></div>
-          <div class="tc-seen">seen in <a href="writeup-orion.html">Orion</a></div>
+          <div class="tc-seen">seen in <a href="writeup-orion.html">Orion</a>, <a href="writeup-blocky.html">Blocky</a></div>
         </div>
 
         <div class="toolcard cat-recon" id="file">
@@ -542,6 +558,14 @@
           <div class="tc-row"><span class="os">WIN / LINUX</span> Android SDK build-tools (same folder as apksigner)</div>
           <div class="tc-row"><span class="os">CMD</span> <code>zipalign -p -f 4 in.apk out.apk</code></div>
           <div class="tc-seen">seen in <a href="writeup-allsafe.html">OWASP Mobile Top 10 2024</a></div>
+        </div>
+
+        <div class="toolcard cat-static" id="javap">
+          <div class="tc-head"><span class="tc-glyph">jp</span><span class="tc-name">javap</span><span class="tc-cat">class disassembler</span></div>
+          <p class="tc-what">Java class file disassembler that ships with the JDK. A <code>.jar</code> is just a zip: unzip it, then <code>javap -c -p</code> prints every field, method and string constant. Hardcoded credentials show up as plain <code>ldc</code> strings. Reach for jadx when you want readable Java source instead.</p>
+          <div class="tc-row"><span class="os">LINUX</span> part of any JDK (<code>sudo apt install default-jdk</code>)</div>
+          <div class="tc-row"><span class="os">CMD</span> <code>unzip app.jar</code> &middot; <code>javap -c -p path/to/Class.class</code></div>
+          <div class="tc-seen">seen in <a href="writeup-blocky.html">Blocky</a></div>
         </div>
 
         <div class="toolcard cat-static" id="keytool">
