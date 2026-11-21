@@ -800,7 +800,7 @@ const OSS = [
   },
   {
     id: "cve-2023-3452-reliability-fixes",
-    title: "CVE-2023-3452-PoC: four reliability bugs (PR #1)",
+    title: "CVE-2023-3452-PoC: five reliability bugs (PR #1)",
     subtitle: "Github: leoanggal1/CVE-2023-3452-PoC",
     type: "bug fix",
     status: "open",
@@ -808,7 +808,7 @@ const OSS = [
     url: "https://github.com/leoanggal1/CVE-2023-3452-PoC/pull/1",
     deepdive: "oss-cve-2023-3452.html",
     date: "2026-11-21",
-    blurb: "Four independent, target-agnostic bugs in a Canto WordPress plugin RFI/RCE PoC: no URL scheme validation (a bare host threw a raw MissingSchema traceback), an unencoded command dropped into the query string, an orphaned nc process on a failed run, and a Ctrl+C that could not stop the process because of an untimed thread join. Fixed all four; verified url validation and command encoding directly, and the signal-handling fix with an end-to-end SIGINT test confirming a clean exit and no leftover nc process."
+    blurb: "Five independent, target-agnostic bugs in a Canto WordPress plugin RFI/RCE PoC: no URL scheme validation (a bare host threw a raw MissingSchema traceback), an unencoded command dropped into the query string, an orphaned nc process on a failed run, a Ctrl+C that could not stop the process because of an untimed thread join, and a custom shell payload's own port that can silently mismatch --nc_port. Fixed all five; verified url validation, command encoding, and the port-mismatch warning directly, and the signal-handling fix with an end-to-end SIGINT test confirming a clean exit and no leftover nc process."
   },
   {
     id: "ipa-mobile-disclosure",
