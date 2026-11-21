@@ -787,6 +787,30 @@ const VULNS = [
 /* ---------- open-source contributions (rendered on opensource.html) ---------- */
 const OSS = [
   {
+    id: "pack2theroot-umask-fix",
+    title: "Pack2TheRoot: umask-dependent build failure (PR #1)",
+    subtitle: "Github: gbuyssens/CVE-2026-41651",
+    type: "bug fix",
+    status: "open",
+    statusLabel: "Open",
+    url: "https://github.com/gbuyssens/CVE-2026-41651/pull/1",
+    deepdive: "oss-pack2theroot.html",
+    date: "2026-11-21",
+    blurb: "Pack2TheRoot (CVE-2026-41651, a PackageKit TOCTOU LPE PoC) failed to even build its payload: os.makedirs() leaves the DEBIAN control directory's permissions up to the calling process's umask instead of setting them outright, so under umask 0 the directory lands at 777 and dpkg-deb --build refuses it. Fixed with an explicit os.chmod() right after creation, verified in WSL with umask 0 set: fails before the fix, builds cleanly after."
+  },
+  {
+    id: "cve-2023-3452-reliability-fixes",
+    title: "CVE-2023-3452-PoC: four reliability bugs (PR #1)",
+    subtitle: "Github: leoanggal1/CVE-2023-3452-PoC",
+    type: "bug fix",
+    status: "open",
+    statusLabel: "Open",
+    url: "https://github.com/leoanggal1/CVE-2023-3452-PoC/pull/1",
+    deepdive: "oss-cve-2023-3452.html",
+    date: "2026-11-21",
+    blurb: "Four independent, target-agnostic bugs in a Canto WordPress plugin RFI/RCE PoC: no URL scheme validation (a bare host threw a raw MissingSchema traceback), an unencoded command dropped into the query string, an orphaned nc process on a failed run, and a Ctrl+C that could not stop the process because of an untimed thread join. Fixed all four; verified url validation and command encoding directly, and the signal-handling fix with an end-to-end SIGINT test confirming a clean exit and no leftover nc process."
+  },
+  {
     id: "ipa-mobile-disclosure",
     title: "Healthcare Mobile Application Vulnerability",
     subtitle: "ipa.go.jp: Pending CVE Submission",

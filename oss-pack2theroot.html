@@ -1,0 +1,125 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Pack2TheRoot: a umask-dependent build failure - Anthony</title>
+<meta name="description" content="Root cause and fix for a Pack2TheRoot (CVE-2026-41651) build failure: os.makedirs() leaves control-directory permissions up to the calling process's umask, so dpkg-deb --build refuses the package under umask 0.">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<nav class="nav"><div class="wrap">
+  <a class="brand" href="index.html">~/sudoanthony</a>
+  <div class="links">
+    <a href="writeups.html">write-ups</a>
+    <a href="opensource.html">open source</a>
+    <a href="vulns.html">vulns</a>
+    <a href="concepts.html">concepts</a>
+    <a href="tools.html">tools</a>
+    <a href="https://github.com/sudoanthony">github</a>
+  </div>
+</div></nav>
+
+<main class="wrap" style="padding-top:40px; max-width:820px">
+  <h1>Pack2TheRoot: a umask-dependent build failure</h1>
+
+  <div class="meta">
+    <span style="color:var(--accent)">gbuyssens/CVE-2026-41651</span>
+    <span class="sep">/</span>
+    <a href="https://github.com/gbuyssens/CVE-2026-41651/pull/1">PR #1</a>
+    <span class="sep">/</span>
+    <span class="status open"><span class="dot"></span>open</span>
+    <span class="sep">/</span>
+    <span>2026-11-21</span>
+  </div>
+
+  <div class="tldr">
+    <span class="lbl">tl;dr</span>
+    <p>Pack2TheRoot is a PoC for a PackageKit TOCTOU local privilege escalation (CVE-2026-41651). Before it can
+    even attempt the race, it builds a malicious <code>.deb</code> package, and that step was failing outright.
+    The script creates the package's control directory with <strong>os.makedirs()</strong> and never sets its
+    permissions explicitly, so they come straight from the calling process's <strong>umask</strong>. In a
+    non-interactive shell context where umask is 0, the directory lands at 777 and <code>dpkg-deb --build</code>
+    refuses to package it. The fix is a one-line <code>os.chmod()</code> right after creation.</p>
+  </div>
+
+  <h2><span class="num">01</span>The failure</h2>
+  <p>Running the script where umask was 0, the very first step, building the payload <code>.deb</code>,
+  failed:</p>
+<pre><code><span class="p">$</span> python3 exploit.py
+dpkg-deb: error: control directory has bad permissions 777
+(must be &gt;=0755 and &lt;=0775)</code></pre>
+  <p>Nothing about the target mattered yet. This is the script failing to build its own payload, before any
+  D-Bus call or race condition comes into play.</p>
+
+  <h2><span class="num">02</span>Root cause</h2>
+  <p>The relevant code:</p>
+<pre><code>debian = f"{d}/DEBIAN"
+os.makedirs(debian, exist_ok=True)
+
+with open(f"{debian}/control", "w") as f:
+    f.write(...)</code></pre>
+  <p><code>os.makedirs()</code> does not set a directory's permissions outright. The mode it ends up with is
+  whatever the calling process's <strong>umask</strong> leaves after masking whatever default mode Python
+  requests. In a normal interactive login shell, umask is usually 022, which leaves the directory at 0755 and
+  nobody notices anything is wrong. But a non-interactive shell, which is exactly what a foothold from a web
+  shell or a similar entry point tends to be, very often has umask 0. With umask 0 the directory comes out at
+  777, and <code>dpkg-deb --build</code> enforces a hard range of 0755-0775 for control directories. The
+  exploit dies right there, before it ever reaches the TOCTOU race it is actually built to win.</p>
+
+  <h2><span class="num">03</span>The fix</h2>
+  <p>Stop relying on the ambient umask and set the permissions explicitly, right after creating the directory
+  and the control file:</p>
+<pre><code><span class="c">- </span>os.makedirs(debian, exist_ok=True)
+<span class="c">+ </span>os.makedirs(debian, exist_ok=True)
+<span class="c">+ </span>os.chmod(debian, 0o755)
+
+  with open(f"{debian}/control", "w") as f:
+      f.write(...)
+<span class="c">+ </span>os.chmod(f"{debian}/control", 0o644)</code></pre>
+  <p>Five lines, no logic touched, no behavior change when umask happens to already be 022.</p>
+
+  <h2><span class="num">04</span>Proof</h2>
+  <p>Verified locally in a throwaway WSL Ubuntu environment with <code>os.umask(0)</code> set, isolating just
+  the directory-build logic from the rest of the script (no PackageKit/D-Bus involved, this part does not need
+  it):</p>
+<pre><code><span class="p">$</span> <span class="o">umask 0</span>; python3 test_before.py
+dpkg-deb: error: control directory has bad permissions 777
+(must be &gt;=0755 and &lt;=0775)
+<span class="c"># ... CalledProcessError, build aborts</span>
+
+<span class="p">$</span> <span class="o">umask 0</span>; python3 test_after.py
+Package 'after' in '/tmp/out_after.deb'.
+BUILD_OK</code></pre>
+  <p>Same umask, same logic, only the explicit <code>chmod</code> added. Before: hard failure. After: the
+  package builds. The only remaining output after the fix is an unrelated warning about the build directory's
+  owner/group, expected when not running as root and unrelated to this bug.</p>
+
+  <h2><span class="num">05</span>Takeaways</h2>
+  <ul>
+    <li>A script that assumes umask 022 will quietly break the moment it runs somewhere that is not an
+    interactive login shell. If permissions matter, set them explicitly rather than trusting the
+    environment's default.</li>
+    <li><code>os.makedirs()</code>'s mode argument is masked by umask; it does not set permissions outright.
+    <code>os.chmod()</code> afterward is the only way to get an exact mode regardless of umask.</li>
+    <li>This kind of bug is easy to miss in testing because an interactive dev shell almost never has umask
+    0, so the script "just works" right up until it runs somewhere that does.</li>
+  </ul>
+
+  <p style="margin-top:32px">
+    <a href="opensource.html">&larr; open source</a> &nbsp;&middot;&nbsp;
+    <a href="https://github.com/gbuyssens/CVE-2026-41651/pull/1">view PR #1 &rarr;</a>
+  </p>
+</main>
+
+<footer class="foot"><div class="wrap" style="display:flex;gap:18px;flex-wrap:wrap">
+  <a href="opensource.html">open source</a>
+  <a href="index.html">home</a>
+  <a href="https://github.com/sudoanthony">github</a>
+</div></footer>
+
+<script src="writeup-toc.js"></script>
+<script src="lightbox.js"></script>
+</body>
+</html>
